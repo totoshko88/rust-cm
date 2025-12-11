@@ -1,0 +1,245 @@
+# Implementation Plan
+
+- [x] 1. Project Setup and Core Infrastructure
+  - [x] 1.1 Initialize Rust project with Cargo workspace structure
+    - Create workspace with `rustconn-core` library and `rustconn` binary crates
+    - Configure Cargo.toml with dependencies: gtk4, vte4, tokio, serde, toml, uuid, chrono, thiserror, proptest
+    - Set up rustfmt.toml and clippy configuration
+    - _Requirements: 11.1, 11.2_
+  - [x] 1.2 Define core error types and result aliases
+    - Implement RustConnError, ConfigError, ProtocolError, ImportError, SecretError, SessionError
+    - Use thiserror for derive macros
+    - _Requirements: 2.6, 3.4, 4.4, 10.3_
+  - [x] 1.3 Define core data models
+    - Implement Connection, ConnectionGroup, ProtocolConfig (Ssh, Rdp, Vnc variants)
+    - Implement Credentials, Snippet, SnippetVariable structs
+    - Add Serialize/Deserialize derives with serde
+    - _Requirements: 1.1, 10.1, 10.2_
+  - [x] 1.4 Write property test for Connection serialization round-trip
+    - **Property 6: Connection Serialization Round-Trip**
+    - **Validates: Requirements 10.5, 10.6**
+
+- [x] 2. Configuration Management
+  - [x] 2.1 Implement ConfigManager for TOML file operations
+    - Create config directory structure (~/.config/rustconn/)
+    - Implement load/save for connections.toml, groups.toml, snippets.toml, config.toml
+    - Add schema validation on load
+    - _Requirements: 10.1, 10.2, 10.4_
+  - [x] 2.2 Write property test for configuration round-trip
+    - **Property 6: Connection Serialization Round-Trip** (extended to full config)
+    - **Validates: Requirements 10.5, 10.6**
+
+- [x] 3. Connection Manager Implementation
+  - [x] 3.1 Implement ConnectionManager CRUD operations
+    - Implement create_connection, update_connection, delete_connection
+    - Implement get_connection, list_connections, get_by_group
+    - Wire to ConfigManager for persistence
+    - _Requirements: 1.1, 1.2, 1.3_
+  - [x] 3.2 Write property test for Connection CRUD integrity
+    - **Property 1: Connection CRUD Data Integrity**
+    - **Validates: Requirements 1.1, 1.2, 1.3**
+  - [x] 3.3 Implement ConnectionGroup hierarchy management
+    - Implement create_group, delete_group, move_group
+    - Implement move_connection_to_group
+    - Ensure acyclic hierarchy validation
+    - _Requirements: 1.4_
+  - [x] 3.4 Write property test for group hierarchy integrity
+    - **Property 14: Group Hierarchy Integrity**
+    - **Validates: Requirements 1.4**
+  - [x] 3.5 Implement connection search and filtering
+    - Implement search by name, host, tags, group path
+    - Implement tag-based filtering
+    - Optimize for performance with 10000+ connections
+    - _Requirements: 1.5, 1.6_
+  - [x] 3.6 Write property test for search correctness
+    - **Property 2: Connection Search Correctness**
+    - **Validates: Requirements 1.5, 1.6**
+
+- [x] 4. Checkpoint - Core functionality tests
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 5. Protocol Layer Implementation
+  - [x] 5.1 Define Protocol trait and ProtocolRegistry
+    - Implement Protocol trait with all required methods
+    - Implement ProtocolRegistry for protocol lookup by ID
+    - _Requirements: 11.3_
+  - [x] 5.2 Implement SSH protocol handler
+    - Implement SshProtocol struct implementing Protocol trait
+    - Build SSH command with auth method, proxy jump, control master, custom options
+    - Support password, public key, keyboard-interactive, agent auth
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+  - [x] 5.3 Write property test for SSH command builder
+    - **Property 3: SSH Command Builder Correctness**
+    - **Validates: Requirements 2.2, 2.3, 2.4, 2.5**
+  - [x] 5.4 Implement RDP protocol handler
+    - Implement RdpProtocol struct implementing Protocol trait
+    - Build FreeRDP command with resolution, color depth, audio, gateway
+    - Support custom RDP client binary
+    - _Requirements: 3.1, 3.2, 3.3, 3.5_
+  - [x] 5.5 Write property test for RDP command builder
+    - **Property 4: RDP Command Builder Correctness**
+    - **Validates: Requirements 3.1, 3.2, 3.3, 3.5**
+  - [x] 5.6 Implement VNC protocol handler
+    - Implement VncProtocol struct implementing Protocol trait
+    - Build command for TightVNC, TigerVNC, custom clients
+    - Support encoding, compression, quality options
+    - _Requirements: 4.1, 4.2, 4.3_
+  - [x] 5.7 Write property test for VNC command builder
+    - **Property 5: VNC Command Builder Correctness**
+    - **Validates: Requirements 4.1, 4.2, 4.3**
+
+- [x] 6. Checkpoint - Protocol layer tests
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 7. Import Engine Implementation
+  - [x] 7.1 Define ImportSource trait and ImportResult
+    - Implement ImportSource trait
+    - Implement ImportResult with connections, groups, skipped, errors
+    - _Requirements: 6.6, 6.7_
+  - [x] 7.2 Implement SSH config importer
+    - Parse ~/.ssh/config and ~/.ssh/config.d/* files
+    - Extract Host, HostName, Port, User, IdentityFile, ProxyJump
+    - Map to Connection objects
+    - _Requirements: 6.2, 6.3_
+  - [x] 7.3 Write property test for SSH config parsing
+    - **Property 7: SSH Config Import Parsing**
+    - **Validates: Requirements 6.2, 6.3**
+  - [x] 7.4 Implement Asbru-CM importer
+    - Parse YAML configuration files from ~/.config/pac/ or ~/.config/asbru/
+    - Map connection entries to Connection objects
+    - Handle nested groups
+    - _Requirements: 6.1_
+  - [x] 7.5 Write property test for Asbru-CM parsing
+    - **Property 8: Asbru-CM Import Parsing**
+    - **Validates: Requirements 6.1**
+  - [x] 7.6 Implement Remmina importer
+    - Parse .remmina files from ~/.local/share/remmina/
+    - Map protocol, server, username to Connection objects
+    - _Requirements: 6.4_
+  - [x] 7.7 Write property test for Remmina parsing
+    - **Property 9: Remmina Import Parsing**
+    - **Validates: Requirements 6.4**
+  - [x] 7.8 Implement Ansible inventory importer
+    - Parse INI and YAML inventory formats
+    - Extract hosts with ansible_host, ansible_port, ansible_user
+    - Map groups to ConnectionGroups
+    - _Requirements: 6.5_
+  - [x] 7.9 Write property test for Ansible inventory parsing
+    - **Property 10: Ansible Inventory Import Parsing**
+    - **Validates: Requirements 6.5**
+  - [x] 7.10 Write property test for import error handling
+    - **Property 11: Import Error Handling**
+    - **Validates: Requirements 6.6, 6.7**
+
+- [x] 8. Checkpoint - Import engine tests
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 9. Secret Management Implementation
+  - [x] 9.1 Define SecretBackend trait and SecretManager
+    - Implement SecretBackend trait with store, retrieve, delete, is_available
+    - Implement SecretManager with fallback chain
+    - _Requirements: 5.1, 5.2_
+  - [x] 9.2 Implement KeePassXC backend
+    - Implement KeePassXC browser integration protocol client
+    - Handle association and credential operations
+    - _Requirements: 5.1_
+  - [x] 9.3 Implement libsecret backend
+    - Use libsecret crate for GNOME Keyring/KDE Wallet integration
+    - Implement as fallback when KeePassXC unavailable
+    - _Requirements: 5.2_
+  - [x] 9.4 Implement KDBX export functionality
+    - Export credentials to KeePassXC-compatible KDBX file
+    - _Requirements: 5.3_
+  - [x] 9.5 Write property test for credentials security
+    - **Property 13: Credentials Security Invariant**
+    - **Validates: Requirements 5.5**
+
+- [x] 10. Snippet Manager Implementation
+  - [x] 10.1 Implement SnippetManager
+    - Implement CRUD operations for snippets
+    - Implement category/tag organization
+    - Implement search functionality
+    - _Requirements: 8.1, 8.4, 8.5_
+  - [x] 10.2 Implement snippet variable extraction and substitution
+    - Parse ${var_name} placeholders from command templates
+    - Implement variable substitution with user-provided values
+    - _Requirements: 8.3_
+  - [x] 10.3 Write property test for variable extraction
+    - **Property 12: Snippet Variable Extraction**
+    - **Validates: Requirements 8.3**
+
+- [x] 11. Checkpoint - Core library complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 12. GTK4 Application Shell
+  - [x] 12.1 Create GTK4 Application and MainWindow
+    - Initialize gtk4::Application with application ID
+    - Create main window with header bar
+    - Set up Wayland-native configuration
+    - _Requirements: 9.1, 12.1_
+  - [x] 12.2 Implement connection tree sidebar
+    - Create TreeView/ListView for connection hierarchy
+    - Implement drag-and-drop for reorganization
+    - Add context menu for connection actions
+    - _Requirements: 9.4, 12.4_
+  - [x] 12.3 Implement terminal notebook area
+    - Create Notebook widget for tabbed terminals
+    - Integrate VTE4 terminal widget
+    - Handle tab creation/closing
+    - _Requirements: 7.1, 7.2_
+
+- [x] 13. Session Management and Terminal Integration
+  - [x] 13.1 Implement SessionManager
+    - Manage active sessions with process handles
+    - Implement start_session, terminate_session
+    - Handle session lifecycle events
+    - _Requirements: 7.1, 7.2_
+  - [x] 13.2 Implement VTE4 terminal integration
+    - Configure VTE terminal for SSH sessions
+    - Handle input/output with PTY
+    - Implement clipboard operations via GTK4
+    - _Requirements: 7.3, 7.5, 7.6, 12.3_
+  - [x] 13.3 Implement session logging
+    - Write terminal output to timestamped log files
+    - Configurable log directory and retention
+    - _Requirements: 7.4_
+  - [x] 13.4 Implement external window launching for RDP/VNC
+    - Launch FreeRDP/VNC clients as external processes
+    - Track process state for session management
+    - _Requirements: 3.1, 4.1_
+
+- [x] 14. Dialogs and Settings
+  - [x] 14.1 Implement Connection dialog
+    - Create/edit connection form with protocol-specific fields
+    - Validate input before saving
+    - Use portal for file selection (SSH keys)
+    - _Requirements: 1.1, 1.2, 9.3, 12.2_
+  - [x] 14.2 Implement Import dialog
+    - Source selection (Asbru, SSH config, Remmina, Ansible)
+    - Progress display and result summary
+    - _Requirements: 6.7_
+  - [x] 14.3 Implement Settings dialog
+    - Application preferences (default terminal settings, log options)
+    - Secret storage configuration
+    - _Requirements: 9.6_
+  - [x] 14.4 Implement Snippet dialog
+    - Create/edit snippets with variable definition
+    - Category assignment
+    - _Requirements: 8.1_
+
+- [x] 15. Final Integration and Polish
+  - [x] 15.1 Wire all components together
+    - Connect UI actions to core library operations
+    - Implement async operations with proper UI feedback
+    - _Requirements: 9.5, 11.2_
+  - [x] 15.2 Implement keyboard shortcuts and accessibility
+    - Add keyboard navigation throughout
+    - Ensure screen reader compatibility
+    - _Requirements: 9.4_
+  - [x] 15.3 Implement window state persistence
+    - Save/restore window geometry
+    - Save/restore pane positions
+    - _Requirements: 9.2_
+
+- [x] 16. Final Checkpoint - All tests passing
+  - Ensure all tests pass, ask the user if questions arise.

@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "rustconn-core",
+    "rustconn",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["RustConn Contributors"]
+license = "MIT"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+
+# GTK4 and VTE
+gtk4 = "0.9"
+vte4 = "0.8"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+async-trait = "0.1"
+secrecy = { version = "0.8", features = ["serde"] }
+dirs = "5.0"
+shellexpand = "3.1"
+regex = "1.10"
+
+# Testing
+proptest = "1.4"
+tempfile = "3.10"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
