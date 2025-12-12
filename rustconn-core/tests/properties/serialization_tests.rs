@@ -5,9 +5,10 @@
 
 use proptest::prelude::*;
 use rustconn_core::{
-    Connection, ProtocolConfig, RdpClient, RdpConfig, RdpGateway, Resolution, SshAuthMethod,
-    SshConfig, VncClient, VncConfig,
+    Connection, ProtocolConfig, RdpConfig, RdpGateway, Resolution, SpiceConfig,
+    SpiceImageCompression, SshAuthMethod, SshConfig, VncConfig,
 };
+use rustconn_core::models::SharedFolder;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -18,8 +19,7 @@ fn arb_name() -> impl Strategy<Value = String> {
 
 // Strategy for generating valid hostnames
 fn arb_host() -> impl Strategy<Value = String> {
-    "[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?)*"
-        .prop_map(|s| s)
+    "[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?)*".prop_map(|s| s)
 }
 
 // Strategy for generating valid ports
@@ -29,10 +29,7 @@ fn arb_port() -> impl Strategy<Value = u16> {
 
 // Strategy for generating optional usernames
 fn arb_username() -> impl Strategy<Value = Option<String>> {
-    prop_oneof![
-        Just(None),
-        "[a-z][a-z0-9_]{0,15}".prop_map(Some),
-    ]
+    prop_oneof![Just(None), "[a-z][a-z0-9_]{0,15}".prop_map(Some),]
 }
 
 // Strategy for generating tags
@@ -60,10 +57,7 @@ fn arb_optional_path() -> impl Strategy<Value = Option<PathBuf>> {
 
 // Strategy for optional string
 fn arb_optional_string() -> impl Strategy<Value = Option<String>> {
-    prop_oneof![
-        Just(None),
-        "[a-zA-Z0-9_-]{1,20}".prop_map(Some),
-    ]
+    prop_oneof![Just(None), "[a-zA-Z0-9_-]{1,20}".prop_map(Some),]
 }
 
 // Strategy for custom SSH options
@@ -82,7 +76,14 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
         arb_optional_string(),
     )
         .prop_map(
-            |(auth_method, key_path, proxy_jump, use_control_master, custom_options, startup_command)| {
+            |(
+                auth_method,
+                key_path,
+                proxy_jump,
+                use_control_master,
+                custom_options,
+                startup_command,
+            )| {
                 SshConfig {
                     auth_method,
                     key_path,
@@ -93,15 +94,6 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
                 }
             },
         )
-}
-
-
-// Strategy for RDP client
-fn arb_rdp_client() -> impl Strategy<Value = RdpClient> {
-    prop_oneof![
-        Just(RdpClient::FreeRdp),
-        "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(|s| RdpClient::Custom(PathBuf::from(s))),
-    ]
 }
 
 // Strategy for optional resolution
@@ -124,13 +116,15 @@ fn arb_optional_color_depth() -> impl Strategy<Value = Option<u8>> {
 fn arb_optional_gateway() -> impl Strategy<Value = Option<RdpGateway>> {
     prop_oneof![
         Just(None),
-        (arb_host(), 1u16..65535u16, arb_optional_string()).prop_map(|(hostname, port, username)| {
-            Some(RdpGateway {
-                hostname,
-                port,
-                username,
-            })
-        }),
+        (arb_host(), 1u16..65535u16, arb_optional_string()).prop_map(
+            |(hostname, port, username)| {
+                Some(RdpGateway {
+                    hostname,
+                    port,
+                    username,
+                })
+            }
+        ),
     ]
 }
 
@@ -142,7 +136,6 @@ fn arb_custom_args() -> impl Strategy<Value = Vec<String>> {
 // Strategy for RDP config
 fn arb_rdp_config() -> impl Strategy<Value = RdpConfig> {
     (
-        arb_rdp_client(),
         arb_optional_resolution(),
         arb_optional_color_depth(),
         any::<bool>(),
@@ -150,24 +143,15 @@ fn arb_rdp_config() -> impl Strategy<Value = RdpConfig> {
         arb_custom_args(),
     )
         .prop_map(
-            |(client, resolution, color_depth, audio_redirect, gateway, custom_args)| RdpConfig {
-                client,
+            |(resolution, color_depth, audio_redirect, gateway, custom_args)| RdpConfig {
                 resolution,
                 color_depth,
                 audio_redirect,
                 gateway,
+                shared_folders: Vec::new(),
                 custom_args,
             },
         )
-}
-
-// Strategy for VNC client
-fn arb_vnc_client() -> impl Strategy<Value = VncClient> {
-    prop_oneof![
-        Just(VncClient::TightVnc),
-        Just(VncClient::TigerVnc),
-        "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(|s| VncClient::Custom(PathBuf::from(s))),
-    ]
 }
 
 // Strategy for optional encoding
@@ -185,28 +169,81 @@ fn arb_optional_encoding() -> impl Strategy<Value = Option<String>> {
 
 // Strategy for optional compression/quality (0-9)
 fn arb_optional_level() -> impl Strategy<Value = Option<u8>> {
-    prop_oneof![
-        Just(None),
-        (0u8..=9u8).prop_map(Some),
-    ]
+    prop_oneof![Just(None), (0u8..=9u8).prop_map(Some),]
 }
 
 // Strategy for VNC config
 fn arb_vnc_config() -> impl Strategy<Value = VncConfig> {
     (
-        arb_vnc_client(),
         arb_optional_encoding(),
         arb_optional_level(),
         arb_optional_level(),
         arb_custom_args(),
     )
-        .prop_map(|(client, encoding, compression, quality, custom_args)| VncConfig {
-            client,
-            encoding,
-            compression,
-            quality,
-            custom_args,
-        })
+        .prop_map(
+            |(encoding, compression, quality, custom_args)| VncConfig {
+                encoding,
+                compression,
+                quality,
+                custom_args,
+            },
+        )
+}
+
+// Strategy for SPICE image compression
+fn arb_spice_image_compression() -> impl Strategy<Value = Option<SpiceImageCompression>> {
+    prop_oneof![
+        Just(None),
+        Just(Some(SpiceImageCompression::Auto)),
+        Just(Some(SpiceImageCompression::Off)),
+        Just(Some(SpiceImageCompression::Glz)),
+        Just(Some(SpiceImageCompression::Lz)),
+        Just(Some(SpiceImageCompression::Quic)),
+    ]
+}
+
+// Strategy for shared folders
+fn arb_shared_folders() -> impl Strategy<Value = Vec<SharedFolder>> {
+    prop::collection::vec(
+        ("/[a-z]{1,10}(/[a-z]{1,10}){0,2}", "[A-Za-z][A-Za-z0-9_]{0,10}")
+            .prop_map(|(path, name)| SharedFolder {
+                local_path: PathBuf::from(path),
+                share_name: name,
+            }),
+        0..3,
+    )
+}
+
+// Strategy for SPICE config
+fn arb_spice_config() -> impl Strategy<Value = SpiceConfig> {
+    (
+        any::<bool>(),                      // tls_enabled
+        arb_optional_path(),                // ca_cert_path
+        any::<bool>(),                      // skip_cert_verify
+        any::<bool>(),                      // usb_redirection
+        arb_shared_folders(),               // shared_folders
+        any::<bool>(),                      // clipboard_enabled
+        arb_spice_image_compression(),      // image_compression
+    )
+        .prop_map(
+            |(
+                tls_enabled,
+                ca_cert_path,
+                skip_cert_verify,
+                usb_redirection,
+                shared_folders,
+                clipboard_enabled,
+                image_compression,
+            )| SpiceConfig {
+                tls_enabled,
+                ca_cert_path,
+                skip_cert_verify,
+                usb_redirection,
+                shared_folders,
+                clipboard_enabled,
+                image_compression,
+            },
+        )
 }
 
 // Strategy for protocol config
@@ -215,9 +252,9 @@ fn arb_protocol_config() -> impl Strategy<Value = ProtocolConfig> {
         arb_ssh_config().prop_map(ProtocolConfig::Ssh),
         arb_rdp_config().prop_map(ProtocolConfig::Rdp),
         arb_vnc_config().prop_map(ProtocolConfig::Vnc),
+        arb_spice_config().prop_map(ProtocolConfig::Spice),
     ]
 }
-
 
 // Strategy for generating a complete Connection
 fn arb_connection() -> impl Strategy<Value = Connection> {
@@ -297,5 +334,58 @@ proptest! {
 
         // Verify equality (JSON preserves nanosecond precision)
         prop_assert_eq!(conn, deserialized, "Connection should round-trip through JSON");
+    }
+
+    /// **Feature: native-protocol-embedding, Property 4: Protocol configuration round-trip serialization**
+    /// **Validates: Requirements 6.2**
+    ///
+    /// For any valid SpiceConfig, serializing to TOML/JSON and deserializing back
+    /// should produce an equivalent configuration with all fields preserved.
+    #[test]
+    fn spice_config_toml_round_trip(config in arb_spice_config()) {
+        // Wrap in ProtocolConfig for proper serialization with type tag
+        let protocol_config = ProtocolConfig::Spice(config.clone());
+
+        // Serialize to TOML
+        let toml_str = toml::to_string(&protocol_config)
+            .expect("SpiceConfig should serialize to TOML");
+
+        // Deserialize back from TOML
+        let deserialized: ProtocolConfig = toml::from_str(&toml_str)
+            .expect("TOML should deserialize back to ProtocolConfig");
+
+        // Verify the config is preserved
+        if let ProtocolConfig::Spice(deserialized_config) = deserialized {
+            prop_assert_eq!(config.tls_enabled, deserialized_config.tls_enabled, "tls_enabled should be preserved");
+            prop_assert_eq!(config.ca_cert_path, deserialized_config.ca_cert_path, "ca_cert_path should be preserved");
+            prop_assert_eq!(config.skip_cert_verify, deserialized_config.skip_cert_verify, "skip_cert_verify should be preserved");
+            prop_assert_eq!(config.usb_redirection, deserialized_config.usb_redirection, "usb_redirection should be preserved");
+            prop_assert_eq!(config.shared_folders, deserialized_config.shared_folders, "shared_folders should be preserved");
+            prop_assert_eq!(config.clipboard_enabled, deserialized_config.clipboard_enabled, "clipboard_enabled should be preserved");
+            prop_assert_eq!(config.image_compression, deserialized_config.image_compression, "image_compression should be preserved");
+        } else {
+            prop_assert!(false, "Deserialized config should be Spice variant");
+        }
+    }
+
+    /// **Feature: native-protocol-embedding, Property 4: Protocol configuration round-trip serialization**
+    /// **Validates: Requirements 6.2**
+    ///
+    /// For any valid SpiceConfig, JSON round-trip should preserve all fields.
+    #[test]
+    fn spice_config_json_round_trip(config in arb_spice_config()) {
+        // Wrap in ProtocolConfig for proper serialization with type tag
+        let protocol_config = ProtocolConfig::Spice(config.clone());
+
+        // Serialize to JSON
+        let json_str = serde_json::to_string(&protocol_config)
+            .expect("SpiceConfig should serialize to JSON");
+
+        // Deserialize back from JSON
+        let deserialized: ProtocolConfig = serde_json::from_str(&json_str)
+            .expect("JSON should deserialize back to ProtocolConfig");
+
+        // Verify equality
+        prop_assert_eq!(protocol_config, deserialized, "SpiceConfig should round-trip through JSON");
     }
 }

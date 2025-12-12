@@ -35,10 +35,7 @@ impl SnippetManager {
     pub fn new(config_manager: ConfigManager) -> ConfigResult<Self> {
         let snippets_vec = config_manager.load_snippets()?;
 
-        let snippets = snippets_vec
-            .into_iter()
-            .map(|s| (s.id, s))
-            .collect();
+        let snippets = snippets_vec.into_iter().map(|s| (s.id, s)).collect();
 
         Ok(Self {
             snippets,
@@ -231,7 +228,9 @@ impl SnippetManager {
             .filter(|s| {
                 let snippet_tags_lower: Vec<String> =
                     s.tags.iter().map(|t| t.to_lowercase()).collect();
-                tags_lower.iter().all(|tag| snippet_tags_lower.contains(tag))
+                tags_lower
+                    .iter()
+                    .all(|tag| snippet_tags_lower.contains(tag))
             })
             .collect()
     }
@@ -323,6 +322,10 @@ impl SnippetManager {
     /// # Returns
     ///
     /// A vector of unique variable names found in the template
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal regex pattern is invalid (should never happen).
     #[must_use]
     pub fn extract_variables(command: &str) -> Vec<String> {
         // Match ${var_name} pattern where var_name is alphanumeric with underscores
@@ -369,6 +372,10 @@ impl SnippetManager {
     ///
     /// The command with all variables substituted. Variables without
     /// provided values are left unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal regex pattern is invalid (should never happen).
     #[must_use]
     pub fn substitute_variables(command: &str, values: &HashMap<String, String>) -> String {
         let re = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}").expect("Invalid regex pattern");
@@ -425,7 +432,10 @@ impl SnippetManager {
     ///
     /// A list of variable names that are missing values (no provided value and no default)
     #[must_use]
-    pub fn get_missing_variables(snippet: &Snippet, values: &HashMap<String, String>) -> Vec<String> {
+    pub fn get_missing_variables(
+        snippet: &Snippet,
+        values: &HashMap<String, String>,
+    ) -> Vec<String> {
         let required_vars = Self::extract_variables(&snippet.command);
 
         required_vars
@@ -468,7 +478,6 @@ impl SnippetManager {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -535,8 +544,8 @@ mod tests {
 
         let snippet1 = Snippet::new("List files".to_string(), "ls -la".to_string())
             .with_category("filesystem");
-        let snippet2 = Snippet::new("Disk usage".to_string(), "df -h".to_string())
-            .with_category("filesystem");
+        let snippet2 =
+            Snippet::new("Disk usage".to_string(), "df -h".to_string()).with_category("filesystem");
         let snippet3 = Snippet::new("Network info".to_string(), "ip addr".to_string())
             .with_category("network");
 
@@ -673,12 +682,15 @@ mod tests {
 
     #[test]
     fn test_substitute_with_defaults() {
-        let snippet = Snippet::new("SSH".to_string(), "ssh ${user}@${host} -p ${port}".to_string())
-            .with_variables(vec![
-                SnippetVariable::new("user".to_string()),
-                SnippetVariable::new("host".to_string()),
-                SnippetVariable::new("port".to_string()).with_default("22"),
-            ]);
+        let snippet = Snippet::new(
+            "SSH".to_string(),
+            "ssh ${user}@${host} -p ${port}".to_string(),
+        )
+        .with_variables(vec![
+            SnippetVariable::new("user".to_string()),
+            SnippetVariable::new("host".to_string()),
+            SnippetVariable::new("port".to_string()).with_default("22"),
+        ]);
 
         let mut values = HashMap::new();
         values.insert("user".to_string(), "admin".to_string());
@@ -691,12 +703,15 @@ mod tests {
 
     #[test]
     fn test_get_missing_variables() {
-        let snippet = Snippet::new("SSH".to_string(), "ssh ${user}@${host} -p ${port}".to_string())
-            .with_variables(vec![
-                SnippetVariable::new("user".to_string()),
-                SnippetVariable::new("host".to_string()),
-                SnippetVariable::new("port".to_string()).with_default("22"),
-            ]);
+        let snippet = Snippet::new(
+            "SSH".to_string(),
+            "ssh ${user}@${host} -p ${port}".to_string(),
+        )
+        .with_variables(vec![
+            SnippetVariable::new("user".to_string()),
+            SnippetVariable::new("host".to_string()),
+            SnippetVariable::new("port".to_string()).with_default("22"),
+        ]);
 
         let mut values = HashMap::new();
         values.insert("user".to_string(), "admin".to_string());

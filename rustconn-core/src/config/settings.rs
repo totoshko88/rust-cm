@@ -2,6 +2,7 @@
 //!
 //! This module defines the application-wide settings stored in config.toml.
 
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -91,7 +92,7 @@ impl Default for LoggingSettings {
 }
 
 /// Secret storage settings
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretSettings {
     /// Preferred secret backend
     #[serde(default)]
@@ -99,6 +100,15 @@ pub struct SecretSettings {
     /// Enable fallback to libsecret if `KeePassXC` unavailable
     #[serde(default = "default_true")]
     pub enable_fallback: bool,
+    /// Path to `KeePass` database file (.kdbx)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kdbx_path: Option<PathBuf>,
+    /// Whether `KeePass` integration is enabled
+    #[serde(default)]
+    pub kdbx_enabled: bool,
+    /// `KeePass` database password (NOT serialized for security)
+    #[serde(skip)]
+    pub kdbx_password: Option<SecretString>,
 }
 
 const fn default_true() -> bool {
@@ -110,9 +120,25 @@ impl Default for SecretSettings {
         Self {
             preferred_backend: SecretBackendType::default(),
             enable_fallback: true,
+            kdbx_path: None,
+            kdbx_enabled: false,
+            kdbx_password: None,
         }
     }
 }
+
+impl PartialEq for SecretSettings {
+    fn eq(&self, other: &Self) -> bool {
+        self.preferred_backend == other.preferred_backend
+            && self.enable_fallback == other.enable_fallback
+            && self.kdbx_path == other.kdbx_path
+            && self.kdbx_enabled == other.kdbx_enabled
+        // Note: kdbx_password is intentionally excluded from equality comparison
+        // as it's a runtime-only field that shouldn't affect settings equality
+    }
+}
+
+impl Eq for SecretSettings {}
 
 /// Secret backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -121,6 +147,8 @@ pub enum SecretBackendType {
     /// `KeePassXC` browser integration
     #[default]
     KeePassXc,
+    /// Direct KDBX file access
+    KdbxFile,
     /// libsecret (GNOME Keyring/KDE Wallet)
     LibSecret,
 }

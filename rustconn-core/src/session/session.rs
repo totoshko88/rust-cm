@@ -11,8 +11,10 @@ use uuid::Uuid;
 
 /// Represents the current state of a session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SessionState {
     /// Session is starting up
+    #[default]
     Starting,
     /// Session is active and connected
     Active,
@@ -24,11 +26,6 @@ pub enum SessionState {
     Error,
 }
 
-impl Default for SessionState {
-    fn default() -> Self {
-        Self::Starting
-    }
-}
 
 /// Type of session based on protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,7 +97,7 @@ impl Session {
     /// Returns the process ID if the session has a running process
     #[must_use]
     pub fn pid(&self) -> Option<u32> {
-        self.process.as_ref().map(|p| p.id())
+        self.process.as_ref().map(std::process::Child::id)
     }
 
     /// Checks if the process is still running
@@ -135,16 +132,16 @@ impl Session {
     /// Returns an error if the process cannot be terminated
     pub fn terminate(&mut self) -> std::io::Result<()> {
         self.state = SessionState::Disconnecting;
-        
+
         if let Some(ref mut process) = self.process {
             // Use kill() which sends SIGKILL on Unix
             // For a more graceful shutdown, the terminal widget should handle SIGTERM
             process.kill()?;
-            
+
             // Wait for process to exit
             let _ = process.wait();
         }
-        
+
         self.state = SessionState::Terminated;
         self.ended_at = Some(Utc::now());
         Ok(())
@@ -156,12 +153,12 @@ impl Session {
     /// Returns an error if the process cannot be killed
     pub fn kill(&mut self) -> std::io::Result<()> {
         self.state = SessionState::Disconnecting;
-        
+
         if let Some(ref mut process) = self.process {
             process.kill()?;
             let _ = process.wait();
         }
-        
+
         self.state = SessionState::Terminated;
         self.ended_at = Some(Utc::now());
         Ok(())
@@ -174,7 +171,7 @@ impl Session {
 
     /// Returns a reference to the process if available
     #[must_use]
-    pub fn process(&self) -> Option<&Child> {
+    pub const fn process(&self) -> Option<&Child> {
         self.process.as_ref()
     }
 
@@ -196,7 +193,7 @@ impl std::fmt::Debug for Session {
             .field("started_at", &self.started_at)
             .field("ended_at", &self.ended_at)
             .field("log_file", &self.log_file)
-            .field("pid", &self.process.as_ref().map(|p| p.id()))
+            .field("pid", &self.process.as_ref().map(std::process::Child::id))
             .finish()
     }
 }

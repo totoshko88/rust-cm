@@ -1,23 +1,27 @@
 //! Protocol layer for `RustConn`
 //!
-//! This module provides the Protocol trait and implementations for SSH, RDP, and VNC protocols.
-//! Each protocol handler is responsible for building the appropriate command to establish
-//! a connection.
+//! This module provides the Protocol trait and implementations for SSH, RDP, VNC, and SPICE protocols.
+//! Each protocol handler is responsible for validation and protocol metadata.
+//! Native session widgets will be implemented in later phases.
 
-mod registry;
+mod detection;
 mod rdp;
+mod registry;
+mod spice;
 mod ssh;
 mod vnc;
 
-pub use registry::ProtocolRegistry;
+pub use detection::{
+    detect_rdp_client, detect_ssh_client, detect_vnc_client, ClientDetectionResult, ClientInfo,
+};
 pub use rdp::RdpProtocol;
+pub use registry::ProtocolRegistry;
+pub use spice::SpiceProtocol;
 pub use ssh::SshProtocol;
 pub use vnc::VncProtocol;
 
-use std::process::Command;
-
 use crate::error::ProtocolError;
-use crate::models::{Connection, Credentials};
+use crate::models::Connection;
 
 /// Result type for protocol operations
 pub type ProtocolResult<T> = Result<T, ProtocolError>;
@@ -25,7 +29,9 @@ pub type ProtocolResult<T> = Result<T, ProtocolError>;
 /// Core trait for all connection protocols
 ///
 /// This trait defines the interface that all protocol handlers must implement.
-/// It provides methods for building commands, validation, and protocol metadata.
+/// It provides methods for validation and protocol metadata.
+/// 
+/// Note: Native session widget creation will be added in Phase 5-7.
 pub trait Protocol: Send + Sync {
     /// Returns the protocol identifier (e.g., "ssh", "rdp", "vnc")
     fn protocol_id(&self) -> &'static str;
@@ -35,26 +41,6 @@ pub trait Protocol: Send + Sync {
 
     /// Returns default port for this protocol
     fn default_port(&self) -> u16;
-
-    /// Whether this protocol uses embedded terminal (SSH) or external window (RDP/VNC)
-    fn uses_embedded_terminal(&self) -> bool;
-
-    /// Builds command line arguments for the connection
-    ///
-    /// # Arguments
-    /// * `connection` - The connection configuration
-    /// * `credentials` - Optional credentials for authentication
-    ///
-    /// # Returns
-    /// A `Command` ready to be executed, or a `ProtocolError` if the command cannot be built
-    ///
-    /// # Errors
-    /// Returns `ProtocolError` if the command cannot be built due to invalid configuration
-    fn build_command(
-        &self,
-        connection: &Connection,
-        credentials: Option<&Credentials>,
-    ) -> ProtocolResult<Command>;
 
     /// Validates connection configuration for this protocol
     ///

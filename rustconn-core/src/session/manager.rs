@@ -1,16 +1,15 @@
-//! Session manager for RustConn
+//! Session manager for `RustConn`
 //!
-//! This module provides the SessionManager which handles the lifecycle
+//! This module provides the `SessionManager` which handles the lifecycle
 //! of active connection sessions, including starting, terminating,
 //! and tracking sessions.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use uuid::Uuid;
 
 use crate::error::SessionError;
-use crate::models::{Connection, Credentials};
+use crate::models::Connection;
 use crate::protocol::ProtocolRegistry;
 
 use super::logger::SessionLogger;
@@ -21,7 +20,7 @@ pub type SessionResult<T> = Result<T, SessionError>;
 
 /// Manages active connection sessions
 ///
-/// The SessionManager is responsible for:
+/// The `SessionManager` is responsible for:
 /// - Starting new sessions for connections
 /// - Tracking active sessions
 /// - Terminating sessions
@@ -29,7 +28,7 @@ pub type SessionResult<T> = Result<T, SessionError>;
 pub struct SessionManager {
     /// Active sessions indexed by session ID
     sessions: HashMap<Uuid, Session>,
-    /// Protocol registry for building commands
+    /// Protocol registry for validation
     protocol_registry: ProtocolRegistry,
     /// Session logger for recording terminal output
     logger: Option<SessionLogger>,
@@ -38,7 +37,7 @@ pub struct SessionManager {
 }
 
 impl SessionManager {
-    /// Creates a new SessionManager
+    /// Creates a new `SessionManager`
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -49,7 +48,7 @@ impl SessionManager {
         }
     }
 
-    /// Creates a new SessionManager with logging enabled
+    /// Creates a new `SessionManager` with logging enabled
     ///
     /// # Errors
     /// Returns an error if the logger cannot be initialized
@@ -75,38 +74,29 @@ impl SessionManager {
 
     /// Starts a new session for a connection
     ///
-    /// For SSH connections, this prepares the session but does not spawn
-    /// the process - that should be done by the terminal widget.
-    /// For RDP/VNC connections, this spawns the external client process.
+    /// This creates a session record for tracking. The actual connection
+    /// is handled by the GUI layer (VTE4 for SSH, native widgets for RDP/VNC/SPICE).
     ///
     /// # Errors
     /// Returns an error if the session cannot be started
-    pub fn start_session(
-        &mut self,
-        connection: &Connection,
-        credentials: Option<&Credentials>,
-    ) -> SessionResult<Uuid> {
+    pub fn start_session(&mut self, connection: &Connection) -> SessionResult<Uuid> {
         // Get the protocol handler
         let protocol = self
             .protocol_registry
-            .get(&connection.protocol.to_string())
+            .get(connection.protocol.as_str())
             .ok_or_else(|| {
-                SessionError::StartFailed(format!(
-                    "Unknown protocol: {}",
-                    connection.protocol
-                ))
+                SessionError::StartFailed(format!("Unknown protocol: {}", connection.protocol))
             })?;
 
         // Validate the connection
         protocol.validate_connection(connection).map_err(|e| {
-            SessionError::StartFailed(format!("Invalid connection configuration: {}", e))
+            SessionError::StartFailed(format!("Invalid connection configuration: {e}"))
         })?;
 
-        // Determine session type
-        let session_type = if protocol.uses_embedded_terminal() {
-            SessionType::Embedded
-        } else {
-            SessionType::External
+        // Determine session type based on protocol
+        let session_type = match connection.protocol.as_str() {
+            "ssh" => SessionType::Embedded,
+            _ => SessionType::External, // RDP, VNC, SPICE will use native widgets
         };
 
         // Create the session
@@ -124,20 +114,10 @@ impl SessionManager {
                     Ok(log_path) => session.set_log_file(log_path),
                     Err(e) => {
                         // Log error but don't fail the session
-                        eprintln!("Warning: Failed to create log file: {}", e);
+                        eprintln!("Warning: Failed to create log file: {e}");
                     }
                 }
             }
-        }
-
-        // For external sessions (RDP/VNC), spawn the process immediately
-        if session_type == SessionType::External {
-            let command = protocol.build_command(connection, credentials).map_err(|e| {
-                SessionError::StartFailed(format!("Failed to build command: {}", e))
-            })?;
-
-            let child = spawn_external_process(command)?;
-            session.set_process(child);
         }
 
         let session_id = session.id;
@@ -146,35 +126,9 @@ impl SessionManager {
         Ok(session_id)
     }
 
-    /// Builds the command for an embedded terminal session
+    /// Sets the process handle for a session
     ///
-    /// This is used by the terminal widget to get the command to execute.
-    ///
-    /// # Errors
-    /// Returns an error if the command cannot be built
-    pub fn build_embedded_command(
-        &self,
-        connection: &Connection,
-        credentials: Option<&Credentials>,
-    ) -> SessionResult<Command> {
-        let protocol = self
-            .protocol_registry
-            .get(&connection.protocol.to_string())
-            .ok_or_else(|| {
-                SessionError::StartFailed(format!(
-                    "Unknown protocol: {}",
-                    connection.protocol
-                ))
-            })?;
-
-        protocol.build_command(connection, credentials).map_err(|e| {
-            SessionError::StartFailed(format!("Failed to build command: {}", e))
-        })
-    }
-
-    /// Sets the process handle for an embedded session
-    ///
-    /// This is called by the terminal widget after spawning the process.
+    /// This is called by the GUI layer after spawning the process.
     ///
     /// # Errors
     /// Returns an error if the session is not found
@@ -183,9 +137,10 @@ impl SessionManager {
         session_id: Uuid,
         process: std::process::Child,
     ) -> SessionResult<()> {
-        let session = self.sessions.get_mut(&session_id).ok_or_else(|| {
-            SessionError::NotFound(session_id.to_string())
-        })?;
+        let session = self
+            .sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
         session.set_process(process);
         Ok(())
@@ -196,19 +151,20 @@ impl SessionManager {
     /// # Errors
     /// Returns an error if the session cannot be terminated
     pub fn terminate_session(&mut self, session_id: Uuid) -> SessionResult<()> {
-        let session = self.sessions.get_mut(&session_id).ok_or_else(|| {
-            SessionError::NotFound(session_id.to_string())
-        })?;
+        let session = self
+            .sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
         // Terminate the process
         session.terminate().map_err(|e| {
-            SessionError::TerminateFailed(format!("Failed to terminate process: {}", e))
+            SessionError::TerminateFailed(format!("Failed to terminate process: {e}"))
         })?;
 
         // Finalize the log file
         if let Some(ref log_path) = session.log_file {
             if let Err(e) = SessionLogger::finalize_log(log_path) {
-                eprintln!("Warning: Failed to finalize log file: {}", e);
+                eprintln!("Warning: Failed to finalize log file: {e}");
             }
         }
 
@@ -220,18 +176,19 @@ impl SessionManager {
     /// # Errors
     /// Returns an error if the session cannot be killed
     pub fn kill_session(&mut self, session_id: Uuid) -> SessionResult<()> {
-        let session = self.sessions.get_mut(&session_id).ok_or_else(|| {
-            SessionError::NotFound(session_id.to_string())
-        })?;
+        let session = self
+            .sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
-        session.kill().map_err(|e| {
-            SessionError::TerminateFailed(format!("Failed to kill process: {}", e))
-        })?;
+        session
+            .kill()
+            .map_err(|e| SessionError::TerminateFailed(format!("Failed to kill process: {e}")))?;
 
         // Finalize the log file
         if let Some(ref log_path) = session.log_file {
             if let Err(e) = SessionLogger::finalize_log(log_path) {
-                eprintln!("Warning: Failed to finalize log file: {}", e);
+                eprintln!("Warning: Failed to finalize log file: {e}");
             }
         }
 
@@ -317,16 +274,12 @@ impl SessionManager {
             }
         }
 
-        if let Some(e) = first_error {
-            Err(e)
-        } else {
-            Ok(())
-        }
+        first_error.map_or(Ok(()), Err)
     }
 
     /// Returns a reference to the session logger
     #[must_use]
-    pub fn logger(&self) -> Option<&SessionLogger> {
+    pub const fn logger(&self) -> Option<&SessionLogger> {
         self.logger.as_ref()
     }
 }
@@ -335,16 +288,6 @@ impl Default for SessionManager {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Spawns an external process for RDP/VNC connections
-fn spawn_external_process(mut command: Command) -> SessionResult<std::process::Child> {
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| SessionError::StartFailed(format!("Failed to spawn process: {}", e)))
 }
 
 #[cfg(test)]

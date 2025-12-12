@@ -10,8 +10,8 @@ use proptest::prelude::*;
 use rustconn_core::{
     config::AppSettings, config::ConfigManager, config::LoggingSettings, config::SecretBackendType,
     config::SecretSettings, config::TerminalSettings, config::UiSettings, Connection,
-    ConnectionGroup, ProtocolConfig, RdpClient, RdpConfig, RdpGateway, Resolution, Snippet,
-    SnippetVariable, SshAuthMethod, SshConfig, VncClient, VncConfig,
+    ConnectionGroup, ProtocolConfig, RdpConfig, RdpGateway, Resolution, Snippet,
+    SnippetVariable, SshAuthMethod, SshConfig, VncConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -83,7 +83,14 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
         arb_optional_string(),
     )
         .prop_map(
-            |(auth_method, key_path, proxy_jump, use_control_master, custom_options, startup_command)| {
+            |(
+                auth_method,
+                key_path,
+                proxy_jump,
+                use_control_master,
+                custom_options,
+                startup_command,
+            )| {
                 SshConfig {
                     auth_method,
                     key_path,
@@ -94,14 +101,6 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
                 }
             },
         )
-}
-
-// Strategy for RDP client
-fn arb_rdp_client() -> impl Strategy<Value = RdpClient> {
-    prop_oneof![
-        Just(RdpClient::FreeRdp),
-        "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(|s| RdpClient::Custom(PathBuf::from(s))),
-    ]
 }
 
 // Strategy for optional resolution
@@ -124,13 +123,15 @@ fn arb_optional_color_depth() -> impl Strategy<Value = Option<u8>> {
 fn arb_optional_gateway() -> impl Strategy<Value = Option<RdpGateway>> {
     prop_oneof![
         Just(None),
-        (arb_host(), 1u16..65535u16, arb_optional_string()).prop_map(|(hostname, port, username)| {
-            Some(RdpGateway {
-                hostname,
-                port,
-                username,
-            })
-        }),
+        (arb_host(), 1u16..65535u16, arb_optional_string()).prop_map(
+            |(hostname, port, username)| {
+                Some(RdpGateway {
+                    hostname,
+                    port,
+                    username,
+                })
+            }
+        ),
     ]
 }
 
@@ -142,7 +143,6 @@ fn arb_custom_args() -> impl Strategy<Value = Vec<String>> {
 // Strategy for RDP config
 fn arb_rdp_config() -> impl Strategy<Value = RdpConfig> {
     (
-        arb_rdp_client(),
         arb_optional_resolution(),
         arb_optional_color_depth(),
         any::<bool>(),
@@ -150,24 +150,15 @@ fn arb_rdp_config() -> impl Strategy<Value = RdpConfig> {
         arb_custom_args(),
     )
         .prop_map(
-            |(client, resolution, color_depth, audio_redirect, gateway, custom_args)| RdpConfig {
-                client,
+            |(resolution, color_depth, audio_redirect, gateway, custom_args)| RdpConfig {
                 resolution,
                 color_depth,
                 audio_redirect,
                 gateway,
+                shared_folders: Vec::new(),
                 custom_args,
             },
         )
-}
-
-// Strategy for VNC client
-fn arb_vnc_client() -> impl Strategy<Value = VncClient> {
-    prop_oneof![
-        Just(VncClient::TightVnc),
-        Just(VncClient::TigerVnc),
-        "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(|s| VncClient::Custom(PathBuf::from(s))),
-    ]
 }
 
 // Strategy for optional encoding
@@ -191,19 +182,19 @@ fn arb_optional_level() -> impl Strategy<Value = Option<u8>> {
 // Strategy for VNC config
 fn arb_vnc_config() -> impl Strategy<Value = VncConfig> {
     (
-        arb_vnc_client(),
         arb_optional_encoding(),
         arb_optional_level(),
         arb_optional_level(),
         arb_custom_args(),
     )
-        .prop_map(|(client, encoding, compression, quality, custom_args)| VncConfig {
-            client,
-            encoding,
-            compression,
-            quality,
-            custom_args,
-        })
+        .prop_map(
+            |(encoding, compression, quality, custom_args)| VncConfig {
+                encoding,
+                compression,
+                quality,
+                custom_args,
+            },
+        )
 }
 
 // Strategy for protocol config
@@ -266,8 +257,8 @@ fn arb_snippet() -> impl Strategy<Value = Snippet> {
     (
         arb_name(),
         "[a-zA-Z0-9 _-]{1,50}".prop_map(|s| s), // command
-        arb_optional_string(),                   // description
-        arb_optional_string(),                   // category
+        arb_optional_string(),                  // description
+        arb_optional_string(),                  // category
         arb_tags(),
         prop::collection::vec(arb_snippet_variable(), 0..3),
     )
@@ -293,12 +284,12 @@ fn arb_snippet() -> impl Strategy<Value = Snippet> {
 fn arb_settings() -> impl Strategy<Value = AppSettings> {
     (
         "[A-Za-z ]{1,20}".prop_map(|s| s), // font_family
-        8u32..32u32,                        // font_size
-        1000u32..100000u32,                 // scrollback_lines
-        any::<bool>(),                      // logging enabled
-        1u32..365u32,                       // retention_days
-        any::<bool>(),                      // enable_fallback
-        any::<bool>(),                      // remember_window_geometry
+        8u32..32u32,                       // font_size
+        1000u32..100000u32,                // scrollback_lines
+        any::<bool>(),                     // logging enabled
+        1u32..365u32,                      // retention_days
+        any::<bool>(),                     // enable_fallback
+        any::<bool>(),                     // remember_window_geometry
     )
         .prop_map(
             |(
@@ -325,7 +316,39 @@ fn arb_settings() -> impl Strategy<Value = AppSettings> {
 
 // Strategy for generating SecretBackendType
 fn arb_secret_backend_type() -> impl Strategy<Value = SecretBackendType> {
-    prop_oneof![Just(SecretBackendType::KeePassXc), Just(SecretBackendType::LibSecret),]
+    prop_oneof![
+        Just(SecretBackendType::KeePassXc),
+        Just(SecretBackendType::KdbxFile),
+        Just(SecretBackendType::LibSecret),
+    ]
+}
+
+// Strategy for generating optional KDBX path (must end with .kdbx)
+fn arb_optional_kdbx_path() -> impl Strategy<Value = Option<PathBuf>> {
+    prop_oneof![
+        Just(None),
+        "[a-z]{1,10}(/[a-z]{1,10}){0,2}/[a-z]{1,10}\\.kdbx"
+            .prop_map(|s| Some(PathBuf::from(s))),
+    ]
+}
+
+// Strategy for generating SecretSettings with all fields
+fn arb_secret_settings() -> impl Strategy<Value = SecretSettings> {
+    (
+        arb_secret_backend_type(),
+        any::<bool>(), // enable_fallback
+        arb_optional_kdbx_path(),
+        any::<bool>(), // kdbx_enabled
+    )
+        .prop_map(
+            |(preferred_backend, enable_fallback, kdbx_path, kdbx_enabled)| SecretSettings {
+                preferred_backend,
+                enable_fallback,
+                kdbx_path,
+                kdbx_enabled,
+                kdbx_password: None, // Password is never serialized
+            },
+        )
 }
 
 // Strategy for generating optional window dimensions
@@ -337,18 +360,18 @@ fn arb_optional_dimension() -> impl Strategy<Value = Option<i32>> {
 // Used for Property 4: Settings Persistence Round-Trip
 fn arb_full_settings() -> impl Strategy<Value = AppSettings> {
     (
-        "[A-Za-z ]{1,20}".prop_map(|s| s),                        // font_family
-        8u32..32u32,                                               // font_size
-        1000u32..100000u32,                                        // scrollback_lines
-        any::<bool>(),                                             // logging enabled
+        "[A-Za-z ]{1,20}".prop_map(|s| s), // font_family
+        8u32..32u32,                       // font_size
+        1000u32..100000u32,                // scrollback_lines
+        any::<bool>(),                     // logging enabled
         "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(PathBuf::from), // log_directory
-        1u32..365u32,                                              // retention_days
-        arb_secret_backend_type(),                                 // preferred_backend
-        any::<bool>(),                                             // enable_fallback
-        any::<bool>(),                                             // remember_window_geometry
-        arb_optional_dimension(),                                  // window_width
-        arb_optional_dimension(),                                  // window_height
-        arb_optional_dimension(),                                  // sidebar_width
+        1u32..365u32,                      // retention_days
+        arb_secret_backend_type(),         // preferred_backend
+        any::<bool>(),                     // enable_fallback
+        any::<bool>(),                     // remember_window_geometry
+        arb_optional_dimension(),          // window_width
+        arb_optional_dimension(),          // window_height
+        arb_optional_dimension(),          // sidebar_width
     )
         .prop_map(
             |(
@@ -379,6 +402,9 @@ fn arb_full_settings() -> impl Strategy<Value = AppSettings> {
                     secrets: SecretSettings {
                         preferred_backend,
                         enable_fallback,
+                        kdbx_path: None,
+                        kdbx_enabled: false,
+                        kdbx_password: None,
                     },
                     ui: UiSettings {
                         remember_window_geometry,
@@ -618,6 +644,62 @@ proptest! {
             settings.ui.sidebar_width,
             loaded.ui.sidebar_width,
             "Sidebar width should be preserved"
+        );
+    }
+
+    /// **Feature: keepass-integration, Property 3: Settings Serialization Round-Trip**
+    /// **Validates: Requirements 5.1, 5.2, 5.3**
+    ///
+    /// For any valid SecretSettings, serializing to TOML and deserializing back SHALL produce
+    /// equivalent settings, except the kdbx_password field which SHALL always be None after
+    /// deserialization (security requirement - passwords are never persisted to disk).
+    #[test]
+    fn secret_settings_serialization_round_trip(settings in arb_secret_settings()) {
+        // Serialize to TOML
+        let toml_str = toml::to_string(&settings)
+            .expect("SecretSettings should serialize to TOML");
+
+        // Deserialize back from TOML
+        let deserialized: SecretSettings = toml::from_str(&toml_str)
+            .expect("TOML should deserialize back to SecretSettings");
+
+        // Verify all serializable fields are preserved
+        prop_assert_eq!(
+            settings.preferred_backend,
+            deserialized.preferred_backend,
+            "Preferred backend should be preserved"
+        );
+        prop_assert_eq!(
+            settings.enable_fallback,
+            deserialized.enable_fallback,
+            "Enable fallback should be preserved"
+        );
+        prop_assert_eq!(
+            &settings.kdbx_path,
+            &deserialized.kdbx_path,
+            "KDBX path should be preserved"
+        );
+        prop_assert_eq!(
+            settings.kdbx_enabled,
+            deserialized.kdbx_enabled,
+            "KDBX enabled should be preserved"
+        );
+
+        // CRITICAL: Verify password is NOT serialized (security requirement)
+        // The kdbx_password field should always be None after deserialization
+        prop_assert!(
+            deserialized.kdbx_password.is_none(),
+            "KDBX password must NOT be serialized - should always be None after deserialization"
+        );
+
+        // Verify the TOML string does not contain any password-related fields
+        prop_assert!(
+            !toml_str.contains("kdbx_password"),
+            "Serialized TOML must not contain kdbx_password field"
+        );
+        prop_assert!(
+            !toml_str.contains("password"),
+            "Serialized TOML must not contain any password field"
         );
     }
 }

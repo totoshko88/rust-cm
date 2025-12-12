@@ -1,183 +1,133 @@
 # Implementation Plan
 
-- [x] 1. Fix GTK Dialog Warnings
-  - [x] 1.1 Update ConnectionDialog to use gtk4::Window with proper transient parent
-    - Replace deprecated Dialog patterns with Window + HeaderBar
-    - Ensure all dialogs receive parent window reference
-    - _Requirements: 10.1, 10.2_
-  - [x] 1.2 Update ImportDialog transient parent handling
-    - Pass parent window to all alert dialogs
-    - _Requirements: 10.1, 10.2_
-  - [x] 1.3 Update SettingsDialog transient parent handling
-    - _Requirements: 10.1, 10.2_
-  - [x] 1.4 Update SnippetDialog transient parent handling
-    - _Requirements: 10.1, 10.2_
+- [x] 1. Custom SSH Config File Import
+  - [x] 1.1 Add import_from_file method to SshConfigImporter
+    - Add method that accepts a Path parameter
+    - Reuse existing parsing logic from import()
+    - Return ImportResult with parsed connections
+    - _Requirements: 1.2, 1.3_
+    - Status: Already implemented via import_from_path in ImportSource trait
+  - [x] 1.2 Write property test for SSH config parsing
+    - **Property 1: SSH Config Parsing Round Trip**
+    - **Validates: Requirements 1.2, 1.3**
+    - Status: Already implemented in import_tests.rs
+  - [x] 1.3 Write property test for invalid SSH config handling
+    - **Property 2: Invalid SSH Config Error Handling**
+    - **Validates: Requirements 1.4**
+    - Status: Already implemented in import_tests.rs
+  - [x] 1.4 Add SSH Config File import source to ImportDialog
+    - Add new source entry with id ssh_config_file, always available
+    - Implement file chooser dialog for ssh config files
+    - Call SshConfigImporter import_from_path with selected path
+    - Display preview with connection count before import
+    - _Requirements: 1.1, 1.5_
 
-- [x] 2. Wire Up Connection Dialog Methods
-  - [x] 2.1 Connect validate() method to Save button
-    - Call validate() before build_connection()
-    - Display validation errors via show_error()
-    - _Requirements: 4.1, 4.2_
-  - [x] 2.2 Wire build_connection() to dialog callback
-    - Return built connection from run() callback
-    - _Requirements: 4.3_
-  - [x] 2.3 Wire build_ssh_config(), build_rdp_config(), build_vnc_config()
-    - Call appropriate method based on selected protocol
-    - _Requirements: 4.4, 4.5_
-  - [x] 2.4 Wire parse_custom_options() and parse_args()
-    - Parse text fields into structured data
-    - _Requirements: 4.4, 4.5_
-  - [x] 2.5 Write property test for dialog validation round-trip
-    - **Property 3: Dialog Validation Round-Trip**
-    - **Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
-
-- [x] 3. Wire Up Import Dialog Methods
-  - [x] 3.1 Connect get_selected_source() to import button state
-    - Enable/disable import button based on selection
-    - _Requirements: 5.1_
-  - [x] 3.2 Wire do_import() to import button click
-    - Call import with selected source
-    - _Requirements: 5.1_
-  - [x] 3.3 Wire show_results() to display import summary
-    - Show successful, skipped, and error counts
-    - _Requirements: 5.2, 5.3_
-
-- [x] 4. Wire Up Settings Dialog Methods
-  - [x] 4.1 Wire build_settings() to Save button
-    - Build settings from form fields
-    - Return settings from run() callback
-    - _Requirements: 6.1, 6.2_
-  - [x] 4.2 Write property test for settings round-trip
-    - **Property 4: Settings Persistence Round-Trip**
-    - **Validates: Requirements 6.1, 6.2**
-
-- [x] 5. Wire Up Snippet Dialog Methods
-  - [x] 5.1 Connect validate() to Save button
-    - Validate name and command fields
-    - _Requirements: 7.1_
-  - [x] 5.2 Wire build_snippet() to dialog callback
-    - Build snippet with variables
-    - _Requirements: 7.2_
-  - [x] 5.3 Wire add_var_button to add variable rows
-    - Store description and default_value fields
-    - _Requirements: 7.2_
-  - [x] 5.4 Write property test for snippet variable extraction
-    - **Property 5: Snippet Variable Extraction**
-    - **Validates: Requirements 7.2, 7.3**
-
-- [x] 6. Checkpoint - Dialog Integration
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [x] 7. Wire Up State Management Methods
-  - [x] 7.1 Wire snippet_manager methods to UI
-    - Connect create_snippet, update_snippet, delete_snippet, list_snippets, search_snippets
-    - Add snippet menu/toolbar actions
-    - _Requirements: 7.1, 7.4_
-  - [x] 7.2 Wire secret_manager to credential operations
-    - Use secret_manager for storing/retrieving credentials
-    - _Requirements: existing 5.x_
-  - [x] 7.3 Wire session management methods
-    - Connect terminate_session, get_session, active_sessions
-    - Add session list view or status indicator
-    - _Requirements: 8.1, 8.2_
-  - [x] 7.4 Wire group hierarchy methods
-    - Connect create_group_with_parent, move_connection_to_group, get_group_path
-    - Add UI for nested group creation and connection moving
-    - _Requirements: 9.1, 9.2, 9.3_
-  - [x] 7.5 Write property test for group hierarchy
-    - **Property 6: Group Hierarchy Acyclicity**
-    - **Validates: Requirements 9.1, 9.2**
-
-- [x] 8. Wire Up Terminal Notebook Methods
-  - [x] 8.1 Wire get_terminal, get_session_info, set_log_file
-    - Use for session logging integration
-    - _Requirements: 8.3_
-  - [x] 8.2 Wire send_text, send_text_to_session for snippet execution
-    - Send snippet commands to active terminal
-    - _Requirements: 7.3_
-  - [x] 8.3 Wire connect_child_exited for session cleanup
-    - Update session status on process exit
-    - _Requirements: 8.4_
-  - [x] 8.4 Wire connect_contents_changed for session logging
-    - Write terminal output to log file
-    - _Requirements: 8.3_
-
-- [x] 9. Checkpoint - State Management Integration
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [x] 10. Implement Multi-Selection Mode
-  - [x] 10.1 Add SelectionModelWrapper enum to sidebar
-    - Support switching between SingleSelection and MultiSelection
-    - _Requirements: 2.1, 2.6_
-  - [x] 10.2 Implement set_group_operations_mode()
-    - Switch selection model when mode changes
-    - Show/hide bulk actions toolbar
-    - _Requirements: 2.1, 2.4_
-  - [x] 10.3 Implement get_selected_ids()
-    - Return all selected connection/group IDs
-    - _Requirements: 2.2_
-  - [x] 10.4 Implement select_all() and clear_selection()
-    - Handle Ctrl+A and Escape key bindings
-    - _Requirements: 2.3, 2.5_
-  - [x] 10.5 Add bulk actions toolbar
-    - Delete Selected button
-    - Move to Group dropdown
+- [x] 2. RDP Shared Folder Configuration
+  - [x] 2.1 Add SharedFolder struct to rustconn-core models protocol.rs
+    - Define struct with local_path PathBuf and share_name String
+    - Add serde derive macros for serialization
+    - _Requirements: 2.3_
+  - [x] 2.2 Update RdpConfig to include shared folders
+    - Add shared_folders Vec SharedFolder field
+    - Add serde default skip_serializing_if Vec is_empty
+    - _Requirements: 2.3_
+  - [x] 2.3 Write property test for shared folder CRUD operations
+    - **Property 3: Shared Folder CRUD Operations**
+    - **Validates: Requirements 2.3, 2.5**
+  - [x] 2.4 Update RDP command builder to include shared folder arguments
+    - Add drive ShareName path arguments for FreeRDP
+    - Handle path escaping for spaces and special characters
     - _Requirements: 2.4_
-  - [x] 10.6 Write property test for multi-selection consistency
-    - **Property 1: Multi-Selection Consistency**
-    - **Validates: Requirements 2.1, 2.2, 2.3, 2.6**
+  - [x] 2.5 Write property test for RDP command builder
+    - **Property 4: RDP Command Builder Includes Shared Folders**
+    - **Validates: Requirements 2.4**
+  - [x] 2.6 Add shared folders UI to connection dialog
+    - Add Shared Folders section for RDP connections
+    - Implement add remove folder buttons
+    - Add directory chooser for local path
+    - Add text entry for share name
+    - Display folders in list view
+    - _Requirements: 2.1, 2.2, 2.5, 2.6_
 
-- [x] 11. Implement Bulk Delete
-  - [x] 11.1 Add delete-selected action to window
-    - Get selected IDs from sidebar
-    - Show confirmation dialog with item list
-    - _Requirements: 3.1_
-  - [x] 11.2 Implement bulk delete logic
-    - Delete each selected item, continue on failure
-    - Collect success/failure counts
-    - _Requirements: 3.2, 3.4_
-  - [x] 11.3 Show deletion results
-    - Display summary with counts
-    - Reload sidebar
-    - _Requirements: 3.3_
-  - [x] 11.4 Write property test for bulk delete completeness
-    - **Property 2: Bulk Delete Completeness**
-    - **Validates: Requirements 3.2, 3.3, 3.4**
+- [x] 3. Progress Indicators
+  - [x] 3.1 Create ProgressReporter trait in rustconn-core
+    - Define report current total message method
+    - Define is_cancelled method
+    - Create CallbackProgressReporter implementation
+    - _Requirements: 3.1, 3.3_
+  - [x] 3.2 Write property test for progress reporter invocation
+    - **Property 5: Progress Reporter Invocation**
+    - **Validates: Requirements 3.1, 3.3**
+  - [x] 3.3 Update import methods to accept optional ProgressReporter
+    - Add progress parameter to ImportSource import
+    - Call progress report for each item processed
+    - Check progress is_cancelled between items
+    - _Requirements: 3.1, 3.5_
+  - [x] 3.4 Create ProgressDialog widget in rustconn dialogs
+    - Create modal window with progress bar
+    - Add status label for current operation
+    - Add cancel button for interruptible operations
+    - Implement update fraction message method
+    - _Requirements: 3.1, 3.2, 3.5, 3.6_
+  - [x] 3.5 Integrate progress dialog with import operations
+    - Show progress dialog during import
+    - Update progress as items are processed
+    - Handle cancellation
+    - Show summary on completion
+    - _Requirements: 3.1, 3.6_
 
-- [x] 12. Checkpoint - Multi-Selection and Bulk Operations
+- [ ] 4. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [x] 13. Implement Embedded RDP/VNC Tabs (X11 Support)
-  - [x] 13.1 Detect display server (X11 vs Wayland)
-    - Check GDK_BACKEND and WAYLAND_DISPLAY environment variables
-    - _Requirements: 1.5_
-  - [x] 13.2 Create EmbeddedSessionTab widget
-    - Container with socket area and controls
-    - _Requirements: 1.3_
-  - [x] 13.3 Implement X11 embedding for FreeRDP
-    - Use xfreerdp with /parent-window: parameter
-    - Get window ID from GtkSocket
-    - _Requirements: 1.1_
-  - [x] 13.4 Implement X11 embedding for VNC
-    - Use vncviewer with -embed or similar option
-    - _Requirements: 1.2_
-  - [x] 13.5 Implement Wayland fallback
-    - Show info message about external window
-    - Launch client without embedding
-    - _Requirements: 1.5_
-  - [x] 13.6 Add session controls (fullscreen, disconnect)
-    - Toggle fullscreen mode
-    - Terminate session on disconnect
-    - _Requirements: 1.3_
+- [x] 5. Split-Screen Terminal Views
+  - [x] 5.1 Create SplitDirection enum and TerminalPane struct
+    - Define SplitDirection Horizontal and Vertical
+    - Create TerminalPane with id container and current_session
+    - _Requirements: 4.1, 4.2_
+  - [x] 5.2 Create SplitTerminalView struct
+    - Define root container and panes collection
+    - Share sessions and terminals with TerminalNotebook
+    - Track focused pane
+    - _Requirements: 4.3, 4.4_
+  - [x] 5.3 Write property test for split view structure integrity
+    - **Property 6: Split View Structure Integrity**
+    - **Validates: Requirements 4.1, 4.2, 4.6**
+  - [x] 5.4 Write property test for unified tab list consistency
+    - **Property 7: Unified Tab List Consistency**
+    - **Validates: Requirements 4.3**
+  - [x] 5.5 Implement split method
+    - Create new Paned widget with correct orientation
+    - Move current content to first child
+    - Create new pane for second child
+    - Update panes collection
+    - _Requirements: 4.1, 4.2_
+  - [x] 5.6 Implement close_pane method
+    - Remove pane from collection
+    - Merge remaining content if only one pane left
+    - Update focus to remaining pane
+    - _Requirements: 4.6_
+  - [x] 5.7 Implement focus_next_pane method
+    - Cycle through panes in order
+    - Update visual focus indicator
+    - _Requirements: 4.8_
+  - [x] 5.8 Write property test for focus cycling
+    - **Property 8: Focus Cycling Completeness**
+    - **Validates: Requirements 4.8**
+  - [x] 5.9 Implement show_session method
+    - Display selected session in focused pane
+    - Update pane current_session
+    - _Requirements: 4.4_
+  - [x] 5.10 Add keyboard shortcuts for split operations
+    - Add Ctrl Shift H for horizontal split
+    - Add Ctrl Shift V for vertical split
+    - Add Ctrl Shift W to close pane
+    - Add Ctrl Tab to cycle focus
+    - _Requirements: 4.1, 4.2, 4.6, 4.8_
+  - [x] 5.11 Integrate SplitTerminalView with main window
+    - Replace TerminalNotebook widget with SplitTerminalView
+    - Connect tab selection to show_session
+    - Update window actions for split operations
+    - _Requirements: 4.3, 4.4, 4.7_
 
-- [x] 14. Update start_connection for Embedded Sessions
-  - [x] 14.1 Modify start_connection to use embedded tabs
-    - Create EmbeddedSessionTab instead of external placeholder
-    - _Requirements: 1.1, 1.2_
-  - [x] 14.2 Handle embedding failures gracefully
-    - Fall back to external window on error
-    - Show user notification
-    - _Requirements: 1.5_
-
-- [x] 15. Final Checkpoint - All Enhancements Complete
+- [x] 6. Final Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

@@ -25,7 +25,7 @@ pub struct RemminaImporter {
 impl RemminaImporter {
     /// Creates a new Remmina importer with default paths
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             custom_paths: Vec::new(),
         }
@@ -33,43 +33,34 @@ impl RemminaImporter {
 
     /// Creates a new Remmina importer with custom paths
     #[must_use]
-    pub fn with_paths(paths: Vec<PathBuf>) -> Self {
+    pub const fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self {
             custom_paths: paths,
         }
     }
 
     /// Parses a single .remmina file content
+    #[must_use] 
     pub fn parse_remmina_file(&self, content: &str, source_path: &str) -> ImportResult {
         let mut result = ImportResult::new();
 
         // Parse INI-style format
-        let config = match Self::parse_ini(content) {
-            Ok(c) => c,
-            Err(e) => {
-                result.add_error(ImportError::ParseError {
-                    source_name: "Remmina".to_string(),
-                    reason: e,
-                });
-                return result;
-            }
-        };
+        let config = Self::parse_ini(content);
 
         // Get the remmina section
-        let remmina_section = match config.get("remmina") {
-            Some(s) => s,
-            None => {
-                result.add_skipped(SkippedEntry::with_location(
-                    source_path,
-                    "No [remmina] section found",
-                    source_path,
-                ));
-                return result;
-            }
+        let Some(remmina_section) = config.get("remmina") else {
+            result.add_skipped(SkippedEntry::with_location(
+                source_path,
+                "No [remmina] section found",
+                source_path,
+            ));
+            return result;
         };
 
         // Extract connection details
-        if let Some(connection) = self.convert_to_connection(remmina_section, source_path, &mut result) {
+        if let Some(connection) =
+            self.convert_to_connection(remmina_section, source_path, &mut result)
+        {
             result.add_connection(connection);
         }
 
@@ -77,7 +68,7 @@ impl RemminaImporter {
     }
 
     /// Parses INI-style content into sections
-    fn parse_ini(content: &str) -> Result<HashMap<String, HashMap<String, String>>, String> {
+    fn parse_ini(content: &str) -> HashMap<String, HashMap<String, String>> {
         let mut sections: HashMap<String, HashMap<String, String>> = HashMap::new();
         let mut current_section: Option<String> = None;
 
@@ -111,10 +102,11 @@ impl RemminaImporter {
             }
         }
 
-        Ok(sections)
+        sections
     }
 
     /// Converts Remmina config section to a Connection
+    #[allow(clippy::unused_self, clippy::too_many_lines)]
     fn convert_to_connection(
         &self,
         config: &HashMap<String, String>,
@@ -129,11 +121,8 @@ impl RemminaImporter {
         let host = match server {
             Some(s) if !s.is_empty() => {
                 // Server might include port (host:port)
-                if let Some(colon_pos) = s.rfind(':') {
-                    s[..colon_pos].to_string()
-                } else {
-                    s.clone()
-                }
+                s.rfind(':')
+                    .map_or_else(|| s.clone(), |colon_pos| s[..colon_pos].to_string())
             }
             _ => {
                 result.add_skipped(SkippedEntry::with_location(
@@ -146,10 +135,7 @@ impl RemminaImporter {
         };
 
         // Get name
-        let name = config
-            .get("name")
-            .cloned()
-            .unwrap_or_else(|| host.clone());
+        let name = config.get("name").cloned().unwrap_or_else(|| host.clone());
 
         // Parse port from server string or dedicated field
         let port = config
@@ -162,16 +148,17 @@ impl RemminaImporter {
 
         // Create protocol-specific config
         let (protocol_config, default_port) = match protocol.as_deref() {
-            Some("SSH") | Some("SFTP") => {
-                let auth_method = match config.get("ssh_auth").map(|s| s.as_str()) {
-                    Some("2") | Some("publickey") => SshAuthMethod::PublicKey,
-                    Some("3") | Some("agent") => SshAuthMethod::Agent,
+            Some("SSH" | "SFTP") => {
+                let auth_method = match config.get("ssh_auth").map(std::string::String::as_str) {
+                    Some("2" | "publickey") => SshAuthMethod::PublicKey,
+                    Some("3" | "agent") => SshAuthMethod::Agent,
                     _ => SshAuthMethod::Password,
                 };
 
-                let key_path = config.get("ssh_privatekey").filter(|s| !s.is_empty()).map(|p| {
-                    PathBuf::from(shellexpand::tilde(p).into_owned())
-                });
+                let key_path = config
+                    .get("ssh_privatekey")
+                    .filter(|s| !s.is_empty())
+                    .map(|p| PathBuf::from(shellexpand::tilde(p).into_owned()));
 
                 (
                     ProtocolConfig::Ssh(SshConfig {
@@ -186,22 +173,18 @@ impl RemminaImporter {
                 )
             }
             Some("RDP") => {
-                let resolution = config
-                    .get("resolution")
-                    .and_then(|r| {
-                        let parts: Vec<&str> = r.split('x').collect();
-                        if parts.len() == 2 {
-                            let width = parts[0].parse().ok()?;
-                            let height = parts[1].parse().ok()?;
-                            Some(Resolution::new(width, height))
-                        } else {
-                            None
-                        }
-                    });
+                let resolution = config.get("resolution").and_then(|r| {
+                    let parts: Vec<&str> = r.split('x').collect();
+                    if parts.len() == 2 {
+                        let width = parts[0].parse().ok()?;
+                        let height = parts[1].parse().ok()?;
+                        Some(Resolution::new(width, height))
+                    } else {
+                        None
+                    }
+                });
 
-                let color_depth = config
-                    .get("colordepth")
-                    .and_then(|d| d.parse().ok());
+                let color_depth = config.get("colordepth").and_then(|d| d.parse().ok());
 
                 (
                     ProtocolConfig::Rdp(RdpConfig {
@@ -217,7 +200,7 @@ impl RemminaImporter {
             Some(p) => {
                 result.add_skipped(SkippedEntry::with_location(
                     &name,
-                    format!("Unsupported protocol: {}", p),
+                    format!("Unsupported protocol: {p}"),
                     source_path,
                 ));
                 return None;
@@ -237,7 +220,10 @@ impl RemminaImporter {
         let mut connection = Connection::new(name, host, port, protocol_config);
 
         // Set username
-        if let Some(username) = config.get("username").or_else(|| config.get("ssh_username")) {
+        if let Some(username) = config
+            .get("username")
+            .or_else(|| config.get("ssh_username"))
+        {
             if !username.is_empty() {
                 connection.username = Some(username.clone());
             }
@@ -246,7 +232,7 @@ impl RemminaImporter {
         // Add group as tag if present
         if let Some(group) = config.get("group") {
             if !group.is_empty() {
-                connection.tags.push(format!("remmina:{}", group));
+                connection.tags.push(format!("remmina:{group}"));
             }
         }
 

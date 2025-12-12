@@ -60,17 +60,17 @@ struct AsbruEntry {
     /// Parent UUID for hierarchy
     #[serde(default)]
     parent: Option<String>,
-    /// Children (usually empty HashMap for connections)
+    /// Children (usually empty `HashMap` for connections)
+    /// Note: Parsed from YAML but not currently used for nested group import
     #[serde(default)]
+    #[allow(dead_code)]
     children: Option<HashMap<String, serde_yaml::Value>>,
 }
-
-
 
 impl AsbruImporter {
     /// Creates a new Asbru-CM importer with default paths
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             custom_paths: Vec::new(),
         }
@@ -78,13 +78,92 @@ impl AsbruImporter {
 
     /// Creates a new Asbru-CM importer with custom paths
     #[must_use]
-    pub fn with_paths(paths: Vec<PathBuf>) -> Self {
+    pub const fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self {
             custom_paths: paths,
         }
     }
 
+    /// Extracts hostname from an Asbru entry using fallback chain.
+    ///
+    /// Tries fields in order: ip → host → name → title
+    /// Filters out "tmp", empty values, and placeholder names.
+    /// For name/title fields, only extracts if they look like hostnames
+    /// (contain dots, are IP addresses, or contain dynamic variables).
+    #[allow(clippy::unused_self)]
+    fn extract_hostname(&self, entry: &AsbruEntry) -> Option<String> {
+        // Try ip field first
+        if let Some(ip) = &entry.ip {
+            if Self::is_valid_hostname(ip) {
+                return Some(ip.clone());
+            }
+        }
+
+        // Try host field
+        if let Some(host) = &entry.host {
+            if Self::is_valid_hostname(host) {
+                return Some(host.clone());
+            }
+        }
+
+        // Try extracting from name field if it looks like a hostname
+        if let Some(name) = &entry.name {
+            if Self::looks_like_hostname(name) {
+                return Some(name.clone());
+            }
+        }
+
+        // Try extracting from title field if it looks like a hostname
+        if let Some(title) = &entry.title {
+            if Self::looks_like_hostname(title) {
+                return Some(title.clone());
+            }
+        }
+
+        None
+    }
+
+    /// Checks if a string is a valid hostname (not empty, not "tmp", not placeholder)
+    fn is_valid_hostname(s: &str) -> bool {
+        let trimmed = s.trim();
+        !trimmed.is_empty()
+            && trimmed.to_lowercase() != "tmp"
+            && !trimmed.eq_ignore_ascii_case("placeholder")
+            && !trimmed.eq_ignore_ascii_case("none")
+    }
+
+    /// Checks if a string looks like a hostname (contains dots, is IP-like, or has variables)
+    fn looks_like_hostname(s: &str) -> bool {
+        let trimmed = s.trim();
+        if trimmed.is_empty() || trimmed.to_lowercase() == "tmp" {
+            return false;
+        }
+
+        // Contains dynamic variable syntax - preserve as-is
+        if Self::contains_dynamic_variable(trimmed) {
+            return true;
+        }
+
+        // Contains dots (like a FQDN)
+        if trimmed.contains('.') {
+            return true;
+        }
+
+        // Looks like an IP address
+        if trimmed.parse::<std::net::IpAddr>().is_ok() {
+            return true;
+        }
+
+        false
+    }
+
+    /// Checks if a string contains dynamic variable syntax (${VAR} or $VAR)
+    fn contains_dynamic_variable(s: &str) -> bool {
+        s.contains("${") || (s.contains('$') && s.chars().any(|c| c.is_ascii_alphabetic()))
+    }
+
     /// Parses Asbru YAML content and returns an import result
+    #[must_use] 
     pub fn parse_config(&self, content: &str, source_path: &str) -> ImportResult {
         let mut result = ImportResult::new();
 
@@ -94,7 +173,7 @@ impl AsbruImporter {
             Err(e) => {
                 result.add_error(ImportError::ParseError {
                     source_name: "Asbru-CM".to_string(),
-                    reason: format!("Failed to parse YAML: {}", e),
+                    reason: format!("Failed to parse YAML: {e}"),
                 });
                 return result;
             }
@@ -107,31 +186,28 @@ impl AsbruImporter {
             if key.starts_with("__") || key == "defaults" || key == "environments" {
                 continue;
             }
-            
+
             // Try to deserialize as AsbruEntry
-            match serde_yaml::from_value(value) {
-                Ok(entry) => {
-                    config.insert(key, entry);
-                }
-                Err(_) => {
-                    // Skip entries that don't match the expected structure
-                    continue;
-                }
+            if let Ok(entry) = serde_yaml::from_value(value) {
+                config.insert(key, entry);
             }
+            // Skip entries that don't match the expected structure
         }
 
         // Build parent-child relationships
         // First pass: create groups and map original UUIDs to new UUIDs
         let mut uuid_map: HashMap<String, Uuid> = HashMap::new();
-        
+
         // Process groups first
         for (key, entry) in &config {
             if entry.is_group == Some(1) {
-                let group_name = entry.name.as_ref()
+                let group_name = entry
+                    .name
+                    .as_ref()
                     .or(entry.title.as_ref())
                     .cloned()
                     .unwrap_or_else(|| key.clone());
-                
+
                 let group = ConnectionGroup::new(group_name);
                 uuid_map.insert(key.clone(), group.id);
                 result.add_group(group);
@@ -141,7 +217,9 @@ impl AsbruImporter {
         // Second pass: process connections
         for (key, entry) in &config {
             if entry.is_group != Some(1) {
-                if let Some(connection) = self.convert_entry(key, entry, &uuid_map, source_path, &mut result) {
+                if let Some(connection) =
+                    self.convert_entry(key, entry, &uuid_map, source_path, &mut result)
+                {
                     result.add_connection(connection);
                 }
             }
@@ -167,26 +245,21 @@ impl AsbruImporter {
             .cloned()
             .unwrap_or_else(|| key.to_string());
 
-        // Get hostname
-        let host = match entry.ip.as_ref().or(entry.host.as_ref()) {
-            Some(h) if !h.is_empty() => h.clone(),
-            _ => {
-                result.add_skipped(SkippedEntry::with_location(
-                    &name,
-                    "No hostname specified",
-                    source_path,
-                ));
-                return None;
-            }
+        // Get hostname using fallback chain: ip → host → name → title
+        let Some(host) = self.extract_hostname(entry) else {
+            result.add_skipped(SkippedEntry::with_location(
+                &name,
+                "No hostname specified in ip, host, name, or title fields",
+                source_path,
+            ));
+            return None;
         };
 
         // Determine protocol and create config
         let protocol_type = entry
             .protocol_type
             .as_ref()
-            .or(entry.method.as_ref())
-            .map(|s| s.to_lowercase())
-            .unwrap_or_else(|| "ssh".to_string());
+            .or(entry.method.as_ref()).map_or_else(|| "ssh".to_string(), |s| s.to_lowercase());
 
         let (protocol_config, default_port) = match protocol_type.as_str() {
             "ssh" | "sftp" | "scp" => {
@@ -197,7 +270,9 @@ impl AsbruImporter {
                     _ => SshAuthMethod::Password,
                 };
 
-                let key_path = entry.public_key.as_ref()
+                let key_path = entry
+                    .public_key
+                    .as_ref()
                     .filter(|p| !p.is_empty())
                     .map(|p| PathBuf::from(shellexpand::tilde(p).into_owned()));
 
@@ -235,7 +310,7 @@ impl AsbruImporter {
             _ => {
                 result.add_skipped(SkippedEntry::with_location(
                     &name,
-                    format!("Unsupported protocol: {}", protocol_type),
+                    format!("Unsupported protocol: {protocol_type}"),
                     source_path,
                 ));
                 return None;
@@ -260,7 +335,7 @@ impl AsbruImporter {
         // Add description as tag if present
         if let Some(desc) = &entry.description {
             if !desc.is_empty() {
-                connection.tags.push(format!("desc:{}", desc));
+                connection.tags.push(format!("desc:{desc}"));
             }
         }
 
@@ -268,9 +343,16 @@ impl AsbruImporter {
     }
 
     /// Finds the Asbru config file in a directory
+    #[allow(clippy::unused_self)]
     fn find_config_file(&self, dir: &Path) -> Option<PathBuf> {
         // Asbru stores connections in various files
-        let possible_files = ["pac.yml", "pac.yaml", "asbru.yml", "asbru.yaml", "connections.yml"];
+        let possible_files = [
+            "pac.yml",
+            "pac.yaml",
+            "asbru.yml",
+            "asbru.yaml",
+            "connections.yml",
+        ];
 
         for filename in &possible_files {
             let path = dir.join(filename);
@@ -330,9 +412,7 @@ impl ImportSource for AsbruImporter {
         let paths = self.default_paths();
 
         if paths.is_empty() {
-            return Err(ImportError::FileNotFound(PathBuf::from(
-                "~/.config/asbru/",
-            )));
+            return Err(ImportError::FileNotFound(PathBuf::from("~/.config/asbru/")));
         }
 
         let mut combined_result = ImportResult::new();
@@ -465,6 +545,80 @@ invalid-uuid:
     }
 
     #[test]
+    fn test_hostname_extraction_fallback_from_name() {
+        let importer = AsbruImporter::new();
+        // Entry with "tmp" in ip field but valid hostname in name
+        let yaml = r#"
+fallback-uuid:
+  _is_group: 0
+  name: "server.example.com"
+  ip: "tmp"
+  method: "SSH"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.skipped.len(), 0);
+        assert_eq!(result.connections[0].host, "server.example.com");
+    }
+
+    #[test]
+    fn test_hostname_extraction_fallback_from_title() {
+        let importer = AsbruImporter::new();
+        // Entry with empty ip/host but valid hostname in title
+        let yaml = r#"
+fallback-uuid:
+  _is_group: 0
+  name: "My Server"
+  title: "192.168.1.50"
+  ip: ""
+  method: "SSH"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.skipped.len(), 0);
+        assert_eq!(result.connections[0].host, "192.168.1.50");
+    }
+
+    #[test]
+    fn test_hostname_extraction_with_dynamic_variable() {
+        let importer = AsbruImporter::new();
+        // Entry with dynamic variable in name
+        let yaml = r#"
+dynamic-uuid:
+  _is_group: 0
+  name: "${SERVER_HOST}"
+  ip: ""
+  method: "SSH"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.skipped.len(), 0);
+        assert_eq!(result.connections[0].host, "${SERVER_HOST}");
+    }
+
+    #[test]
+    fn test_hostname_extraction_skips_tmp_and_empty() {
+        let importer = AsbruImporter::new();
+        // Entry with only "tmp" and empty values - should be skipped
+        let yaml = r#"
+skip-uuid:
+  _is_group: 0
+  name: "tmp"
+  title: ""
+  ip: "tmp"
+  host: ""
+  method: "SSH"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 0);
+        assert_eq!(result.skipped.len(), 1);
+    }
+
+    #[test]
     fn test_parse_with_options() {
         let importer = AsbruImporter::new();
         let yaml = r#"
@@ -483,5 +637,66 @@ server-uuid:
         if let ProtocolConfig::Ssh(ssh) = &conn.protocol_config {
             assert!(ssh.custom_options.contains_key("PubkeyAuthentication"));
         }
+    }
+
+    #[test]
+    fn test_dynamic_variables_preserved_in_all_fields() {
+        let importer = AsbruImporter::new();
+        // Entry with dynamic variables in multiple fields
+        let yaml = r#"
+dynamic-uuid:
+  _is_group: 0
+  name: "Dynamic Server"
+  ip: "${DB_HOST}"
+  user: "${DB_USER}"
+  port: 5432
+  method: "SSH"
+  description: "Connect to ${ENV} database"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.skipped.len(), 0);
+
+        let conn = &result.connections[0];
+        // Dynamic variables should be preserved as-is
+        assert_eq!(conn.host, "${DB_HOST}");
+        assert_eq!(conn.username, Some("${DB_USER}".to_string()));
+        // Description with variable should be in tags
+        assert!(conn.tags.iter().any(|t| t.contains("${ENV}")));
+    }
+
+    #[test]
+    fn test_dynamic_variable_in_host_field() {
+        let importer = AsbruImporter::new();
+        // Entry with dynamic variable in host field (not ip)
+        let yaml = r#"
+host-var-uuid:
+  _is_group: 0
+  name: "Host Variable Server"
+  host: "${REMOTE_HOST}"
+  method: "SSH"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.connections[0].host, "${REMOTE_HOST}");
+    }
+
+    #[test]
+    fn test_dollar_sign_variable_syntax() {
+        let importer = AsbruImporter::new();
+        // Entry with $VAR syntax (without braces)
+        let yaml = r#"
+dollar-uuid:
+  _is_group: 0
+  name: "$HOSTNAME"
+  ip: ""
+  method: "SSH"
+"#;
+
+        let result = importer.parse_config(yaml, "test");
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.connections[0].host, "$HOSTNAME");
     }
 }

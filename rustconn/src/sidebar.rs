@@ -16,7 +16,7 @@ use std::rc::Rc;
 use uuid::Uuid;
 
 /// Wrapper to switch between selection models
-/// Supports switching between SingleSelection and MultiSelection modes
+/// Supports switching between `SingleSelection` and `MultiSelection` modes
 pub enum SelectionModelWrapper {
     /// Single selection mode (default)
     Single(SingleSelection),
@@ -37,8 +37,12 @@ impl SelectionModelWrapper {
         Self::Multi(MultiSelection::new(Some(model)))
     }
 
-    /// Returns the underlying selection model as a SelectionModel
+    /// Returns the underlying selection model as a `SelectionModel`
+    ///
+    /// Note: This method only works in single selection mode. In multi-selection
+    /// mode, it will panic. Use `is_multi()` to check the mode first.
     #[must_use]
+    #[allow(dead_code)]
     pub fn as_selection_model(&self) -> &impl IsA<gtk4::SelectionModel> {
         match self {
             Self::Single(s) => s,
@@ -48,7 +52,7 @@ impl SelectionModelWrapper {
 
     /// Returns true if in multi-selection mode
     #[must_use]
-    pub fn is_multi(&self) -> bool {
+    pub const fn is_multi(&self) -> bool {
         matches!(self, Self::Multi(_))
     }
 
@@ -58,10 +62,10 @@ impl SelectionModelWrapper {
         match self {
             Self::Single(s) => {
                 let selected = s.selected();
-                if selected != gtk4::INVALID_LIST_POSITION {
-                    vec![selected]
-                } else {
+                if selected == gtk4::INVALID_LIST_POSITION {
                     vec![]
+                } else {
+                    vec![selected]
                 }
             }
             Self::Multi(m) => {
@@ -110,12 +114,27 @@ impl SelectionModelWrapper {
     }
 }
 
+/// Data for a drag-drop operation
+/// Note: Fields are infrastructure for future drag-drop implementation
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct DragDropData {
+    /// Type of the dragged item ("conn" or "group")
+    pub item_type: String,
+    /// ID of the dragged item
+    pub item_id: String,
+    /// ID of the target item
+    pub target_id: String,
+    /// Whether the target is a group
+    pub target_is_group: bool,
+}
+
 /// Sidebar widget for connection tree display
 pub struct ConnectionSidebar {
     container: GtkBox,
     search_entry: SearchEntry,
     list_view: ListView,
-    /// Store for connection data - will be populated from ConnectionManager
+    /// Store for connection data - will be populated from `ConnectionManager`
     store: gio::ListStore,
     /// Tree list model for hierarchical display
     tree_model: TreeListModel,
@@ -125,6 +144,9 @@ pub struct ConnectionSidebar {
     bulk_actions_bar: GtkBox,
     /// Current mode
     group_ops_mode: Rc<RefCell<bool>>,
+    /// Callback for drag-drop operations (infrastructure for future use)
+    #[allow(dead_code)]
+    drag_drop_callback: Rc<RefCell<Option<Box<dyn Fn(DragDropData)>>>>,
 }
 
 impl ConnectionSidebar {
@@ -143,9 +165,7 @@ impl ConnectionSidebar {
         search_entry.set_margin_top(8);
         search_entry.set_margin_bottom(8);
         // Accessibility: set label for screen readers
-        search_entry.update_property(&[
-            gtk4::accessible::Property::Label("Search connections"),
-        ]);
+        search_entry.update_property(&[gtk4::accessible::Property::Label("Search connections")]);
         container.append(&search_entry);
 
         // Create bulk actions toolbar (hidden by default)
@@ -159,7 +179,7 @@ impl ConnectionSidebar {
         // Create tree list model for hierarchical display
         let tree_model = TreeListModel::new(store.clone(), false, true, |item| {
             item.downcast_ref::<ConnectionItem>()
-                .and_then(|conn_item| conn_item.children())
+                .and_then(ConnectionItem::children)
         });
 
         // Create selection model (starts in single selection mode)
@@ -190,21 +210,19 @@ impl ConnectionSidebar {
             }
         };
         list_view.add_css_class("navigation-sidebar");
-        
+
         // Set accessibility properties
-        list_view.update_property(&[
-            gtk4::accessible::Property::Label("Connection list"),
-        ]);
+        list_view.update_property(&[gtk4::accessible::Property::Label("Connection list")]);
         list_view.set_focusable(true);
         list_view.set_can_focus(true);
 
         // Set up keyboard navigation
-        let group_ops_mode_clone = group_ops_mode.clone();
         let selection_model_clone = selection_model.clone();
         let key_controller = EventControllerKey::new();
         key_controller.connect_key_pressed(move |_controller, key, _code, state| {
-            let is_group_ops = *group_ops_mode_clone.borrow();
-            
+            // Use is_multi() to check if we're in multi-selection mode
+            let is_multi_mode = selection_model_clone.borrow().is_multi();
+
             // Handle keyboard navigation
             match key {
                 gdk::Key::Return | gdk::Key::KP_Enter => {
@@ -215,13 +233,15 @@ impl ConnectionSidebar {
                     // Delete selected item - will be handled by window action
                     glib::Propagation::Proceed
                 }
-                gdk::Key::a | gdk::Key::A if state.contains(gdk::ModifierType::CONTROL_MASK) && is_group_ops => {
-                    // Ctrl+A: Select all in group operations mode
+                gdk::Key::a | gdk::Key::A
+                    if state.contains(gdk::ModifierType::CONTROL_MASK) && is_multi_mode =>
+                {
+                    // Ctrl+A: Select all in multi-selection mode
                     selection_model_clone.borrow().select_all();
                     glib::Propagation::Stop
                 }
-                gdk::Key::Escape if is_group_ops => {
-                    // Escape: Clear selection in group operations mode
+                gdk::Key::Escape if is_multi_mode => {
+                    // Escape: Clear selection in multi-selection mode
                     selection_model_clone.borrow().clear_selection();
                     glib::Propagation::Stop
                 }
@@ -253,7 +273,17 @@ impl ConnectionSidebar {
             selection_model,
             bulk_actions_bar,
             group_ops_mode,
+            drag_drop_callback: Rc::new(RefCell::new(None)),
         }
+    }
+
+    /// Sets the callback for drag-drop operations
+    #[allow(dead_code)]
+    pub fn set_drag_drop_callback<F>(&self, callback: F)
+    where
+        F: Fn(DragDropData) + 'static,
+    {
+        *self.drag_drop_callback.borrow_mut() = Some(Box::new(callback));
     }
 
     /// Creates the bulk actions toolbar for group operations mode
@@ -270,36 +300,33 @@ impl ConnectionSidebar {
         delete_button.set_tooltip_text(Some("Delete all selected items"));
         delete_button.set_action_name(Some("win.delete-selected"));
         delete_button.add_css_class("destructive-action");
-        delete_button.update_property(&[
-            gtk4::accessible::Property::Label("Delete selected connections"),
-        ]);
+        delete_button.update_property(&[gtk4::accessible::Property::Label(
+            "Delete selected connections",
+        )]);
         bar.append(&delete_button);
 
         // Move to Group dropdown button
         let move_button = Button::with_label("Move to Group...");
         move_button.set_tooltip_text(Some("Move selected items to a group"));
         move_button.set_action_name(Some("win.move-selected-to-group"));
-        move_button.update_property(&[
-            gtk4::accessible::Property::Label("Move selected connections to group"),
-        ]);
+        move_button.update_property(&[gtk4::accessible::Property::Label(
+            "Move selected connections to group",
+        )]);
         bar.append(&move_button);
 
         // Select All button
         let select_all_button = Button::with_label("Select All");
         select_all_button.set_tooltip_text(Some("Select all items (Ctrl+A)"));
         select_all_button.set_action_name(Some("win.select-all"));
-        select_all_button.update_property(&[
-            gtk4::accessible::Property::Label("Select all connections"),
-        ]);
+        select_all_button
+            .update_property(&[gtk4::accessible::Property::Label("Select all connections")]);
         bar.append(&select_all_button);
 
         // Clear Selection button
         let clear_button = Button::with_label("Clear");
         clear_button.set_tooltip_text(Some("Clear selection (Escape)"));
         clear_button.set_action_name(Some("win.clear-selection"));
-        clear_button.update_property(&[
-            gtk4::accessible::Property::Label("Clear selection"),
-        ]);
+        clear_button.update_property(&[gtk4::accessible::Property::Label("Clear selection")]);
         bar.append(&clear_button);
 
         bar
@@ -318,79 +345,89 @@ impl ConnectionSidebar {
         let add_button = Button::from_icon_name("list-add-symbolic");
         add_button.set_tooltip_text(Some("Add Connection (Ctrl+N)"));
         add_button.set_action_name(Some("win.new-connection"));
-        add_button.update_property(&[
-            gtk4::accessible::Property::Label("Add new connection"),
-        ]);
+        add_button.update_property(&[gtk4::accessible::Property::Label("Add new connection")]);
         button_box.append(&add_button);
 
         // Delete button
         let delete_button = Button::from_icon_name("list-remove-symbolic");
         delete_button.set_tooltip_text(Some("Delete Selected (Delete)"));
         delete_button.set_action_name(Some("win.delete-connection"));
-        delete_button.update_property(&[
-            gtk4::accessible::Property::Label("Delete selected connection or group"),
-        ]);
+        delete_button.update_property(&[gtk4::accessible::Property::Label(
+            "Delete selected connection or group",
+        )]);
         button_box.append(&delete_button);
 
         // Add group button
         let add_group_button = Button::from_icon_name("folder-new-symbolic");
         add_group_button.set_tooltip_text(Some("Add Group (Ctrl+Shift+N)"));
         add_group_button.set_action_name(Some("win.new-group"));
-        add_group_button.update_property(&[
-            gtk4::accessible::Property::Label("Add new group"),
-        ]);
+        add_group_button.update_property(&[gtk4::accessible::Property::Label("Add new group")]);
         button_box.append(&add_group_button);
 
         // Quick connect button
         let quick_connect_button = Button::from_icon_name("network-transmit-symbolic");
         quick_connect_button.set_tooltip_text(Some("Quick Connect (without saving)"));
         quick_connect_button.set_action_name(Some("win.quick-connect"));
-        quick_connect_button.update_property(&[
-            gtk4::accessible::Property::Label("Quick connect without saving"),
-        ]);
+        quick_connect_button.update_property(&[gtk4::accessible::Property::Label(
+            "Quick connect without saving",
+        )]);
         button_box.append(&quick_connect_button);
 
         // Group operations button
         let group_ops_button = Button::from_icon_name("view-list-symbolic");
         group_ops_button.set_tooltip_text(Some("Group Operations Mode"));
         group_ops_button.set_action_name(Some("win.group-operations"));
-        group_ops_button.update_property(&[
-            gtk4::accessible::Property::Label("Enable group operations mode for multi-select"),
-        ]);
+        group_ops_button.update_property(&[gtk4::accessible::Property::Label(
+            "Enable group operations mode for multi-select",
+        )]);
         button_box.append(&group_ops_button);
 
         // Sort button
         let sort_button = Button::from_icon_name("view-sort-ascending-symbolic");
         sort_button.set_tooltip_text(Some("Sort Alphabetically"));
         sort_button.set_action_name(Some("win.sort-connections"));
-        sort_button.update_property(&[
-            gtk4::accessible::Property::Label("Sort connections alphabetically"),
-        ]);
+        sort_button.update_property(&[gtk4::accessible::Property::Label(
+            "Sort connections alphabetically",
+        )]);
         button_box.append(&sort_button);
+
+        // Sort Recent button
+        let sort_recent_button = Button::from_icon_name("document-open-recent-symbolic");
+        sort_recent_button.set_tooltip_text(Some("Sort by Recent Usage"));
+        sort_recent_button.set_action_name(Some("win.sort-recent"));
+        sort_recent_button.update_property(&[gtk4::accessible::Property::Label(
+            "Sort connections by recent usage",
+        )]);
+        button_box.append(&sort_recent_button);
 
         // Import button
         let import_button = Button::from_icon_name("document-open-symbolic");
         import_button.set_tooltip_text(Some("Import Connections (Ctrl+I)"));
         import_button.set_action_name(Some("win.import"));
-        import_button.update_property(&[
-            gtk4::accessible::Property::Label("Import connections from external sources"),
-        ]);
+        import_button.update_property(&[gtk4::accessible::Property::Label(
+            "Import connections from external sources",
+        )]);
         button_box.append(&import_button);
 
         // Export button
         let export_button = Button::from_icon_name("document-save-symbolic");
         export_button.set_tooltip_text(Some("Export Configuration"));
         export_button.set_action_name(Some("win.export"));
-        export_button.update_property(&[
-            gtk4::accessible::Property::Label("Export configuration to file"),
-        ]);
+        export_button.update_property(&[gtk4::accessible::Property::Label(
+            "Export configuration to file",
+        )]);
         button_box.append(&export_button);
 
         button_box
     }
 
     /// Sets up a list item widget
-    fn setup_list_item(_factory: &SignalListItemFactory, list_item: &ListItem, _group_ops_mode: bool) {
+    #[allow(clippy::too_many_lines)]
+    fn setup_list_item(
+        _factory: &SignalListItemFactory,
+        list_item: &ListItem,
+        _group_ops_mode: bool,
+    ) {
         let expander = TreeExpander::new();
 
         let content_box = GtkBox::new(Orientation::Horizontal, 8);
@@ -413,16 +450,81 @@ impl ConnectionSidebar {
         // Set up drag source for reorganization
         let drag_source = DragSource::new();
         drag_source.set_actions(gdk::DragAction::MOVE);
-        drag_source.connect_prepare(|_source, _x, _y| {
-            // Prepare drag data
-            Some(gdk::ContentProvider::for_value(&"connection".to_value()))
+
+        // Store list_item reference for drag prepare
+        let list_item_weak_drag = list_item.downgrade();
+        drag_source.connect_prepare(move |_source, _x, _y| {
+            // Get the item from the list item
+            let list_item = list_item_weak_drag.upgrade()?;
+            let row = list_item.item()?.downcast::<TreeListRow>().ok()?;
+            let item = row.item()?.downcast::<ConnectionItem>().ok()?;
+
+            // Encode item type and ID in drag data: "type:id"
+            let item_type = if item.is_group() { "group" } else { "conn" };
+            let drag_data = format!("{}:{}", item_type, item.id());
+
+            Some(gdk::ContentProvider::for_value(&drag_data.to_value()))
         });
         expander.add_controller(drag_source);
 
         // Set up drop target
         let drop_target = DropTarget::new(glib::Type::STRING, gdk::DragAction::MOVE);
-        drop_target.connect_drop(|_target, _value, _x, _y| {
-            // Handle drop - reorganize connections
+
+        // Store list_item reference for drop target
+        let list_item_weak_drop = list_item.downgrade();
+        drop_target.connect_drop(move |target, value, _x, _y| {
+            // Parse drag data
+            let drag_data = match value.get::<String>() {
+                Ok(data) => data,
+                Err(_) => return false,
+            };
+
+            let parts: Vec<&str> = drag_data.split(':').collect();
+            if parts.len() != 2 {
+                return false;
+            }
+
+            let item_type = parts[0];
+            let item_id = parts[1];
+
+            // Get target item info
+            let list_item = match list_item_weak_drop.upgrade() {
+                Some(li) => li,
+                None => return false,
+            };
+
+            let row = match list_item
+                .item()
+                .and_then(|i| i.downcast::<TreeListRow>().ok())
+            {
+                Some(r) => r,
+                None => return false,
+            };
+
+            let target_item = match row.item().and_then(|i| i.downcast::<ConnectionItem>().ok()) {
+                Some(item) => item,
+                None => return false,
+            };
+
+            let target_id = target_item.id();
+            let target_is_group = target_item.is_group();
+
+            // Don't allow dropping on self
+            if item_id == target_id {
+                return false;
+            }
+
+            // Activate the drag-drop action with the data
+            // Format: "item_type:item_id:target_id:target_is_group"
+            let action_data = format!(
+                "{item_type}:{item_id}:{target_id}:{target_is_group}"
+            );
+
+            if let Some(widget) = target.widget() {
+                let _ =
+                    widget.activate_action("win.drag-drop-item", Some(&action_data.to_variant()));
+            }
+
             true
         });
         expander.add_controller(drop_target);
@@ -443,7 +545,9 @@ impl ConnectionSidebar {
                             if let Some(model) = list_view.model() {
                                 if let Some(selection) = model.downcast_ref::<SingleSelection>() {
                                     selection.set_selected(position);
-                                } else if let Some(selection) = model.downcast_ref::<MultiSelection>() {
+                                } else if let Some(selection) =
+                                    model.downcast_ref::<MultiSelection>()
+                                {
                                     // In multi-selection mode, select only this item for context menu
                                     selection.unselect_all();
                                     selection.select_item(position, false);
@@ -452,14 +556,16 @@ impl ConnectionSidebar {
                         }
                     }
                 }
-                
+
                 // Check if this is a group by looking at the icon
                 let is_group = widget
                     .first_child()
                     .and_then(|c| c.first_child())
                     .and_then(|c| c.downcast::<gtk4::Image>().ok())
-                    .map(|img| img.icon_name().map(|n| n.as_str() == "folder-symbolic").unwrap_or(false))
-                    .unwrap_or(false);
+                    .is_some_and(|img| {
+                        img.icon_name()
+                            .is_some_and(|n| n.as_str() == "folder-symbolic")
+                    });
                 Self::show_context_menu_for_item(&widget, x, y, is_group);
             }
         });
@@ -515,64 +621,165 @@ impl ConnectionSidebar {
 
     /// Shows the context menu for a connection item with group awareness
     fn show_context_menu_for_item(widget: &impl IsA<Widget>, x: f64, y: f64, is_group: bool) {
-        let menu = gio::Menu::new();
-        
-        if !is_group {
-            menu.append(Some("Connect"), Some("win.connect"));
-        }
-        menu.append(Some("Edit"), Some("win.edit-connection"));
-        if !is_group {
-            menu.append(Some("Duplicate"), Some("win.duplicate-connection"));
-            menu.append(Some("Move to Group..."), Some("win.move-to-group"));
-        }
-        menu.append(Some("Delete"), Some("win.delete-connection"));
+        // Get the root window to access actions
+        let Some(root) = widget.root() else { return };
+        let Some(window) = root.downcast_ref::<gtk4::ApplicationWindow>() else {
+            return;
+        };
 
-        let popover = gtk4::PopoverMenu::from_model(Some(&menu));
-        popover.set_parent(widget);
-        popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        // Create a custom popover with buttons instead of PopoverMenu
+        // This ensures actions are properly activated
+        let popover = gtk4::Popover::new();
+
+        let menu_box = GtkBox::new(Orientation::Vertical, 0);
+        menu_box.set_margin_top(6);
+        menu_box.set_margin_bottom(6);
+        menu_box.set_margin_start(6);
+        menu_box.set_margin_end(6);
+
+        // Helper to create menu button
+        let create_menu_button = |label: &str| -> Button {
+            let btn = Button::with_label(label);
+            btn.set_has_frame(false);
+            btn.add_css_class("flat");
+            btn.set_halign(gtk4::Align::Start);
+            btn
+        };
+
+        let popover_ref = popover.downgrade();
+
+        // Use lookup_action and activate on the window (which implements ActionMap)
+        let window_clone = window.clone();
+
+        if !is_group {
+            let connect_btn = create_menu_button("Connect");
+            let win = window_clone.clone();
+            let popover_c = popover_ref.clone();
+            connect_btn.connect_clicked(move |_| {
+                if let Some(p) = popover_c.upgrade() {
+                    p.popdown();
+                }
+                if let Some(action) = win.lookup_action("connect") {
+                    action.activate(None);
+                }
+            });
+            menu_box.append(&connect_btn);
+        }
+
+        let edit_btn = create_menu_button("Edit");
+        let win = window_clone.clone();
+        let popover_c = popover_ref.clone();
+        edit_btn.connect_clicked(move |_| {
+            if let Some(p) = popover_c.upgrade() {
+                p.popdown();
+            }
+            if let Some(action) = win.lookup_action("edit-connection") {
+                action.activate(None);
+            }
+        });
+        menu_box.append(&edit_btn);
+
+        if !is_group {
+            let duplicate_btn = create_menu_button("Duplicate");
+            let win = window_clone.clone();
+            let popover_c = popover_ref.clone();
+            duplicate_btn.connect_clicked(move |_| {
+                if let Some(p) = popover_c.upgrade() {
+                    p.popdown();
+                }
+                if let Some(action) = win.lookup_action("duplicate-connection") {
+                    action.activate(None);
+                }
+            });
+            menu_box.append(&duplicate_btn);
+
+            let move_btn = create_menu_button("Move to Group...");
+            let win = window_clone.clone();
+            let popover_c = popover_ref.clone();
+            move_btn.connect_clicked(move |_| {
+                if let Some(p) = popover_c.upgrade() {
+                    p.popdown();
+                }
+                if let Some(action) = win.lookup_action("move-to-group") {
+                    action.activate(None);
+                }
+            });
+            menu_box.append(&move_btn);
+        }
+
+        let delete_btn = create_menu_button("Delete");
+        delete_btn.add_css_class("destructive-action");
+        let win = window_clone;
+        let popover_c = popover_ref;
+        delete_btn.connect_clicked(move |_| {
+            if let Some(p) = popover_c.upgrade() {
+                p.popdown();
+            }
+            if let Some(action) = win.lookup_action("delete-connection") {
+                action.activate(None);
+            }
+        });
+        menu_box.append(&delete_btn);
+
+        popover.set_child(Some(&menu_box));
+
+        // Attach popover to the window
+        popover.set_parent(window);
+
+        // Calculate absolute position for the popover
+        let widget_bounds = widget.compute_bounds(window);
+        let (popup_x, popup_y) = if let Some(bounds) = widget_bounds {
+            (bounds.x() as i32 + x as i32, bounds.y() as i32 + y as i32)
+        } else {
+            (x as i32, y as i32)
+        };
+
+        popover.set_pointing_to(Some(&gdk::Rectangle::new(popup_x, popup_y, 1, 1)));
         popover.set_autohide(true);
-        
+        popover.set_has_arrow(true);
+
         // Connect to closed signal to unparent the popover
         popover.connect_closed(|p| {
             p.unparent();
         });
-        
+
         popover.popup();
     }
 
     /// Returns the main widget for this sidebar
     #[must_use]
-    pub fn widget(&self) -> &GtkBox {
+    pub const fn widget(&self) -> &GtkBox {
         &self.container
     }
 
     /// Returns the search entry widget
     #[must_use]
-    pub fn search_entry(&self) -> &SearchEntry {
+    pub const fn search_entry(&self) -> &SearchEntry {
         &self.search_entry
     }
 
     /// Returns the list view widget
     #[must_use]
-    pub fn list_view(&self) -> &ListView {
+    pub const fn list_view(&self) -> &ListView {
         &self.list_view
     }
 
     /// Returns the underlying store
     #[must_use]
-    pub fn store(&self) -> &gio::ListStore {
+    pub const fn store(&self) -> &gio::ListStore {
         &self.store
     }
 
     /// Returns the tree list model
     #[must_use]
-    pub fn tree_model(&self) -> &TreeListModel {
+    pub const fn tree_model(&self) -> &TreeListModel {
         &self.tree_model
     }
 
     /// Returns the bulk actions bar
     #[must_use]
-    pub fn bulk_actions_bar(&self) -> &GtkBox {
+    #[allow(dead_code)]
+    pub const fn bulk_actions_bar(&self) -> &GtkBox {
         &self.bulk_actions_bar
     }
 
@@ -583,7 +790,7 @@ impl ConnectionSidebar {
     }
 
     /// Toggles group operations mode
-    /// Switches between SingleSelection and MultiSelection models
+    /// Switches between `SingleSelection` and `MultiSelection` models
     pub fn set_group_operations_mode(&self, enabled: bool) {
         // Update mode flag
         *self.group_ops_mode.borrow_mut() = enabled;
@@ -624,7 +831,7 @@ impl ConnectionSidebar {
     pub fn get_selected_ids(&self) -> Vec<Uuid> {
         let selection = self.selection_model.borrow();
         let positions = selection.get_selected_positions();
-        
+
         let mut ids = Vec::new();
         for pos in positions {
             if let Some(model) = selection.model() {
@@ -635,7 +842,7 @@ impl ConnectionSidebar {
                     } else {
                         item.downcast::<ConnectionItem>().ok()
                     };
-                    
+
                     if let Some(conn_item) = conn_item {
                         if let Ok(uuid) = Uuid::parse_str(&conn_item.id()) {
                             ids.push(uuid);
@@ -647,12 +854,12 @@ impl ConnectionSidebar {
         ids
     }
 
-    /// Gets the first selected ConnectionItem (works in both single and multi-selection modes)
+    /// Gets the first selected `ConnectionItem` (works in both single and multi-selection modes)
     #[must_use]
     pub fn get_selected_item(&self) -> Option<ConnectionItem> {
         let selection = self.selection_model.borrow();
         let positions = selection.get_selected_positions();
-        
+
         if let Some(&pos) = positions.first() {
             if let Some(model) = selection.model() {
                 if let Some(item) = model.item(pos) {
@@ -679,6 +886,7 @@ impl ConnectionSidebar {
     }
 
     /// Returns the selection model wrapper
+    #[allow(dead_code)]
     pub fn selection_model(&self) -> Rc<RefCell<SelectionModelWrapper>> {
         self.selection_model.clone()
     }
@@ -695,7 +903,8 @@ impl Default for ConnectionSidebar {
 // ============================================================================
 
 mod imp {
-    use super::*;
+    use super::{glib, gio};
+    use glib::prelude::*;
     use glib::subclass::prelude::*;
     use glib::Properties;
     use std::cell::RefCell;
@@ -756,7 +965,7 @@ impl ConnectionItem {
             .build();
 
         // Initialize children store for groups
-        *item.imp().children.borrow_mut() = Some(gio::ListStore::new::<ConnectionItem>());
+        *item.imp().children.borrow_mut() = Some(gio::ListStore::new::<Self>());
 
         item
     }
@@ -771,7 +980,7 @@ impl ConnectionItem {
     }
 
     /// Adds a child item to this group
-    pub fn add_child(&self, child: &ConnectionItem) {
+    pub fn add_child(&self, child: &Self) {
         if let Some(ref store) = *self.imp().children.borrow() {
             store.append(child);
         }

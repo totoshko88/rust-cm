@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use chrono::Utc;
 use uuid::Uuid;
 
 use crate::config::ConfigManager;
@@ -37,15 +38,9 @@ impl ConnectionManager {
         let connections_vec = config_manager.load_connections()?;
         let groups_vec = config_manager.load_groups()?;
 
-        let connections = connections_vec
-            .into_iter()
-            .map(|c| (c.id, c))
-            .collect();
+        let connections = connections_vec.into_iter().map(|c| (c.id, c)).collect();
 
-        let groups = groups_vec
-            .into_iter()
-            .map(|g| (g.id, g))
-            .collect();
+        let groups = groups_vec.into_iter().map(|g| (g.id, g)).collect();
 
         Ok(Self {
             connections,
@@ -63,7 +58,6 @@ impl ConnectionManager {
             config_manager,
         }
     }
-
 
     // ========== Connection CRUD Operations ==========
 
@@ -126,12 +120,13 @@ impl ConnectionManager {
     /// Returns an error if the connection doesn't exist, validation fails,
     /// or persistence fails.
     pub fn update_connection(&mut self, id: Uuid, mut updated: Connection) -> ConfigResult<()> {
-        let existing = self.connections.get(&id).ok_or_else(|| {
-            ConfigError::Validation {
+        let existing = self
+            .connections
+            .get(&id)
+            .ok_or_else(|| ConfigError::Validation {
                 field: "id".to_string(),
                 reason: format!("Connection with ID {id} not found"),
-            }
-        })?;
+            })?;
 
         // Preserve original ID and creation timestamp
         updated.id = existing.id;
@@ -204,7 +199,6 @@ impl ConnectionManager {
         self.connections.len()
     }
 
-
     // ========== Group CRUD Operations ==========
 
     /// Creates a new root-level group
@@ -229,7 +223,11 @@ impl ConnectionManager {
     ///
     /// Returns an error if the parent doesn't exist, validation fails,
     /// or persistence fails.
-    pub fn create_group_with_parent(&mut self, name: String, parent_id: Uuid) -> ConfigResult<Uuid> {
+    pub fn create_group_with_parent(
+        &mut self,
+        name: String,
+        parent_id: Uuid,
+    ) -> ConfigResult<Uuid> {
         // Verify parent exists
         if !self.groups.contains_key(&parent_id) {
             return Err(ConfigError::Validation {
@@ -257,12 +255,13 @@ impl ConnectionManager {
     /// Returns an error if the group doesn't exist, validation fails,
     /// or persistence fails.
     pub fn update_group(&mut self, id: Uuid, mut updated: ConnectionGroup) -> ConfigResult<()> {
-        let existing = self.groups.get(&id).ok_or_else(|| {
-            ConfigError::Validation {
+        let existing = self
+            .groups
+            .get(&id)
+            .ok_or_else(|| ConfigError::Validation {
                 field: "id".to_string(),
                 reason: format!("Group with ID {id} not found"),
-            }
-        })?;
+            })?;
 
         // Preserve original ID and creation timestamp
         updated.id = existing.id;
@@ -285,12 +284,13 @@ impl ConnectionManager {
     ///
     /// Returns an error if the group doesn't exist or persistence fails.
     pub fn delete_group(&mut self, id: Uuid) -> ConfigResult<()> {
-        let group = self.groups.remove(&id).ok_or_else(|| {
-            ConfigError::Validation {
+        let group = self
+            .groups
+            .remove(&id)
+            .ok_or_else(|| ConfigError::Validation {
                 field: "id".to_string(),
                 reason: format!("Group with ID {id} not found"),
-            }
-        })?;
+            })?;
 
         let parent_id = group.parent_id;
 
@@ -313,6 +313,83 @@ impl ConnectionManager {
         self.persist_connections()?;
 
         Ok(())
+    }
+
+    /// Deletes a group and all connections within it (cascade delete)
+    ///
+    /// Unlike `delete_group`, this method removes all connections in the group
+    /// rather than moving them to ungrouped. Child groups are also deleted
+    /// along with their connections.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the group doesn't exist or persistence fails.
+    pub fn delete_group_cascade(&mut self, id: Uuid) -> ConfigResult<()> {
+        // Verify group exists
+        if !self.groups.contains_key(&id) {
+            return Err(ConfigError::Validation {
+                field: "id".to_string(),
+                reason: format!("Group with ID {id} not found"),
+            });
+        }
+
+        // Collect all groups to delete (this group and all descendants)
+        let groups_to_delete = self.collect_descendant_groups(id);
+
+        // Delete all connections in these groups
+        let connections_to_delete: Vec<Uuid> = self
+            .connections
+            .iter()
+            .filter(|(_, conn)| {
+                conn.group_id
+                    .is_some_and(|gid| groups_to_delete.contains(&gid))
+            })
+            .map(|(id, _)| *id)
+            .collect();
+
+        for conn_id in connections_to_delete {
+            self.connections.remove(&conn_id);
+        }
+
+        // Delete all the groups
+        for group_id in &groups_to_delete {
+            self.groups.remove(group_id);
+        }
+
+        self.persist_groups()?;
+        self.persist_connections()?;
+
+        Ok(())
+    }
+
+    /// Collects a group and all its descendant groups
+    fn collect_descendant_groups(&self, group_id: Uuid) -> Vec<Uuid> {
+        let mut result = vec![group_id];
+        let mut to_process = vec![group_id];
+
+        while let Some(current_id) = to_process.pop() {
+            for (id, group) in &self.groups {
+                if group.parent_id == Some(current_id) && !result.contains(id) {
+                    result.push(*id);
+                    to_process.push(*id);
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Counts connections in a group (including child groups)
+    #[must_use] 
+    pub fn count_connections_in_group(&self, group_id: Uuid) -> usize {
+        let groups = self.collect_descendant_groups(group_id);
+        self.connections
+            .values()
+            .filter(|conn| {
+                conn.group_id
+                    .is_some_and(|gid| groups.contains(&gid))
+            })
+            .count()
     }
 
     /// Moves a group to a new parent
@@ -387,14 +464,25 @@ impl ConnectionManager {
             }
         }
 
-        let conn = self.connections.get_mut(&connection_id).ok_or_else(|| {
-            ConfigError::Validation {
-                field: "connection_id".to_string(),
-                reason: format!("Connection with ID {connection_id} not found"),
-            }
-        })?;
+        // Calculate the new sort_order (append to end of target group)
+        let new_sort_order = self
+            .connections
+            .values()
+            .filter(|c| c.group_id == group_id && c.id != connection_id)
+            .map(|c| c.sort_order)
+            .max()
+            .map_or(0, |max| max + 1);
+
+        let conn =
+            self.connections
+                .get_mut(&connection_id)
+                .ok_or_else(|| ConfigError::Validation {
+                    field: "connection_id".to_string(),
+                    reason: format!("Connection with ID {connection_id} not found"),
+                })?;
 
         conn.group_id = group_id;
+        conn.sort_order = new_sort_order;
         conn.touch();
 
         self.persist_connections()?;
@@ -437,7 +525,6 @@ impl ConnectionManager {
         self.groups.len()
     }
 
-
     // ========== Search and Filtering ==========
 
     /// Searches connections by query string
@@ -470,7 +557,11 @@ impl ConnectionManager {
                 }
 
                 // Match tags
-                if conn.tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower)) {
+                if conn
+                    .tags
+                    .iter()
+                    .any(|tag| tag.to_lowercase().contains(&query_lower))
+                {
                     return true;
                 }
 
@@ -498,9 +589,7 @@ impl ConnectionManager {
 
         self.connections
             .values()
-            .filter(|conn| {
-                conn.tags.iter().any(|t| t.to_lowercase() == tag_lower)
-            })
+            .filter(|conn| conn.tags.iter().any(|t| t.to_lowercase() == tag_lower))
             .collect()
     }
 
@@ -514,7 +603,8 @@ impl ConnectionManager {
         self.connections
             .values()
             .filter(|conn| {
-                let conn_tags_lower: Vec<String> = conn.tags.iter().map(|t| t.to_lowercase()).collect();
+                let conn_tags_lower: Vec<String> =
+                    conn.tags.iter().map(|t| t.to_lowercase()).collect();
                 tags_lower.iter().all(|tag| conn_tags_lower.contains(tag))
             })
             .collect()
@@ -523,7 +613,8 @@ impl ConnectionManager {
     /// Gets all unique tags across all connections
     #[must_use]
     pub fn get_all_tags(&self) -> Vec<String> {
-        let mut tags: Vec<String> = self.connections
+        let mut tags: Vec<String> = self
+            .connections
             .values()
             .flat_map(|c| c.tags.clone())
             .collect();
@@ -622,20 +713,467 @@ impl ConnectionManager {
         let connections_vec = self.config_manager.load_connections()?;
         let groups_vec = self.config_manager.load_groups()?;
 
-        self.connections = connections_vec
-            .into_iter()
-            .map(|c| (c.id, c))
-            .collect();
+        self.connections = connections_vec.into_iter().map(|c| (c.id, c)).collect();
 
-        self.groups = groups_vec
-            .into_iter()
-            .map(|g| (g.id, g))
-            .collect();
+        self.groups = groups_vec.into_iter().map(|g| (g.id, g)).collect();
 
         Ok(())
     }
-}
 
+    // ========== Sorting Operations ==========
+
+    /// Sorts connections within a specific group alphabetically by name
+    ///
+    /// Updates the `sort_order` field for each connection in the group.
+    /// Connections in other groups are not affected.
+    ///
+    /// # Arguments
+    ///
+    /// * `group_id` - The ID of the group to sort
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the group doesn't exist or persistence fails.
+    pub fn sort_group(&mut self, group_id: Uuid) -> ConfigResult<()> {
+        // Verify group exists
+        if !self.groups.contains_key(&group_id) {
+            return Err(ConfigError::Validation {
+                field: "group_id".to_string(),
+                reason: format!("Group with ID {group_id} not found"),
+            });
+        }
+
+        // Get connections in this group and sort them
+        let mut group_connections: Vec<_> = self
+            .connections
+            .values()
+            .filter(|c| c.group_id == Some(group_id))
+            .map(|c| c.id)
+            .collect();
+
+        // Sort by name (case-insensitive)
+        group_connections.sort_by(|a, b| {
+            let name_a = self
+                .connections
+                .get(a)
+                .map(|c| c.name.to_lowercase())
+                .unwrap_or_default();
+            let name_b = self
+                .connections
+                .get(b)
+                .map(|c| c.name.to_lowercase())
+                .unwrap_or_default();
+            name_a.cmp(&name_b)
+        });
+
+        // Update sort_order for each connection
+        for (idx, conn_id) in group_connections.iter().enumerate() {
+            if let Some(conn) = self.connections.get_mut(conn_id) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    conn.sort_order = idx as i32;
+                }
+                conn.touch();
+            }
+        }
+
+        self.persist_connections()?;
+        Ok(())
+    }
+
+    /// Sorts all groups and their connections alphabetically
+    ///
+    /// This method:
+    /// 1. Sorts root-level groups alphabetically
+    /// 2. Sorts connections within each group alphabetically
+    /// 3. Sorts ungrouped connections alphabetically
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persistence fails.
+    #[allow(clippy::too_many_lines)]
+    pub fn sort_all(&mut self) -> ConfigResult<()> {
+        // Sort root groups
+        let mut root_groups: Vec<_> = self
+            .groups
+            .values()
+            .filter(|g| g.parent_id.is_none())
+            .map(|g| g.id)
+            .collect();
+
+        root_groups.sort_by(|a, b| {
+            let name_a = self
+                .groups
+                .get(a)
+                .map(|g| g.name.to_lowercase())
+                .unwrap_or_default();
+            let name_b = self
+                .groups
+                .get(b)
+                .map(|g| g.name.to_lowercase())
+                .unwrap_or_default();
+            name_a.cmp(&name_b)
+        });
+
+        // Update sort_order for root groups
+        for (idx, group_id) in root_groups.iter().enumerate() {
+            if let Some(group) = self.groups.get_mut(group_id) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    group.sort_order = idx as i32;
+                }
+            }
+        }
+
+        // Sort connections within each group (including nested groups)
+        let all_group_ids: Vec<Uuid> = self.groups.keys().copied().collect();
+        for group_id in all_group_ids {
+            // Sort child groups within this group
+            let mut child_groups: Vec<_> = self
+                .groups
+                .values()
+                .filter(|g| g.parent_id == Some(group_id))
+                .map(|g| g.id)
+                .collect();
+
+            child_groups.sort_by(|a, b| {
+                let name_a = self
+                    .groups
+                    .get(a)
+                    .map(|g| g.name.to_lowercase())
+                    .unwrap_or_default();
+                let name_b = self
+                    .groups
+                    .get(b)
+                    .map(|g| g.name.to_lowercase())
+                    .unwrap_or_default();
+                name_a.cmp(&name_b)
+            });
+
+            for (idx, child_id) in child_groups.iter().enumerate() {
+                if let Some(group) = self.groups.get_mut(child_id) {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                    {
+                        group.sort_order = idx as i32;
+                    }
+                }
+            }
+
+            // Sort connections in this group
+            let mut group_connections: Vec<_> = self
+                .connections
+                .values()
+                .filter(|c| c.group_id == Some(group_id))
+                .map(|c| c.id)
+                .collect();
+
+            group_connections.sort_by(|a, b| {
+                let name_a = self
+                    .connections
+                    .get(a)
+                    .map(|c| c.name.to_lowercase())
+                    .unwrap_or_default();
+                let name_b = self
+                    .connections
+                    .get(b)
+                    .map(|c| c.name.to_lowercase())
+                    .unwrap_or_default();
+                name_a.cmp(&name_b)
+            });
+
+            for (idx, conn_id) in group_connections.iter().enumerate() {
+                if let Some(conn) = self.connections.get_mut(conn_id) {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                    {
+                        conn.sort_order = idx as i32;
+                    }
+                    conn.touch();
+                }
+            }
+        }
+
+        // Sort ungrouped connections
+        let mut ungrouped: Vec<_> = self
+            .connections
+            .values()
+            .filter(|c| c.group_id.is_none())
+            .map(|c| c.id)
+            .collect();
+
+        ungrouped.sort_by(|a, b| {
+            let name_a = self
+                .connections
+                .get(a)
+                .map(|c| c.name.to_lowercase())
+                .unwrap_or_default();
+            let name_b = self
+                .connections
+                .get(b)
+                .map(|c| c.name.to_lowercase())
+                .unwrap_or_default();
+            name_a.cmp(&name_b)
+        });
+
+        for (idx, conn_id) in ungrouped.iter().enumerate() {
+            if let Some(conn) = self.connections.get_mut(conn_id) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    conn.sort_order = idx as i32;
+                }
+                conn.touch();
+            }
+        }
+
+        self.persist_groups()?;
+        self.persist_connections()?;
+        Ok(())
+    }
+
+    /// Updates the `last_connected` timestamp for a connection
+    ///
+    /// Sets the `last_connected` field to the current time. This should be called
+    /// when a connection is initiated.
+    ///
+    /// # Arguments
+    ///
+    /// * `connection_id` - The ID of the connection to update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection doesn't exist or persistence fails.
+    pub fn update_last_connected(&mut self, connection_id: Uuid) -> ConfigResult<()> {
+        let conn =
+            self.connections
+                .get_mut(&connection_id)
+                .ok_or_else(|| ConfigError::Validation {
+                    field: "connection_id".to_string(),
+                    reason: format!("Connection with ID {connection_id} not found"),
+                })?;
+
+        conn.last_connected = Some(Utc::now());
+        conn.touch();
+
+        self.persist_connections()?;
+        Ok(())
+    }
+
+    /// Sorts all connections by `last_connected` timestamp (most recent first)
+    ///
+    /// Connections with a `last_connected` timestamp are sorted in descending order
+    /// (most recently used first). Connections without a timestamp are placed at
+    /// the end, sorted alphabetically by name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persistence fails.
+    pub fn sort_by_recent(&mut self) -> ConfigResult<()> {
+        // Get all connection IDs
+        let mut conn_ids: Vec<Uuid> = self.connections.keys().copied().collect();
+
+        // Sort by last_connected descending, then by name for those without timestamp
+        conn_ids.sort_by(|a, b| {
+            let conn_a = self.connections.get(a);
+            let conn_b = self.connections.get(b);
+
+            match (
+                conn_a.and_then(|c| c.last_connected),
+                conn_b.and_then(|c| c.last_connected),
+            ) {
+                // Both have timestamps - sort descending (most recent first)
+                (Some(time_a), Some(time_b)) => time_b.cmp(&time_a),
+                // Only a has timestamp - a comes first
+                (Some(_), None) => std::cmp::Ordering::Less,
+                // Only b has timestamp - b comes first
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                // Neither has timestamp - sort by name
+                (None, None) => {
+                    let name_a = conn_a.map(|c| c.name.to_lowercase()).unwrap_or_default();
+                    let name_b = conn_b.map(|c| c.name.to_lowercase()).unwrap_or_default();
+                    name_a.cmp(&name_b)
+                }
+            }
+        });
+
+        // Update sort_order for all connections
+        for (idx, conn_id) in conn_ids.iter().enumerate() {
+            if let Some(conn) = self.connections.get_mut(conn_id) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    conn.sort_order = idx as i32;
+                }
+                conn.touch();
+            }
+        }
+
+        self.persist_connections()?;
+        Ok(())
+    }
+
+    // ========== Drag-Drop Reordering Operations ==========
+
+    /// Reorders a connection to be positioned after another connection
+    ///
+    /// Both connections must be in the same group. The source connection
+    /// will be placed immediately after the target connection in sort order.
+    ///
+    /// # Arguments
+    ///
+    /// * `connection_id` - The connection to move
+    /// * `target_id` - The connection to position after
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either connection doesn't exist, they're in different
+    /// groups, or persistence fails.
+    pub fn reorder_connection(&mut self, connection_id: Uuid, target_id: Uuid) -> ConfigResult<()> {
+        // Verify both connections exist
+        let source_group = self
+            .connections
+            .get(&connection_id)
+            .ok_or_else(|| ConfigError::Validation {
+                field: "connection_id".to_string(),
+                reason: format!("Connection with ID {connection_id} not found"),
+            })?
+            .group_id;
+
+        let target_group = self
+            .connections
+            .get(&target_id)
+            .ok_or_else(|| ConfigError::Validation {
+                field: "target_id".to_string(),
+                reason: format!("Connection with ID {target_id} not found"),
+            })?
+            .group_id;
+
+        // Verify they're in the same group
+        if source_group != target_group {
+            return Err(ConfigError::Validation {
+                field: "group_id".to_string(),
+                reason: "Connections must be in the same group for reordering".to_string(),
+            });
+        }
+
+        // Get target's sort_order
+        let target_sort_order = self
+            .connections
+            .get(&target_id)
+            .map_or(0, |c| c.sort_order);
+
+        // Get all connections in the same group, sorted by sort_order
+        let mut group_connections: Vec<_> = self
+            .connections
+            .values()
+            .filter(|c| c.group_id == source_group && c.id != connection_id)
+            .map(|c| (c.id, c.sort_order))
+            .collect();
+
+        group_connections.sort_by_key(|(_, order)| *order);
+
+        // Find the position to insert (after target)
+        let insert_pos = group_connections
+            .iter()
+            .position(|(id, _)| *id == target_id)
+            .map_or(group_connections.len(), |p| p + 1);
+
+        // Insert the source connection at the new position
+        group_connections.insert(insert_pos, (connection_id, target_sort_order));
+
+        // Update sort_order for all connections in the group
+        for (idx, (conn_id, _)) in group_connections.iter().enumerate() {
+            if let Some(conn) = self.connections.get_mut(conn_id) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    conn.sort_order = idx as i32;
+                }
+                conn.touch();
+            }
+        }
+
+        self.persist_connections()?;
+        Ok(())
+    }
+
+    /// Reorders a group to be positioned after another group
+    ///
+    /// Both groups must be at the same level (same parent). The source group
+    /// will be placed immediately after the target group in sort order.
+    ///
+    /// # Arguments
+    ///
+    /// * `group_id` - The group to move
+    /// * `target_id` - The group to position after
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either group doesn't exist, they have different
+    /// parents, or persistence fails.
+    pub fn reorder_group(&mut self, group_id: Uuid, target_id: Uuid) -> ConfigResult<()> {
+        // Verify both groups exist
+        let source_parent = self
+            .groups
+            .get(&group_id)
+            .ok_or_else(|| ConfigError::Validation {
+                field: "group_id".to_string(),
+                reason: format!("Group with ID {group_id} not found"),
+            })?
+            .parent_id;
+
+        let target_parent = self
+            .groups
+            .get(&target_id)
+            .ok_or_else(|| ConfigError::Validation {
+                field: "target_id".to_string(),
+                reason: format!("Group with ID {target_id} not found"),
+            })?
+            .parent_id;
+
+        // Verify they have the same parent
+        if source_parent != target_parent {
+            return Err(ConfigError::Validation {
+                field: "parent_id".to_string(),
+                reason: "Groups must have the same parent for reordering".to_string(),
+            });
+        }
+
+        // Get target's sort_order
+        let target_sort_order = self
+            .groups
+            .get(&target_id)
+            .map_or(0, |g| g.sort_order);
+
+        // Get all sibling groups, sorted by sort_order
+        let mut sibling_groups: Vec<_> = self
+            .groups
+            .values()
+            .filter(|g| g.parent_id == source_parent && g.id != group_id)
+            .map(|g| (g.id, g.sort_order))
+            .collect();
+
+        sibling_groups.sort_by_key(|(_, order)| *order);
+
+        // Find the position to insert (after target)
+        let insert_pos = sibling_groups
+            .iter()
+            .position(|(id, _)| *id == target_id)
+            .map_or(sibling_groups.len(), |p| p + 1);
+
+        // Insert the source group at the new position
+        sibling_groups.insert(insert_pos, (group_id, target_sort_order));
+
+        // Update sort_order for all sibling groups
+        for (idx, (gid, _)) in sibling_groups.iter().enumerate() {
+            if let Some(group) = self.groups.get_mut(gid) {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                {
+                    group.sort_order = idx as i32;
+                }
+            }
+        }
+
+        self.persist_groups()?;
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -752,8 +1290,13 @@ mod tests {
             )
             .unwrap();
 
-        manager.move_connection_to_group(conn_id, Some(group_id)).unwrap();
-        assert_eq!(manager.get_connection(conn_id).unwrap().group_id, Some(group_id));
+        manager
+            .move_connection_to_group(conn_id, Some(group_id))
+            .unwrap();
+        assert_eq!(
+            manager.get_connection(conn_id).unwrap().group_id,
+            Some(group_id)
+        );
 
         manager.delete_group(group_id).unwrap();
         assert!(manager.get_connection(conn_id).unwrap().group_id.is_none());

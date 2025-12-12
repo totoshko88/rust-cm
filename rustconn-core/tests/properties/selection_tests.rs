@@ -110,6 +110,7 @@ impl SelectionState {
     }
 
     /// Returns the total number of items
+    #[allow(dead_code)]
     pub fn item_count(&self) -> usize {
         self.items.len()
     }

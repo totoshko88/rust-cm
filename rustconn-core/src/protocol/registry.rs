@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::models::ProtocolType;
 
-use super::{Protocol, RdpProtocol, SshProtocol, VncProtocol};
+use super::{Protocol, RdpProtocol, SpiceProtocol, SshProtocol, VncProtocol};
 
 /// Registry for protocol handlers
 ///
@@ -25,10 +25,12 @@ impl ProtocolRegistry {
         let ssh = Arc::new(SshProtocol::new());
         let rdp = Arc::new(RdpProtocol::new());
         let vnc = Arc::new(VncProtocol::new());
+        let spice = Arc::new(SpiceProtocol::new());
 
         protocols.insert(ssh.protocol_id(), ssh);
         protocols.insert(rdp.protocol_id(), rdp);
         protocols.insert(vnc.protocol_id(), vnc);
+        protocols.insert(spice.protocol_id(), spice);
 
         Self { protocols }
     }
@@ -56,16 +58,14 @@ impl ProtocolRegistry {
     /// # Panics
     /// Panics if the protocol type is not registered (should never happen with built-in types)
     #[must_use]
-    pub fn get_by_type(&self, protocol_type: ProtocolType) -> Arc<dyn Protocol> {
+    pub fn get_by_type(&self, protocol_type: ProtocolType) -> Option<Arc<dyn Protocol>> {
         let id = match protocol_type {
             ProtocolType::Ssh => "ssh",
             ProtocolType::Rdp => "rdp",
             ProtocolType::Vnc => "vnc",
+            ProtocolType::Spice => "spice",
         };
-        self.protocols
-            .get(id)
-            .cloned()
-            .expect("All protocol types should be registered")
+        self.protocols.get(id).cloned()
     }
 
     /// Returns all registered protocol IDs

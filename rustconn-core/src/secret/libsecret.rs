@@ -73,7 +73,11 @@ impl LibSecretBackend {
         let mut attrs = self.build_attributes(connection_id);
         attrs.insert("key".to_string(), key.to_string());
 
-        let mut args = vec!["store".to_string(), "--label".to_string(), label.to_string()];
+        let mut args = vec![
+            "store".to_string(),
+            "--label".to_string(),
+            label.to_string(),
+        ];
         args.extend(Self::attrs_to_args(&attrs));
 
         let mut child = Command::new("secret-tool")
@@ -189,9 +193,7 @@ impl SecretBackend for LibSecretBackend {
     async fn retrieve(&self, connection_id: &str) -> SecretResult<Option<Credentials>> {
         let username = self.retrieve_value(connection_id, "username").await?;
         let password = self.retrieve_value(connection_id, "password").await?;
-        let key_passphrase = self
-            .retrieve_value(connection_id, "key_passphrase")
-            .await?;
+        let key_passphrase = self.retrieve_value(connection_id, "key_passphrase").await?;
 
         // If nothing was found, return None
         if username.is_none() && password.is_none() && key_passphrase.is_none() {

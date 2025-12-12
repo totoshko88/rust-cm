@@ -21,12 +21,10 @@ pub struct AnsibleInventoryImporter {
     custom_paths: Vec<PathBuf>,
 }
 
-
-
 impl AnsibleInventoryImporter {
     /// Creates a new Ansible inventory importer with default paths
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             custom_paths: Vec::new(),
         }
@@ -34,13 +32,14 @@ impl AnsibleInventoryImporter {
 
     /// Creates a new Ansible inventory importer with custom paths
     #[must_use]
-    pub fn with_paths(paths: Vec<PathBuf>) -> Self {
+    pub const fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self {
             custom_paths: paths,
         }
     }
 
     /// Parses inventory content (auto-detects format)
+    #[must_use] 
     pub fn parse_inventory(&self, content: &str, source_path: &str) -> ImportResult {
         // Try YAML first, then INI
         if content.trim().starts_with("---") || content.contains("hosts:") {
@@ -51,6 +50,7 @@ impl AnsibleInventoryImporter {
     }
 
     /// Parses INI-style Ansible inventory
+    #[must_use] 
     pub fn parse_ini_inventory(&self, content: &str, source_path: &str) -> ImportResult {
         let mut result = ImportResult::new();
         let mut current_group: Option<(String, Uuid)> = None;
@@ -137,6 +137,7 @@ impl AnsibleInventoryImporter {
     }
 
     /// Parses a host line from INI inventory
+    #[allow(clippy::unused_self)]
     fn parse_host_line(
         &self,
         line: &str,
@@ -157,7 +158,7 @@ impl AnsibleInventoryImporter {
             result.add_skipped(SkippedEntry::with_location(
                 host_pattern,
                 "Host ranges are not supported",
-                format!("{}:{}", source_path, line_num),
+                format!("{source_path}:{line_num}"),
             ));
             return None;
         }
@@ -181,7 +182,7 @@ impl AnsibleInventoryImporter {
             result.add_skipped(SkippedEntry::with_location(
                 host_pattern,
                 "Wildcard patterns are not supported",
-                format!("{}:{}", source_path, line_num),
+                format!("{source_path}:{line_num}"),
             ));
             return None;
         }
@@ -220,6 +221,7 @@ impl AnsibleInventoryImporter {
     }
 
     /// Parses YAML-style Ansible inventory
+    #[must_use] 
     pub fn parse_yaml_inventory(&self, content: &str, source_path: &str) -> ImportResult {
         let mut result = ImportResult::new();
 
@@ -229,7 +231,7 @@ impl AnsibleInventoryImporter {
             Err(e) => {
                 result.add_error(ImportError::ParseError {
                     source_name: "Ansible inventory".to_string(),
-                    reason: format!("Failed to parse YAML: {}", e),
+                    reason: format!("Failed to parse YAML: {e}"),
                 });
                 return result;
             }
@@ -244,7 +246,7 @@ impl AnsibleInventoryImporter {
                         // Process 'all' group's children
                         if let serde_yaml::Value::Mapping(all_map) = group_value {
                             if let Some(serde_yaml::Value::Mapping(children)) =
-                                all_map.get(&serde_yaml::Value::String("children".to_string()))
+                                all_map.get(serde_yaml::Value::String("children".to_string()))
                             {
                                 for (child_name, child_value) in children {
                                     if let serde_yaml::Value::String(child_name_str) = child_name {
@@ -260,13 +262,19 @@ impl AnsibleInventoryImporter {
                             }
                             // Also process hosts directly under 'all'
                             if let Some(hosts) =
-                                all_map.get(&serde_yaml::Value::String("hosts".to_string()))
+                                all_map.get(serde_yaml::Value::String("hosts".to_string()))
                             {
                                 self.process_yaml_hosts(hosts, None, source_path, &mut result);
                             }
                         }
                     } else {
-                        self.process_yaml_group(&name, &group_value, None, source_path, &mut result);
+                        self.process_yaml_group(
+                            &name,
+                            &group_value,
+                            None,
+                            source_path,
+                            &mut result,
+                        );
                     }
                 }
             }
@@ -285,23 +293,22 @@ impl AnsibleInventoryImporter {
         result: &mut ImportResult,
     ) {
         // Create group
-        let group = if let Some(parent) = parent_id {
-            ConnectionGroup::with_parent(name.to_string(), parent)
-        } else {
-            ConnectionGroup::new(name.to_string())
-        };
+        let group = parent_id.map_or_else(
+            || ConnectionGroup::new(name.to_string()),
+            |parent| ConnectionGroup::with_parent(name.to_string(), parent),
+        );
         let group_id = group.id;
         result.add_group(group);
 
         if let serde_yaml::Value::Mapping(map) = value {
             // Process hosts
-            if let Some(hosts) = map.get(&serde_yaml::Value::String("hosts".to_string())) {
+            if let Some(hosts) = map.get(serde_yaml::Value::String("hosts".to_string())) {
                 self.process_yaml_hosts(hosts, Some(group_id), source_path, result);
             }
 
             // Process children groups
             if let Some(serde_yaml::Value::Mapping(children)) =
-                map.get(&serde_yaml::Value::String("children".to_string()))
+                map.get(serde_yaml::Value::String("children".to_string()))
             {
                 for (child_name, child_value) in children {
                     if let serde_yaml::Value::String(child_name_str) = child_name {
@@ -319,6 +326,7 @@ impl AnsibleInventoryImporter {
     }
 
     /// Processes YAML hosts section
+    #[allow(clippy::unused_self)]
     fn process_yaml_hosts(
         &self,
         hosts: &serde_yaml::Value,
@@ -342,24 +350,22 @@ impl AnsibleInventoryImporter {
                     let (hostname, port, username, key_path) = match host_vars {
                         serde_yaml::Value::Mapping(vars) => {
                             let hostname = vars
-                                .get(&serde_yaml::Value::String("ansible_host".to_string()))
-                                .and_then(|v| v.as_str())
-                                .map(String::from)
-                                .unwrap_or_else(|| name.clone());
+                                .get(serde_yaml::Value::String("ansible_host".to_string()))
+                                .and_then(|v| v.as_str()).map_or_else(|| name.clone(), String::from);
 
+                            #[allow(clippy::cast_possible_truncation)]
                             let port = vars
-                                .get(&serde_yaml::Value::String("ansible_port".to_string()))
-                                .and_then(|v| v.as_u64())
-                                .map(|p| p as u16)
-                                .unwrap_or(22);
+                                .get(serde_yaml::Value::String("ansible_port".to_string()))
+                                .and_then(serde_yaml::Value::as_u64)
+                                .map_or(22, |p| p as u16);
 
                             let username = vars
-                                .get(&serde_yaml::Value::String("ansible_user".to_string()))
+                                .get(serde_yaml::Value::String("ansible_user".to_string()))
                                 .and_then(|v| v.as_str())
                                 .map(String::from);
 
                             let key_path = vars
-                                .get(&serde_yaml::Value::String(
+                                .get(serde_yaml::Value::String(
                                     "ansible_ssh_private_key_file".to_string(),
                                 ))
                                 .and_then(|v| v.as_str())

@@ -2,12 +2,16 @@
 //!
 //! **Feature: rustconn-enhancements, Property 3: Dialog Validation Round-Trip**
 //! **Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
+//!
+//! **Feature: rustconn-bugfixes, Property 1: Connection Validation**
+//! **Validates: Requirements 1.1, 1.2**
 
 use proptest::prelude::*;
 use rustconn_core::dialog_utils::{
     format_args, format_custom_options, parse_args, parse_custom_options, validate_host,
     validate_name, validate_port,
 };
+use rustconn_core::{ConfigManager, Connection, ProtocolConfig, SshAuthMethod, SshConfig};
 use std::collections::HashMap;
 
 // ========== Generators ==========
@@ -44,8 +48,7 @@ fn arb_valid_name() -> impl Strategy<Value = String> {
 
 /// Strategy for generating valid hostnames
 fn arb_valid_host() -> impl Strategy<Value = String> {
-    "[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?)*"
-        .prop_map(|s| s)
+    "[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?)*".prop_map(|s| s)
 }
 
 /// Strategy for generating valid ports
@@ -261,5 +264,118 @@ proptest! {
                 "Parsed args should not contain whitespace"
             );
         }
+    }
+}
+
+// ========== Connection Validation Property Tests ==========
+
+/// Strategy for generating SSH config
+fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
+    Just(SshConfig {
+        auth_method: SshAuthMethod::Password,
+        key_path: None,
+        proxy_jump: None,
+        use_control_master: false,
+        custom_options: HashMap::new(),
+        startup_command: None,
+    })
+}
+
+/// Strategy for generating protocol config
+fn arb_protocol_config() -> impl Strategy<Value = ProtocolConfig> {
+    arb_ssh_config().prop_map(ProtocolConfig::Ssh)
+}
+
+/// Strategy for generating whitespace-only strings (empty or spaces/tabs/newlines)
+fn arb_whitespace_string() -> impl Strategy<Value = String> {
+    prop_oneof![Just(String::new()), "[ \\t\\n]+".prop_map(|s| s),]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// **Feature: rustconn-bugfixes, Property 1: Connection Validation**
+    /// **Validates: Requirements 1.1, 1.2**
+    ///
+    /// For any connection data with empty name, validation SHALL return an error.
+    #[test]
+    fn connection_with_empty_name_fails_validation(
+        empty_name in arb_whitespace_string(),
+        host in arb_valid_host(),
+        port in arb_valid_port(),
+        protocol_config in arb_protocol_config(),
+    ) {
+        let conn = Connection::new(empty_name.clone(), host, port, protocol_config);
+        let result = ConfigManager::validate_connection(&conn);
+
+        prop_assert!(
+            result.is_err(),
+            "Connection with empty/whitespace name '{}' should fail validation",
+            empty_name
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 1: Connection Validation**
+    /// **Validates: Requirements 1.1, 1.2**
+    ///
+    /// For any connection data with empty host, validation SHALL return an error.
+    #[test]
+    fn connection_with_empty_host_fails_validation(
+        name in arb_valid_name(),
+        empty_host in arb_whitespace_string(),
+        port in arb_valid_port(),
+        protocol_config in arb_protocol_config(),
+    ) {
+        let conn = Connection::new(name, empty_host.clone(), port, protocol_config);
+        let result = ConfigManager::validate_connection(&conn);
+
+        prop_assert!(
+            result.is_err(),
+            "Connection with empty/whitespace host '{}' should fail validation",
+            empty_host
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 1: Connection Validation**
+    /// **Validates: Requirements 1.1, 1.2**
+    ///
+    /// For any connection data with valid name, host, and port, validation SHALL succeed.
+    #[test]
+    fn connection_with_valid_data_passes_validation(
+        name in arb_valid_name(),
+        host in arb_valid_host(),
+        port in arb_valid_port(),
+        protocol_config in arb_protocol_config(),
+    ) {
+        let conn = Connection::new(name.clone(), host.clone(), port, protocol_config);
+        let result = ConfigManager::validate_connection(&conn);
+
+        prop_assert!(
+            result.is_ok(),
+            "Connection with valid name '{}', host '{}', port {} should pass validation, got error: {:?}",
+            name,
+            host,
+            port,
+            result
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 1: Connection Validation**
+    /// **Validates: Requirements 1.1, 1.2**
+    ///
+    /// For any connection data with port 0, validation SHALL return an error.
+    #[test]
+    fn connection_with_zero_port_fails_validation(
+        name in arb_valid_name(),
+        host in arb_valid_host(),
+        protocol_config in arb_protocol_config(),
+    ) {
+        let conn = Connection::new(name, host, 0, protocol_config);
+        let result = ConfigManager::validate_connection(&conn);
+
+        prop_assert!(
+            result.is_err(),
+            "Connection with port 0 should fail validation"
+        );
     }
 }

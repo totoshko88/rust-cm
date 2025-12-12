@@ -5,6 +5,7 @@
 
 use crate::error::ImportError;
 use crate::models::{Connection, ConnectionGroup};
+use crate::progress::ProgressReporter;
 
 /// Result of an import operation containing successful imports and any issues encountered.
 #[derive(Debug, Default)]
@@ -77,7 +78,7 @@ impl ImportResult {
     }
 
     /// Merges another import result into this one
-    pub fn merge(&mut self, other: ImportResult) {
+    pub fn merge(&mut self, other: Self) {
         self.connections.extend(other.connections);
         self.groups.extend(other.groups);
         self.skipped.extend(other.skipped);
@@ -153,4 +154,85 @@ pub trait ImportSource: Send + Sync {
     ///
     /// Returns an error if the import fails completely.
     fn import_from_path(&self, path: &std::path::Path) -> Result<ImportResult, ImportError>;
+
+    /// Imports connections from a specific path with progress reporting.
+    ///
+    /// This method allows callers to receive progress updates during the import
+    /// and optionally cancel the operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to import from
+    /// * `progress` - Optional progress reporter for receiving updates
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the import fails completely or is cancelled.
+    fn import_from_path_with_progress(
+        &self,
+        path: &std::path::Path,
+        progress: Option<&dyn ProgressReporter>,
+    ) -> Result<ImportResult, ImportError> {
+        // Default implementation delegates to import_from_path
+        // Subclasses can override for actual progress reporting
+        if let Some(reporter) = progress {
+            reporter.report(0, 1, "Starting import...");
+            if reporter.is_cancelled() {
+                return Err(ImportError::Cancelled);
+            }
+        }
+
+        let result = self.import_from_path(path)?;
+
+        if let Some(reporter) = progress {
+            reporter.report(1, 1, "Import complete");
+        }
+
+        Ok(result)
+    }
+
+    /// Imports connections from the source with progress reporting.
+    ///
+    /// # Arguments
+    ///
+    /// * `progress` - Optional progress reporter for receiving updates
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the import fails completely or is cancelled.
+    fn import_with_progress(
+        &self,
+        progress: Option<&dyn ProgressReporter>,
+    ) -> Result<ImportResult, ImportError> {
+        let paths = self.default_paths();
+
+        if paths.is_empty() {
+            return Err(ImportError::FileNotFound(std::path::PathBuf::from(
+                "No default paths found",
+            )));
+        }
+
+        let total = paths.len();
+        let mut combined_result = ImportResult::new();
+
+        for (index, path) in paths.iter().enumerate() {
+            if let Some(reporter) = progress {
+                reporter.report(index, total, &format!("Importing from {}", path.display()));
+                if reporter.is_cancelled() {
+                    return Err(ImportError::Cancelled);
+                }
+            }
+
+            match self.import_from_path(path) {
+                Ok(result) => combined_result.merge(result),
+                Err(e) => combined_result.add_error(e),
+            }
+        }
+
+        if let Some(reporter) = progress {
+            reporter.report(total, total, "Import complete");
+        }
+
+        Ok(combined_result)
+    }
 }

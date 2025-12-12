@@ -3,7 +3,9 @@
 //! Tests correctness properties for importing connections from various sources.
 
 use proptest::prelude::*;
-use rustconn_core::import::{AnsibleInventoryImporter, AsbruImporter, RemminaImporter, SshConfigImporter};
+use rustconn_core::import::{
+    AnsibleInventoryImporter, AsbruImporter, RemminaImporter, SshConfigImporter,
+};
 use rustconn_core::models::{ProtocolConfig, SshAuthMethod};
 
 /// Generates a valid SSH config hostname (no wildcards, valid characters)
@@ -314,7 +316,10 @@ impl AsbruConnectionEntry {
         lines.push("  _is_group: 0".to_string());
         lines.push(format!("  name: \"{}\"", self.name));
         lines.push(format!("  ip: \"{}\"", self.host));
-        lines.push(format!("  method: \"{}\"", self.protocol.to_string().to_uppercase()));
+        lines.push(format!(
+            "  method: \"{}\"",
+            self.protocol.to_string().to_uppercase()
+        ));
 
         if let Some(port) = self.port {
             lines.push(format!("  port: {}", port));
@@ -356,9 +361,10 @@ fn arb_asbru_connection_entry() -> impl Strategy<Value = AsbruConnectionEntry> {
         prop::option::of(arb_username()),
         arb_asbru_protocol(),
     )
-        .prop_filter("key and name must not be empty", |(key, name, _, _, _, _)| {
-            !key.is_empty() && !name.is_empty()
-        })
+        .prop_filter(
+            "key and name must not be empty",
+            |(key, name, _, _, _, _)| !key.is_empty() && !name.is_empty(),
+        )
         .prop_map(|(key, name, host, port, user, protocol)| {
             // For SSH, optionally add auth settings
             let (auth_type, public_key) = if matches!(protocol, AsbruProtocol::Ssh) {
@@ -538,6 +544,184 @@ proptest! {
                 conn.name
             );
         }
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 2: Asbru Hostname Extraction**
+    /// **Validates: Requirements 2.1, 2.2**
+    ///
+    /// For any Asbru entry with hostname in ip, host, name, or title field,
+    /// the importer SHALL extract a valid hostname using the fallback chain.
+    /// Note: For name/title fields, the hostname must "look like" a hostname
+    /// (contain dots or be IP-like) to be extracted as a fallback.
+    #[test]
+    fn prop_asbru_hostname_extraction_fallback(
+        key in prop::string::string_regex("[a-z][a-z0-9_]{0,20}").unwrap(),
+        display_name in prop::string::string_regex("[A-Za-z][A-Za-z0-9 _-]{0,30}").unwrap(),
+        hostname in arb_hostname(),
+        // Which field contains the hostname (0=ip, 1=host, 2=name, 3=title)
+        hostname_field in 0u8..4,
+    ) {
+        prop_assume!(!key.is_empty() && !display_name.is_empty());
+        // For name/title fields (2, 3), hostname must contain dots to be recognized
+        // as a hostname-like value (this is by design - we don't want arbitrary names)
+        if hostname_field >= 2 {
+            prop_assume!(hostname.contains('.'));
+        }
+
+        let importer = AsbruImporter::new();
+
+        // Build YAML with hostname in different fields based on hostname_field
+        // Other fields are set to invalid values ("tmp" or empty)
+        let (ip_val, host_val, name_val, title_val) = match hostname_field {
+            0 => (hostname.clone(), String::new(), display_name.clone(), String::new()),
+            1 => ("tmp".to_string(), hostname.clone(), display_name.clone(), String::new()),
+            2 => ("tmp".to_string(), String::new(), hostname.clone(), String::new()),
+            3 => ("tmp".to_string(), String::new(), display_name.clone(), hostname.clone()),
+            _ => unreachable!(),
+        };
+
+        let yaml = format!(
+            r#"{}:
+  _is_group: 0
+  name: "{}"
+  title: "{}"
+  ip: "{}"
+  host: "{}"
+  method: "SSH"
+"#,
+            key, name_val, title_val, ip_val, host_val
+        );
+
+        let result = importer.parse_config(&yaml, "test");
+
+        // Property: Connection should be imported (not skipped)
+        prop_assert_eq!(
+            result.connections.len(),
+            1,
+            "Expected 1 connection, got {}. Skipped: {:?}. YAML:\n{}",
+            result.connections.len(),
+            result.skipped,
+            yaml
+        );
+
+        // Property: Extracted hostname should match the expected hostname
+        prop_assert_eq!(
+            &result.connections[0].host,
+            &hostname,
+            "Hostname mismatch. Expected '{}', got '{}'. Field index: {}",
+            hostname,
+            result.connections[0].host,
+            hostname_field
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 2: Asbru Hostname Extraction (Dynamic Variables)**
+    /// **Validates: Requirements 2.1, 2.2, 2.3**
+    ///
+    /// For any Asbru entry with dynamic variables (${VAR} syntax) in hostname fields,
+    /// the importer SHALL preserve the variable syntax and extract it as hostname.
+    #[test]
+    fn prop_asbru_hostname_extraction_preserves_dynamic_variables(
+        key in prop::string::string_regex("[a-z][a-z0-9_]{0,20}").unwrap(),
+        var_name in prop::string::string_regex("[A-Z][A-Z0-9_]{0,15}").unwrap(),
+        // Which field contains the variable (0=ip, 1=host, 2=name, 3=title)
+        var_field in 0u8..4,
+    ) {
+        prop_assume!(!key.is_empty() && !var_name.is_empty());
+
+        let importer = AsbruImporter::new();
+        let dynamic_var = format!("${{{}}}", var_name);
+
+        // Build YAML with dynamic variable in different fields
+        let (ip_val, host_val, name_val, title_val) = match var_field {
+            0 => (dynamic_var.clone(), String::new(), "Server Name".to_string(), String::new()),
+            1 => ("tmp".to_string(), dynamic_var.clone(), "Server Name".to_string(), String::new()),
+            2 => ("tmp".to_string(), String::new(), dynamic_var.clone(), String::new()),
+            3 => ("tmp".to_string(), String::new(), "Server Name".to_string(), dynamic_var.clone()),
+            _ => unreachable!(),
+        };
+
+        let yaml = format!(
+            r#"{}:
+  _is_group: 0
+  name: "{}"
+  title: "{}"
+  ip: "{}"
+  host: "{}"
+  method: "SSH"
+"#,
+            key, name_val, title_val, ip_val, host_val
+        );
+
+        let result = importer.parse_config(&yaml, "test");
+
+        // Property: Connection should be imported (not skipped)
+        prop_assert_eq!(
+            result.connections.len(),
+            1,
+            "Expected 1 connection with dynamic variable, got {}. Skipped: {:?}. YAML:\n{}",
+            result.connections.len(),
+            result.skipped,
+            yaml
+        );
+
+        // Property: Dynamic variable should be preserved as-is
+        prop_assert_eq!(
+            &result.connections[0].host,
+            &dynamic_var,
+            "Dynamic variable not preserved. Expected '{}', got '{}'",
+            dynamic_var,
+            result.connections[0].host
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 2: Asbru Hostname Extraction (Skip Invalid)**
+    /// **Validates: Requirements 2.1, 2.2**
+    ///
+    /// For any Asbru entry with no valid hostname in any field (all "tmp" or empty),
+    /// the importer SHALL skip the entry with a descriptive message.
+    #[test]
+    fn prop_asbru_hostname_extraction_skips_invalid(
+        key in prop::string::string_regex("[a-z][a-z0-9_]{0,20}").unwrap(),
+        name in prop::string::string_regex("[A-Za-z][A-Za-z0-9 _-]{0,30}").unwrap(),
+    ) {
+        prop_assume!(!key.is_empty() && !name.is_empty());
+        // Ensure name doesn't look like a hostname (no dots, not an IP)
+        prop_assume!(!name.contains('.'));
+
+        let importer = AsbruImporter::new();
+
+        // All hostname fields are invalid
+        let yaml = format!(
+            r#"{}:
+  _is_group: 0
+  name: "{}"
+  title: ""
+  ip: "tmp"
+  host: ""
+  method: "SSH"
+"#,
+            key, name
+        );
+
+        let result = importer.parse_config(&yaml, "test");
+
+        // Property: No connections should be imported
+        prop_assert_eq!(
+            result.connections.len(),
+            0,
+            "Expected 0 connections (should be skipped), got {}. YAML:\n{}",
+            result.connections.len(),
+            yaml
+        );
+
+        // Property: Entry should be in skipped list
+        prop_assert_eq!(
+            result.skipped.len(),
+            1,
+            "Expected 1 skipped entry, got {}",
+            result.skipped.len()
+        );
     }
 }
 
@@ -832,7 +1016,8 @@ impl AnsibleHostEntry {
         }
 
         // If no vars, add empty mapping
-        if self.ansible_host.is_none() && self.ansible_port.is_none() && self.ansible_user.is_none() {
+        if self.ansible_host.is_none() && self.ansible_port.is_none() && self.ansible_user.is_none()
+        {
             lines[0] = format!("        {}:", self.name);
         }
 
@@ -855,12 +1040,14 @@ fn arb_ansible_host_entry() -> impl Strategy<Value = AnsibleHostEntry> {
         prop::option::of(arb_port()),
         prop::option::of(arb_username()),
     )
-        .prop_map(|(name, ansible_host, ansible_port, ansible_user)| AnsibleHostEntry {
-            name,
-            ansible_host,
-            ansible_port,
-            ansible_user,
-        })
+        .prop_map(
+            |(name, ansible_host, ansible_port, ansible_user)| AnsibleHostEntry {
+                name,
+                ansible_host,
+                ansible_port,
+                ansible_user,
+            },
+        )
 }
 
 /// Strategy for generating multiple Ansible host entries with unique names

@@ -9,11 +9,11 @@ mod group;
 mod protocol;
 mod snippet;
 
-pub use connection::Connection;
+pub use connection::{Connection, PasswordSource};
 pub use credentials::Credentials;
 pub use group::ConnectionGroup;
 pub use protocol::{
-    ProtocolConfig, ProtocolType, RdpClient, RdpConfig, RdpGateway, Resolution, SshAuthMethod,
-    SshConfig, VncClient, VncConfig,
+    ProtocolConfig, ProtocolType, RdpConfig, RdpGateway, Resolution, SharedFolder,
+    SpiceConfig, SpiceImageCompression, SshAuthMethod, SshConfig, VncConfig,
 };
 pub use snippet::{Snippet, SnippetVariable};

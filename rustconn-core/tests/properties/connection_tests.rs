@@ -3,10 +3,11 @@
 //! **Feature: rustconn, Property 1: Connection CRUD Data Integrity**
 //! **Validates: Requirements 1.1, 1.2, 1.3**
 
+use chrono;
 use proptest::prelude::*;
 use rustconn_core::{
-    ConfigManager, Connection, ConnectionManager, ProtocolConfig, RdpClient, RdpConfig,
-    RdpGateway, Resolution, SshAuthMethod, SshConfig, VncClient, VncConfig,
+    ConfigManager, Connection, ConnectionManager, ProtocolConfig, RdpConfig, RdpGateway,
+    Resolution, SshAuthMethod, SshConfig, VncConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -22,8 +23,7 @@ fn arb_name() -> impl Strategy<Value = String> {
 
 // Strategy for generating valid hostnames (non-empty)
 fn arb_host() -> impl Strategy<Value = String> {
-    "[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?)*"
-        .prop_map(|s| s)
+    "[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,15}[a-z0-9])?)*".prop_map(|s| s)
 }
 
 // Strategy for generating valid ports (non-zero)
@@ -33,10 +33,7 @@ fn arb_port() -> impl Strategy<Value = u16> {
 
 // Strategy for generating optional usernames
 fn arb_username() -> impl Strategy<Value = Option<String>> {
-    prop_oneof![
-        Just(None),
-        "[a-z][a-z0-9_]{0,15}".prop_map(Some),
-    ]
+    prop_oneof![Just(None), "[a-z][a-z0-9_]{0,15}".prop_map(Some),]
 }
 
 // Strategy for generating tags
@@ -64,10 +61,7 @@ fn arb_optional_path() -> impl Strategy<Value = Option<PathBuf>> {
 
 // Strategy for optional string
 fn arb_optional_string() -> impl Strategy<Value = Option<String>> {
-    prop_oneof![
-        Just(None),
-        "[a-zA-Z0-9_-]{1,20}".prop_map(Some),
-    ]
+    prop_oneof![Just(None), "[a-zA-Z0-9_-]{1,20}".prop_map(Some),]
 }
 
 // Strategy for custom SSH options
@@ -86,7 +80,14 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
         arb_optional_string(),
     )
         .prop_map(
-            |(auth_method, key_path, proxy_jump, use_control_master, custom_options, startup_command)| {
+            |(
+                auth_method,
+                key_path,
+                proxy_jump,
+                use_control_master,
+                custom_options,
+                startup_command,
+            )| {
                 SshConfig {
                     auth_method,
                     key_path,
@@ -97,14 +98,6 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
                 }
             },
         )
-}
-
-// Strategy for RDP client
-fn arb_rdp_client() -> impl Strategy<Value = RdpClient> {
-    prop_oneof![
-        Just(RdpClient::FreeRdp),
-        "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(|s| RdpClient::Custom(PathBuf::from(s))),
-    ]
 }
 
 // Strategy for optional resolution
@@ -127,13 +120,15 @@ fn arb_optional_color_depth() -> impl Strategy<Value = Option<u8>> {
 fn arb_optional_gateway() -> impl Strategy<Value = Option<RdpGateway>> {
     prop_oneof![
         Just(None),
-        (arb_host(), 1u16..65535u16, arb_optional_string()).prop_map(|(hostname, port, username)| {
-            Some(RdpGateway {
-                hostname,
-                port,
-                username,
-            })
-        }),
+        (arb_host(), 1u16..65535u16, arb_optional_string()).prop_map(
+            |(hostname, port, username)| {
+                Some(RdpGateway {
+                    hostname,
+                    port,
+                    username,
+                })
+            }
+        ),
     ]
 }
 
@@ -145,7 +140,6 @@ fn arb_custom_args() -> impl Strategy<Value = Vec<String>> {
 // Strategy for RDP config
 fn arb_rdp_config() -> impl Strategy<Value = RdpConfig> {
     (
-        arb_rdp_client(),
         arb_optional_resolution(),
         arb_optional_color_depth(),
         any::<bool>(),
@@ -153,24 +147,15 @@ fn arb_rdp_config() -> impl Strategy<Value = RdpConfig> {
         arb_custom_args(),
     )
         .prop_map(
-            |(client, resolution, color_depth, audio_redirect, gateway, custom_args)| RdpConfig {
-                client,
+            |(resolution, color_depth, audio_redirect, gateway, custom_args)| RdpConfig {
                 resolution,
                 color_depth,
                 audio_redirect,
                 gateway,
+                shared_folders: Vec::new(),
                 custom_args,
             },
         )
-}
-
-// Strategy for VNC client
-fn arb_vnc_client() -> impl Strategy<Value = VncClient> {
-    prop_oneof![
-        Just(VncClient::TightVnc),
-        Just(VncClient::TigerVnc),
-        "[a-z]{1,10}(/[a-z]{1,10}){0,2}".prop_map(|s| VncClient::Custom(PathBuf::from(s))),
-    ]
 }
 
 // Strategy for optional encoding
@@ -188,28 +173,25 @@ fn arb_optional_encoding() -> impl Strategy<Value = Option<String>> {
 
 // Strategy for optional compression/quality (0-9)
 fn arb_optional_level() -> impl Strategy<Value = Option<u8>> {
-    prop_oneof![
-        Just(None),
-        (0u8..=9u8).prop_map(Some),
-    ]
+    prop_oneof![Just(None), (0u8..=9u8).prop_map(Some),]
 }
 
 // Strategy for VNC config
 fn arb_vnc_config() -> impl Strategy<Value = VncConfig> {
     (
-        arb_vnc_client(),
         arb_optional_encoding(),
         arb_optional_level(),
         arb_optional_level(),
         arb_custom_args(),
     )
-        .prop_map(|(client, encoding, compression, quality, custom_args)| VncConfig {
-            client,
-            encoding,
-            compression,
-            quality,
-            custom_args,
-        })
+        .prop_map(
+            |(encoding, compression, quality, custom_args)| VncConfig {
+                encoding,
+                compression,
+                quality,
+                custom_args,
+            },
+        )
 }
 
 // Strategy for protocol config
@@ -250,7 +232,6 @@ fn create_test_manager() -> (ConnectionManager, TempDir) {
     let manager = ConnectionManager::new(config_manager).unwrap();
     (manager, temp_dir)
 }
-
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(100))]
@@ -465,7 +446,6 @@ proptest! {
         prop_assert_eq!(&retrieved.protocol_config, &conn.protocol_config, "Protocol config should be preserved");
     }
 }
-
 
 // ========== Group Hierarchy Property Tests ==========
 
@@ -855,7 +835,6 @@ proptest! {
     }
 }
 
-
 // ========== Search Property Tests ==========
 
 proptest! {
@@ -1209,15 +1188,15 @@ proptest! {
 
         // Create a list with some valid IDs and some invalid (non-existent) IDs
         let mut ids_to_delete = Vec::new();
-        
+
         // Add first valid ID
         if !created_ids.is_empty() {
             ids_to_delete.push(created_ids[0]);
         }
-        
+
         // Add a non-existent ID (will fail)
         ids_to_delete.push(Uuid::new_v4());
-        
+
         // Add second valid ID if available
         if created_ids.len() > 1 {
             ids_to_delete.push(created_ids[1]);
@@ -1247,7 +1226,7 @@ proptest! {
             .iter()
             .filter(|id| created_ids.contains(id))
             .count();
-        
+
         prop_assert_eq!(
             success_count,
             expected_successes,
@@ -1296,7 +1275,7 @@ proptest! {
         let conn_id = manager
             .create_connection_from(conn)
             .expect("Should create connection");
-        
+
         manager
             .move_connection_to_group(conn_id, Some(group_ids[0]))
             .expect("Should move connection to group");
@@ -1334,5 +1313,965 @@ proptest! {
                 "Other groups should still exist"
             );
         }
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 3: Connection Duplication**
+    /// **Validates: Requirements 3.3**
+    ///
+    /// For any connection, duplicating it SHALL create a new connection with "(copy)"
+    /// suffix and different UUID while preserving all other fields.
+    #[test]
+    fn connection_duplication_preserves_fields_with_new_id(
+        conn in arb_connection(),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create original connection
+        let original_id = manager
+            .create_connection_from(conn.clone())
+            .expect("Should create original connection");
+
+        // Get the original connection
+        let original = manager
+            .get_connection(original_id)
+            .expect("Original should exist")
+            .clone();
+
+        // Simulate duplication: clone, change name with "(copy)" suffix, generate new UUID
+        let mut duplicate = original.clone();
+        duplicate.id = Uuid::new_v4();
+        duplicate.name = format!("{} (copy)", original.name);
+
+        // Create the duplicate
+        let duplicate_id = manager
+            .create_connection_from(duplicate.clone())
+            .expect("Should create duplicate connection");
+
+        // Verify duplicate has different UUID
+        prop_assert_ne!(
+            duplicate_id, original_id,
+            "Duplicate should have different UUID"
+        );
+
+        // Retrieve both connections
+        let retrieved_original = manager
+            .get_connection(original_id)
+            .expect("Original should still exist");
+        let retrieved_duplicate = manager
+            .get_connection(duplicate_id)
+            .expect("Duplicate should exist");
+
+        // Verify name has "(copy)" suffix
+        prop_assert!(
+            retrieved_duplicate.name.contains("(copy)"),
+            "Duplicate name should contain '(copy)' suffix"
+        );
+
+        // Verify all other fields are preserved
+        prop_assert_eq!(
+            &retrieved_duplicate.host,
+            &retrieved_original.host,
+            "Host should be preserved"
+        );
+        prop_assert_eq!(
+            retrieved_duplicate.port,
+            retrieved_original.port,
+            "Port should be preserved"
+        );
+        prop_assert_eq!(
+            &retrieved_duplicate.username,
+            &retrieved_original.username,
+            "Username should be preserved"
+        );
+        prop_assert_eq!(
+            &retrieved_duplicate.protocol_config,
+            &retrieved_original.protocol_config,
+            "Protocol config should be preserved"
+        );
+        prop_assert_eq!(
+            &retrieved_duplicate.tags,
+            &retrieved_original.tags,
+            "Tags should be preserved"
+        );
+        prop_assert_eq!(
+            retrieved_duplicate.group_id,
+            retrieved_original.group_id,
+            "Group ID should be preserved"
+        );
+
+        // Verify both connections exist independently
+        prop_assert_eq!(
+            manager.connection_count(),
+            2,
+            "Should have 2 connections after duplication"
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 4: Group Deletion Cascade**
+    /// **Validates: Requirements 3.7**
+    ///
+    /// For any group with connections, deleting the group with cascade SHALL remove
+    /// all connections within that group.
+    #[test]
+    fn group_deletion_cascade_removes_all_connections(
+        group_name in arb_group_name(),
+        connections in prop::collection::vec(arb_connection(), 1..5),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create a group
+        let group_id = manager
+            .create_group(group_name)
+            .expect("Should create group");
+
+        // Create connections and move them to the group
+        let mut conn_ids = Vec::new();
+        for conn in connections {
+            let conn_id = manager
+                .create_connection_from(conn)
+                .expect("Should create connection");
+            manager
+                .move_connection_to_group(conn_id, Some(group_id))
+                .expect("Should move connection to group");
+            conn_ids.push(conn_id);
+        }
+
+        // Verify connections are in the group
+        let count_before = manager.count_connections_in_group(group_id);
+        prop_assert_eq!(
+            count_before,
+            conn_ids.len(),
+            "All connections should be in the group"
+        );
+
+        // Delete the group with cascade
+        manager
+            .delete_group_cascade(group_id)
+            .expect("Should delete group with cascade");
+
+        // Verify group is deleted
+        prop_assert!(
+            manager.get_group(group_id).is_none(),
+            "Group should be deleted"
+        );
+
+        // Verify all connections in the group are deleted
+        for conn_id in &conn_ids {
+            prop_assert!(
+                manager.get_connection(*conn_id).is_none(),
+                "Connection should be deleted with group"
+            );
+        }
+
+        // Verify connection count is 0
+        prop_assert_eq!(
+            manager.connection_count(),
+            0,
+            "All connections should be deleted"
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 4: Group Deletion Cascade**
+    /// **Validates: Requirements 3.7**
+    ///
+    /// Cascade delete should also delete connections in nested child groups.
+    #[test]
+    fn group_deletion_cascade_includes_nested_groups(
+        parent_name in arb_group_name(),
+        child_name in arb_group_name(),
+        parent_conn in arb_connection(),
+        child_conn in arb_connection(),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create parent group
+        let parent_id = manager
+            .create_group(parent_name)
+            .expect("Should create parent group");
+
+        // Create child group under parent
+        let child_id = manager
+            .create_group_with_parent(child_name, parent_id)
+            .expect("Should create child group");
+
+        // Create connection in parent group
+        let parent_conn_id = manager
+            .create_connection_from(parent_conn)
+            .expect("Should create parent connection");
+        manager
+            .move_connection_to_group(parent_conn_id, Some(parent_id))
+            .expect("Should move connection to parent group");
+
+        // Create connection in child group
+        let child_conn_id = manager
+            .create_connection_from(child_conn)
+            .expect("Should create child connection");
+        manager
+            .move_connection_to_group(child_conn_id, Some(child_id))
+            .expect("Should move connection to child group");
+
+        // Verify both connections are counted
+        let count = manager.count_connections_in_group(parent_id);
+        prop_assert_eq!(count, 2, "Should count connections in parent and child groups");
+
+        // Delete parent group with cascade
+        manager
+            .delete_group_cascade(parent_id)
+            .expect("Should delete parent group with cascade");
+
+        // Verify both groups are deleted
+        prop_assert!(
+            manager.get_group(parent_id).is_none(),
+            "Parent group should be deleted"
+        );
+        prop_assert!(
+            manager.get_group(child_id).is_none(),
+            "Child group should be deleted"
+        );
+
+        // Verify both connections are deleted
+        prop_assert!(
+            manager.get_connection(parent_conn_id).is_none(),
+            "Parent connection should be deleted"
+        );
+        prop_assert!(
+            manager.get_connection(child_conn_id).is_none(),
+            "Child connection should be deleted"
+        );
+    }
+}
+
+// ========== Group-Scoped Sorting Property Tests ==========
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// **Feature: rustconn-bugfixes, Property 5: Group-Scoped Sorting**
+    /// **Validates: Requirements 4.1, 4.2, 4.3, 4.4**
+    ///
+    /// For any set of connections, sorting within a group SHALL only reorder
+    /// connections in that group, leaving other groups unchanged.
+    #[test]
+    fn sort_group_only_affects_target_group(
+        group1_name in arb_group_name(),
+        group2_name in arb_group_name(),
+        conn_names_g1 in prop::collection::vec(arb_name(), 2..5),
+        conn_names_g2 in prop::collection::vec(arb_name(), 2..5),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create two groups
+        let group1_id = manager.create_group(group1_name).expect("Should create group 1");
+        let group2_id = manager.create_group(group2_name).expect("Should create group 2");
+
+        // Create connections in group 1
+        let mut group1_conn_ids = Vec::new();
+        for name in &conn_names_g1 {
+            let conn = Connection::new_ssh(name.clone(), "host1.example.com".to_string(), 22)
+                .with_group(group1_id);
+            let id = manager.create_connection_from(conn).expect("Should create connection");
+            group1_conn_ids.push(id);
+        }
+
+        // Create connections in group 2
+        let mut group2_conn_ids = Vec::new();
+        for name in &conn_names_g2 {
+            let conn = Connection::new_ssh(name.clone(), "host2.example.com".to_string(), 22)
+                .with_group(group2_id);
+            let id = manager.create_connection_from(conn).expect("Should create connection");
+            group2_conn_ids.push(id);
+        }
+
+        // Record original sort_order values for group 2 connections
+        let original_group2_orders: Vec<(Uuid, i32)> = group2_conn_ids
+            .iter()
+            .map(|&id| {
+                let conn = manager.get_connection(id).unwrap();
+                (id, conn.sort_order)
+            })
+            .collect();
+
+        // Sort only group 1
+        manager.sort_group(group1_id).expect("Should sort group 1");
+
+        // Verify group 1 connections are sorted alphabetically
+        let group1_conns: Vec<_> = manager.get_by_group(group1_id);
+        let mut sorted_names: Vec<_> = group1_conns.iter().map(|c| c.name.to_lowercase()).collect();
+        sorted_names.sort();
+
+        let actual_names: Vec<_> = {
+            let mut conns: Vec<_> = group1_conns.iter().collect();
+            conns.sort_by_key(|c| c.sort_order);
+            conns.iter().map(|c| c.name.to_lowercase()).collect()
+        };
+
+        prop_assert_eq!(
+            actual_names, sorted_names,
+            "Group 1 connections should be sorted alphabetically by sort_order"
+        );
+
+        // Verify group 2 connections are unchanged (sort_order preserved)
+        for (id, original_order) in &original_group2_orders {
+            let conn = manager.get_connection(*id).expect("Connection should exist");
+            prop_assert_eq!(
+                conn.sort_order, *original_order,
+                "Group 2 connection sort_order should be unchanged after sorting group 1"
+            );
+        }
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 5: Group-Scoped Sorting**
+    /// **Validates: Requirements 4.2, 4.3**
+    ///
+    /// For any set of connections, sort_all SHALL sort all groups and their
+    /// connections alphabetically, including ungrouped connections.
+    #[test]
+    fn sort_all_sorts_everything_alphabetically(
+        group_names in prop::collection::vec(arb_group_name(), 1..4),
+        conn_names in prop::collection::vec(arb_name(), 3..8),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create groups
+        let mut group_ids = Vec::new();
+        for name in &group_names {
+            let id = manager.create_group(name.clone()).expect("Should create group");
+            group_ids.push(id);
+        }
+
+        // Create connections - some in groups, some ungrouped
+        for (i, name) in conn_names.iter().enumerate() {
+            let conn = if i < group_ids.len() {
+                // Put in a group
+                Connection::new_ssh(name.clone(), "host.example.com".to_string(), 22)
+                    .with_group(group_ids[i % group_ids.len()])
+            } else {
+                // Ungrouped
+                Connection::new_ssh(name.clone(), "host.example.com".to_string(), 22)
+            };
+            manager.create_connection_from(conn).expect("Should create connection");
+        }
+
+        // Sort all
+        manager.sort_all().expect("Should sort all");
+
+        // Verify root groups are sorted alphabetically by sort_order
+        let root_groups = manager.get_root_groups();
+        let mut sorted_group_names: Vec<_> = root_groups.iter().map(|g| g.name.to_lowercase()).collect();
+        sorted_group_names.sort();
+
+        let actual_group_names: Vec<_> = {
+            let mut groups: Vec<_> = root_groups.iter().collect();
+            groups.sort_by_key(|g| g.sort_order);
+            groups.iter().map(|g| g.name.to_lowercase()).collect()
+        };
+
+        prop_assert_eq!(
+            actual_group_names, sorted_group_names,
+            "Root groups should be sorted alphabetically by sort_order"
+        );
+
+        // Verify ungrouped connections are sorted alphabetically by sort_order
+        let ungrouped = manager.get_ungrouped();
+        if !ungrouped.is_empty() {
+            let mut sorted_conn_names: Vec<_> = ungrouped.iter().map(|c| c.name.to_lowercase()).collect();
+            sorted_conn_names.sort();
+
+            let actual_conn_names: Vec<_> = {
+                let mut conns: Vec<_> = ungrouped.iter().collect();
+                conns.sort_by_key(|c| c.sort_order);
+                conns.iter().map(|c| c.name.to_lowercase()).collect()
+            };
+
+            prop_assert_eq!(
+                actual_conn_names, sorted_conn_names,
+                "Ungrouped connections should be sorted alphabetically by sort_order"
+            );
+        }
+
+        // Verify connections within each group are sorted alphabetically
+        for group_id in &group_ids {
+            let group_conns = manager.get_by_group(*group_id);
+            if !group_conns.is_empty() {
+                let mut sorted_names: Vec<_> = group_conns.iter().map(|c| c.name.to_lowercase()).collect();
+                sorted_names.sort();
+
+                let actual_names: Vec<_> = {
+                    let mut conns: Vec<_> = group_conns.iter().collect();
+                    conns.sort_by_key(|c| c.sort_order);
+                    conns.iter().map(|c| c.name.to_lowercase()).collect()
+                };
+
+                prop_assert_eq!(
+                    actual_names, sorted_names,
+                    "Connections in group should be sorted alphabetically by sort_order"
+                );
+            }
+        }
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 5: Group-Scoped Sorting**
+    /// **Validates: Requirements 4.4**
+    ///
+    /// After sorting, the sort order SHALL be persisted to configuration.
+    #[test]
+    fn sort_persists_to_configuration(
+        group_name in arb_group_name(),
+        conn_names in prop::collection::vec(arb_name(), 2..5),
+    ) {
+        let temp_dir = TempDir::new().unwrap();
+        let config_manager = ConfigManager::with_config_dir(temp_dir.path().to_path_buf());
+
+        // Create manager and add data
+        let group_id;
+        let conn_ids: Vec<Uuid>;
+        {
+            let mut manager = ConnectionManager::new(config_manager.clone()).unwrap();
+
+            group_id = manager.create_group(group_name).expect("Should create group");
+
+            conn_ids = conn_names
+                .iter()
+                .map(|name| {
+                    let conn = Connection::new_ssh(name.clone(), "host.example.com".to_string(), 22)
+                        .with_group(group_id);
+                    manager.create_connection_from(conn).expect("Should create connection")
+                })
+                .collect();
+
+            // Sort the group
+            manager.sort_group(group_id).expect("Should sort group");
+        }
+
+        // Create a new manager to reload from disk
+        let manager2 = ConnectionManager::new(config_manager).unwrap();
+
+        // Verify sort_order values were persisted
+        for conn_id in &conn_ids {
+            let conn = manager2.get_connection(*conn_id).expect("Connection should exist after reload");
+            // Just verify the connection exists and has a valid sort_order
+            prop_assert!(
+                conn.sort_order >= 0,
+                "Sort order should be non-negative after reload"
+            );
+        }
+
+        // Verify the connections are still sorted alphabetically by sort_order
+        let group_conns = manager2.get_by_group(group_id);
+        let mut sorted_names: Vec<_> = group_conns.iter().map(|c| c.name.to_lowercase()).collect();
+        sorted_names.sort();
+
+        let actual_names: Vec<_> = {
+            let mut conns: Vec<_> = group_conns.iter().collect();
+            conns.sort_by_key(|c| c.sort_order);
+            conns.iter().map(|c| c.name.to_lowercase()).collect()
+        };
+
+        prop_assert_eq!(
+            actual_names, sorted_names,
+            "Sort order should be persisted and connections should remain sorted after reload"
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 6: Drag-Drop Reordering**
+    /// **Validates: Requirements 5.1, 5.2, 5.3, 5.5**
+    ///
+    /// For any connection moved via drag-drop, the connection's group_id and sort_order
+    /// SHALL be updated correctly.
+    #[test]
+    fn drag_drop_reorder_updates_sort_order(
+        group_name in arb_group_name(),
+        conn_names in prop::collection::vec(arb_name(), 3..6),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create a group
+        let group_id = manager
+            .create_group(group_name)
+            .expect("Should create group");
+
+        // Create connections in the group
+        let mut conn_ids = Vec::new();
+        for name in &conn_names {
+            let conn = Connection::new_ssh(name.clone(), "host.example.com".to_string(), 22)
+                .with_group(group_id);
+            let conn_id = manager
+                .create_connection_from(conn)
+                .expect("Should create connection");
+            conn_ids.push(conn_id);
+        }
+
+        // Verify we have at least 3 connections
+        prop_assert!(conn_ids.len() >= 3, "Need at least 3 connections for reorder test");
+
+        // Get initial sort orders (for verification that they change)
+        let _initial_orders: Vec<i32> = conn_ids
+            .iter()
+            .map(|id| manager.get_connection(*id).unwrap().sort_order)
+            .collect();
+
+        // Reorder: move first connection after the last one
+        let source_id = conn_ids[0];
+        let target_id = conn_ids[conn_ids.len() - 1];
+
+        manager
+            .reorder_connection(source_id, target_id)
+            .expect("Should reorder connection");
+
+        // Verify the source connection is now after the target
+        let source_order = manager.get_connection(source_id).unwrap().sort_order;
+        let target_order = manager.get_connection(target_id).unwrap().sort_order;
+
+        prop_assert!(
+            source_order > target_order || source_order == target_order + 1,
+            "Source should be positioned after target: source_order={}, target_order={}",
+            source_order, target_order
+        );
+
+        // Verify all connections still have unique sort orders
+        let mut orders: Vec<i32> = conn_ids
+            .iter()
+            .map(|id| manager.get_connection(*id).unwrap().sort_order)
+            .collect();
+        orders.sort();
+        orders.dedup();
+        prop_assert_eq!(
+            orders.len(),
+            conn_ids.len(),
+            "All connections should have unique sort orders"
+        );
+
+        // Verify sort orders are sequential (0, 1, 2, ...)
+        for (idx, order) in orders.iter().enumerate() {
+            prop_assert_eq!(
+                *order,
+                i32::try_from(idx).unwrap(),
+                "Sort orders should be sequential"
+            );
+        }
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 6: Drag-Drop Reordering**
+    /// **Validates: Requirements 5.2, 5.3**
+    ///
+    /// Moving a connection to a different group via drag-drop SHALL update
+    /// the group_id and assign a valid sort_order in the new group.
+    #[test]
+    fn drag_drop_move_to_group_updates_group_id(
+        group1_name in arb_group_name(),
+        group2_name in arb_group_name(),
+        conn in arb_connection(),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create two groups
+        let group1_id = manager
+            .create_group(group1_name)
+            .expect("Should create group 1");
+        let group2_id = manager
+            .create_group(group2_name)
+            .expect("Should create group 2");
+
+        // Create connection in group 1
+        let conn_id = manager
+            .create_connection_from(conn)
+            .expect("Should create connection");
+        manager
+            .move_connection_to_group(conn_id, Some(group1_id))
+            .expect("Should move to group 1");
+
+        // Verify connection is in group 1
+        let conn_before = manager.get_connection(conn_id).unwrap();
+        prop_assert_eq!(
+            conn_before.group_id,
+            Some(group1_id),
+            "Connection should be in group 1"
+        );
+
+        // Move connection to group 2
+        manager
+            .move_connection_to_group(conn_id, Some(group2_id))
+            .expect("Should move to group 2");
+
+        // Verify connection is now in group 2
+        let conn_after = manager.get_connection(conn_id).unwrap();
+        prop_assert_eq!(
+            conn_after.group_id,
+            Some(group2_id),
+            "Connection should be in group 2"
+        );
+
+        // Verify sort_order is valid (non-negative)
+        prop_assert!(
+            conn_after.sort_order >= 0,
+            "Sort order should be non-negative"
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 6: Drag-Drop Reordering**
+    /// **Validates: Requirements 5.3**
+    ///
+    /// Moving a connection to root (no group) SHALL set group_id to None
+    /// and assign a valid sort_order.
+    #[test]
+    fn drag_drop_move_to_root_removes_group(
+        group_name in arb_group_name(),
+        conn in arb_connection(),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create a group
+        let group_id = manager
+            .create_group(group_name)
+            .expect("Should create group");
+
+        // Create connection in the group
+        let conn_id = manager
+            .create_connection_from(conn)
+            .expect("Should create connection");
+        manager
+            .move_connection_to_group(conn_id, Some(group_id))
+            .expect("Should move to group");
+
+        // Verify connection is in the group
+        let conn_before = manager.get_connection(conn_id).unwrap();
+        prop_assert_eq!(
+            conn_before.group_id,
+            Some(group_id),
+            "Connection should be in group"
+        );
+
+        // Move connection to root (None)
+        manager
+            .move_connection_to_group(conn_id, None)
+            .expect("Should move to root");
+
+        // Verify connection is now ungrouped
+        let conn_after = manager.get_connection(conn_id).unwrap();
+        prop_assert!(
+            conn_after.group_id.is_none(),
+            "Connection should be ungrouped"
+        );
+
+        // Verify sort_order is valid (non-negative)
+        prop_assert!(
+            conn_after.sort_order >= 0,
+            "Sort order should be non-negative"
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 6: Drag-Drop Reordering**
+    /// **Validates: Requirements 5.5**
+    ///
+    /// After drag-drop reordering, the new order SHALL be persisted to configuration.
+    #[test]
+    fn drag_drop_reorder_persists_to_config(
+        group_name in arb_group_name(),
+        conn_names in prop::collection::vec(arb_name(), 3..5),
+    ) {
+        let temp_dir = TempDir::new().unwrap();
+        let config_manager = ConfigManager::with_config_dir(temp_dir.path().to_path_buf());
+
+        let group_id;
+        let conn_ids: Vec<Uuid>;
+        let source_id;
+        let target_id;
+
+        // Create and reorder in first manager instance
+        {
+            let mut manager = ConnectionManager::new(config_manager.clone()).unwrap();
+
+            group_id = manager.create_group(group_name).expect("Should create group");
+
+            conn_ids = conn_names
+                .iter()
+                .map(|name| {
+                    let conn = Connection::new_ssh(name.clone(), "host.example.com".to_string(), 22)
+                        .with_group(group_id);
+                    manager.create_connection_from(conn).expect("Should create connection")
+                })
+                .collect();
+
+            source_id = conn_ids[0];
+            target_id = conn_ids[conn_ids.len() - 1];
+
+            // Reorder: move first connection after the last one
+            manager
+                .reorder_connection(source_id, target_id)
+                .expect("Should reorder connection");
+        }
+
+        // Create a new manager to reload from disk
+        let manager2 = ConnectionManager::new(config_manager).unwrap();
+
+        // Verify the reordering was persisted
+        let source_order = manager2.get_connection(source_id).unwrap().sort_order;
+        let target_order = manager2.get_connection(target_id).unwrap().sort_order;
+
+        prop_assert!(
+            source_order > target_order || source_order == target_order + 1,
+            "Reordering should be persisted: source_order={}, target_order={}",
+            source_order, target_order
+        );
+    }
+}
+
+// ========== Sort Recent Property Tests ==========
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// **Feature: rustconn-bugfixes, Property 7: Recent Sort Ordering**
+    /// **Validates: Requirements 6.1, 6.2**
+    ///
+    /// For any set of connections with timestamps, sorting by recent SHALL place
+    /// connections with more recent timestamps first, and connections without
+    /// timestamps last.
+    #[test]
+    fn sort_by_recent_orders_by_timestamp(
+        conn_names in prop::collection::vec(arb_name(), 3..8),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create connections
+        let mut conn_ids = Vec::new();
+        for name in &conn_names {
+            let id = manager
+                .create_connection(
+                    name.clone(),
+                    "host.example.com".to_string(),
+                    22,
+                    ProtocolConfig::Ssh(SshConfig::default()),
+                )
+                .expect("Should create connection");
+            conn_ids.push(id);
+        }
+
+        // Set last_connected timestamps for some connections (not all)
+        // Use different timestamps to ensure ordering
+        let now = chrono::Utc::now();
+        for (i, &conn_id) in conn_ids.iter().enumerate() {
+            if i % 2 == 0 {
+                // Set timestamp for even-indexed connections
+                // Earlier connections get older timestamps
+                if let Some(conn) = manager.get_connection_mut(conn_id) {
+                    conn.last_connected = Some(now - chrono::Duration::hours(i as i64));
+                }
+            }
+            // Odd-indexed connections have no timestamp (None)
+        }
+
+        // Sort by recent
+        manager.sort_by_recent().expect("Should sort by recent");
+
+        // Verify ordering
+        let connections: Vec<_> = manager.list_connections();
+        let mut sorted_conns: Vec<_> = connections.iter().collect();
+        sorted_conns.sort_by_key(|c| c.sort_order);
+
+        // Check that connections with timestamps come before those without
+        let mut seen_none = false;
+        let mut prev_timestamp: Option<chrono::DateTime<chrono::Utc>> = None;
+
+        for conn in &sorted_conns {
+            match conn.last_connected {
+                Some(ts) => {
+                    // Should not see a timestamp after we've seen None
+                    prop_assert!(
+                        !seen_none,
+                        "Connections with timestamps should come before those without"
+                    );
+                    // Timestamps should be in descending order (most recent first)
+                    if let Some(prev) = prev_timestamp {
+                        prop_assert!(
+                            ts <= prev,
+                            "Timestamps should be in descending order: {} should be <= {}",
+                            ts, prev
+                        );
+                    }
+                    prev_timestamp = Some(ts);
+                }
+                None => {
+                    seen_none = true;
+                }
+            }
+        }
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 7: Recent Sort Ordering**
+    /// **Validates: Requirements 6.1, 6.2**
+    ///
+    /// Connections without last_connected timestamp SHALL be placed at the end
+    /// of the list when sorting by recent.
+    #[test]
+    fn sort_by_recent_places_none_timestamps_last(
+        conn_names in prop::collection::vec(arb_name(), 2..6),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create connections - first half with timestamps, second half without
+        let mut conn_ids = Vec::new();
+        for name in &conn_names {
+            let id = manager
+                .create_connection(
+                    name.clone(),
+                    "host.example.com".to_string(),
+                    22,
+                    ProtocolConfig::Ssh(SshConfig::default()),
+                )
+                .expect("Should create connection");
+            conn_ids.push(id);
+        }
+
+        // Set timestamps for first half only
+        let now = chrono::Utc::now();
+        let half = conn_ids.len() / 2;
+        for (i, &conn_id) in conn_ids.iter().take(half.max(1)).enumerate() {
+            if let Some(conn) = manager.get_connection_mut(conn_id) {
+                conn.last_connected = Some(now - chrono::Duration::minutes(i as i64));
+            }
+        }
+
+        // Sort by recent
+        manager.sort_by_recent().expect("Should sort by recent");
+
+        // Get sorted connections
+        let connections: Vec<_> = manager.list_connections();
+        let mut sorted_conns: Vec<_> = connections.iter().collect();
+        sorted_conns.sort_by_key(|c| c.sort_order);
+
+        // Count connections with and without timestamps
+        let with_timestamp: Vec<_> = sorted_conns.iter().filter(|c| c.last_connected.is_some()).collect();
+        let without_timestamp: Vec<_> = sorted_conns.iter().filter(|c| c.last_connected.is_none()).collect();
+
+        // Verify all connections with timestamps have lower sort_order than those without
+        if !with_timestamp.is_empty() && !without_timestamp.is_empty() {
+            let max_with_ts = with_timestamp.iter().map(|c| c.sort_order).max().unwrap();
+            let min_without_ts = without_timestamp.iter().map(|c| c.sort_order).min().unwrap();
+
+            prop_assert!(
+                max_with_ts < min_without_ts,
+                "All connections with timestamps should have lower sort_order than those without: max_with={}, min_without={}",
+                max_with_ts, min_without_ts
+            );
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// **Feature: rustconn-bugfixes, Property 8: Last Connected Update**
+    /// **Validates: Requirements 6.4**
+    ///
+    /// For any connection, after calling update_last_connected, the last_connected
+    /// timestamp SHALL be updated to approximately the current time.
+    #[test]
+    fn update_last_connected_sets_timestamp(
+        name in arb_name(),
+        host in arb_host(),
+        port in arb_port(),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create a connection
+        let conn_id = manager
+            .create_connection(
+                name,
+                host,
+                port,
+                ProtocolConfig::Ssh(SshConfig::default()),
+            )
+            .expect("Should create connection");
+
+        // Verify initial last_connected is None
+        let conn_before = manager.get_connection(conn_id).expect("Should get connection");
+        prop_assert!(
+            conn_before.last_connected.is_none(),
+            "Initial last_connected should be None"
+        );
+
+        // Record time before update
+        let before_update = chrono::Utc::now();
+
+        // Update last_connected
+        manager
+            .update_last_connected(conn_id)
+            .expect("Should update last_connected");
+
+        // Record time after update
+        let after_update = chrono::Utc::now();
+
+        // Verify last_connected is now set
+        let conn_after = manager.get_connection(conn_id).expect("Should get connection");
+        prop_assert!(
+            conn_after.last_connected.is_some(),
+            "last_connected should be set after update"
+        );
+
+        let timestamp = conn_after.last_connected.unwrap();
+
+        // Verify timestamp is within the expected range
+        prop_assert!(
+            timestamp >= before_update && timestamp <= after_update,
+            "Timestamp {} should be between {} and {}",
+            timestamp, before_update, after_update
+        );
+    }
+
+    /// **Feature: rustconn-bugfixes, Property 8: Last Connected Update**
+    /// **Validates: Requirements 6.4**
+    ///
+    /// Calling update_last_connected multiple times SHALL update the timestamp
+    /// to a more recent value each time.
+    #[test]
+    fn update_last_connected_updates_to_newer_timestamp(
+        name in arb_name(),
+        host in arb_host(),
+        port in arb_port(),
+    ) {
+        let (mut manager, _temp) = create_test_manager();
+
+        // Create a connection
+        let conn_id = manager
+            .create_connection(
+                name,
+                host,
+                port,
+                ProtocolConfig::Ssh(SshConfig::default()),
+            )
+            .expect("Should create connection");
+
+        // First update
+        manager
+            .update_last_connected(conn_id)
+            .expect("Should update last_connected");
+
+        let first_timestamp = manager
+            .get_connection(conn_id)
+            .expect("Should get connection")
+            .last_connected
+            .expect("Should have timestamp");
+
+        // Small delay to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Second update
+        manager
+            .update_last_connected(conn_id)
+            .expect("Should update last_connected again");
+
+        let second_timestamp = manager
+            .get_connection(conn_id)
+            .expect("Should get connection")
+            .last_connected
+            .expect("Should have timestamp");
+
+        // Second timestamp should be >= first (could be equal if very fast)
+        prop_assert!(
+            second_timestamp >= first_timestamp,
+            "Second timestamp {} should be >= first timestamp {}",
+            second_timestamp, first_timestamp
+        );
     }
 }

@@ -28,7 +28,7 @@ pub struct SnippetDialog {
     add_var_button: Button,
     editing_id: Rc<RefCell<Option<Uuid>>>,
     variables: Rc<RefCell<Vec<VariableRow>>>,
-    on_save: Rc<RefCell<Option<Box<dyn Fn(Option<Snippet>)>>>>,
+    on_save: super::SnippetCallback,
 }
 
 /// Represents a variable row in the dialog
@@ -40,7 +40,7 @@ pub struct SnippetDialog {
 struct VariableRow {
     /// The variable name (e.g., "host", "user")
     name: String,
-    /// The ListBoxRow widget containing this variable
+    /// The `ListBoxRow` widget containing this variable
     row: ListBoxRow,
     /// Entry widget for the variable name (read-only display)
     name_entry: Entry,
@@ -49,7 +49,6 @@ struct VariableRow {
     /// Entry widget for the default value
     default_entry: Entry,
 }
-
 
 impl SnippetDialog {
     /// Creates a new snippet dialog
@@ -70,7 +69,10 @@ impl SnippetDialog {
         // Create header bar with Cancel/Save buttons
         let header = HeaderBar::new();
         let cancel_btn = Button::builder().label("Cancel").build();
-        let save_btn = Button::builder().label("Save").css_classes(["suggested-action"]).build();
+        let save_btn = Button::builder()
+            .label("Save")
+            .css_classes(["suggested-action"])
+            .build();
         header.pack_start(&cancel_btn);
         header.pack_end(&save_btn);
         window.set_titlebar(Some(&header));
@@ -108,7 +110,7 @@ impl SnippetDialog {
             Self::auto_detect_variables(&text, &vars_list, &vars_clone);
         });
 
-        let on_save: Rc<RefCell<Option<Box<dyn Fn(Option<Snippet>)>>>> = Rc::new(RefCell::new(None));
+        let on_save: super::SnippetCallback = Rc::new(RefCell::new(None));
 
         // Connect cancel button
         let window_clone = window.clone();
@@ -198,14 +200,16 @@ impl SnippetDialog {
         grid.attach(&tags_label, 0, row, 1, 1);
         grid.attach(&tags_entry, 1, row, 1, 1);
 
-        let frame = Frame::builder()
-            .label("Snippet Info")
-            .child(&grid)
-            .build();
+        let frame = Frame::builder().label("Snippet Info").child(&grid).build();
 
-        (frame, name_entry, description_entry, category_entry, tags_entry)
+        (
+            frame,
+            name_entry,
+            description_entry,
+            category_entry,
+            tags_entry,
+        )
     }
-
 
     fn create_command_section() -> (Frame, TextView) {
         let vbox = GtkBox::new(Orientation::Vertical, 4);
@@ -235,10 +239,7 @@ impl SnippetDialog {
 
         vbox.append(&scrolled);
 
-        let frame = Frame::builder()
-            .label("Command")
-            .child(&vbox)
-            .build();
+        let frame = Frame::builder().label("Command").child(&vbox).build();
 
         (frame, command_view)
     }
@@ -268,22 +269,21 @@ impl SnippetDialog {
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
 
-        let add_var_button = Button::builder()
-            .label("Add Variable")
-            .build();
+        let add_var_button = Button::builder().label("Add Variable").build();
         button_box.append(&add_var_button);
 
         vbox.append(&button_box);
 
-        let frame = Frame::builder()
-            .label("Variables")
-            .child(&vbox)
-            .build();
+        let frame = Frame::builder().label("Variables").child(&vbox).build();
 
         (frame, variables_list, add_var_button)
     }
 
-    fn auto_detect_variables(command: &str, list: &ListBox, variables: &Rc<RefCell<Vec<VariableRow>>>) {
+    fn auto_detect_variables(
+        command: &str,
+        list: &ListBox,
+        variables: &Rc<RefCell<Vec<VariableRow>>>,
+    ) {
         // Extract variable names from ${var_name} patterns
         let re = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}").unwrap();
         let mut found_vars: Vec<String> = Vec::new();
@@ -309,7 +309,11 @@ impl SnippetDialog {
         }
     }
 
-    fn create_variable_row(name: &str, description: Option<&str>, default: Option<&str>) -> VariableRow {
+    fn create_variable_row(
+        name: &str,
+        description: Option<&str>,
+        default: Option<&str>,
+    ) -> VariableRow {
         let hbox = GtkBox::new(Orientation::Horizontal, 8);
         hbox.set_margin_top(8);
         hbox.set_margin_bottom(8);
@@ -367,9 +371,7 @@ impl SnippetDialog {
 
         hbox.append(&grid);
 
-        let row = ListBoxRow::builder()
-            .child(&hbox)
-            .build();
+        let row = ListBoxRow::builder().child(&hbox).build();
 
         VariableRow {
             name: name.to_string(),
@@ -379,7 +381,6 @@ impl SnippetDialog {
             default_entry,
         }
     }
-
 
     /// Populates the dialog with an existing snippet for editing
     pub fn set_snippet(&self, snippet: &Snippet) {
@@ -454,7 +455,7 @@ impl SnippetDialog {
     /// Wires the add variable button to add new variable rows
     ///
     /// When clicked, prompts for a variable name and adds a new row
-    /// with description and default_value fields.
+    /// with description and `default_value` fields.
     fn wire_add_var_button(&self) {
         let variables_list = self.variables_list.clone();
         let variables = self.variables.clone();
@@ -487,11 +488,12 @@ impl SnippetDialog {
     /// - Name and command (required)
     /// - Description and category (optional)
     /// - Tags (comma-separated)
-    /// - Variables with description and default_value fields
+    /// - Variables with description and `default_value` fields
     ///
     /// # Returns
     /// - `Some(Snippet)` with all fields populated from the dialog
     /// - Preserves the editing ID if editing an existing snippet
+    #[must_use] 
     pub fn build_snippet(&self) -> Option<Snippet> {
         let name = self.name_entry.text().trim().to_string();
         let buffer = self.command_view.buffer();
@@ -553,10 +555,9 @@ impl SnippetDialog {
         Some(snippet)
     }
 
-
     /// Runs the dialog and calls the callback with the result
     ///
-    /// Connects the Save button to validate() and build_snippet() methods,
+    /// Connects the Save button to `validate()` and `build_snippet()` methods,
     /// then presents the dialog window.
     pub fn run<F: Fn(Option<Snippet>) + 'static>(&self, cb: F) {
         // Store callback
@@ -607,7 +608,8 @@ impl SnippetDialog {
                             }
 
                             // Build snippet using build_snippet() method logic
-                            let mut snippet = Snippet::new(name.trim().to_string(), command.to_string());
+                            let mut snippet =
+                                Snippet::new(name.trim().to_string(), command.to_string());
 
                             let desc = description_entry.text();
                             if !desc.trim().is_empty() {
@@ -670,7 +672,7 @@ impl SnippetDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub fn window(&self) -> &Window {
+    pub const fn window(&self) -> &Window {
         &self.window
     }
 }

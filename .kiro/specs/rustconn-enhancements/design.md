@@ -2,315 +2,326 @@
 
 ## Overview
 
-This document describes the design for enhancing RustConn with embedded VNC/RDP tabs, multi-selection group operations, and wiring up unused functionality. The enhancements focus on improving user experience and completing the implementation of existing code.
-
-### Key Design Goals
-
-- **Unified Interface**: All connection types displayed in tabs within the main window
-- **Bulk Operations**: Multi-selection support for efficient connection management
-- **Complete Integration**: Wire up all existing but unused dialog and state methods
-- **GTK4 Best Practices**: Proper dialog parenting and modern widget usage
-
-### Technology Constraints
-
-| Constraint | Impact |
-|-----------|--------|
-| Wayland | No GtkSocket/GtkPlug - must use alternative embedding approaches |
-| GTK4 | MultiSelection model for multi-select, no deprecated Dialog |
-| FreeRDP | Supports `/parent-window:` on X11, limited Wayland support |
-| VNC | Most viewers don't support embedding, may need fallback |
+This document describes the design for four major enhancements to RustConn:
+1. Custom SSH config file import
+2. RDP shared folder configuration
+3. Progress indicators for long operations
+4. Split-screen terminal views
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MainWindow                                │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────┐  ┌─────────────────────────────────┐  │
-│  │   ConnectionSidebar  │  │      TerminalNotebook           │  │
-│  │  ┌────────────────┐  │  │  ┌─────────────────────────┐    │  │
-│  │  │ MultiSelection │  │  │  │ SSH Terminal (VTE)      │    │  │
-│  │  │    ListView    │  │  │  ├─────────────────────────┤    │  │
-│  │  └────────────────┘  │  │  │ RDP Embedded (Socket)   │    │  │
-│  │  ┌────────────────┐  │  │  ├─────────────────────────┤    │  │
-│  │  │ BulkActions    │  │  │  │ VNC Embedded (Socket)   │    │  │
-│  │  │   Toolbar      │  │  │  └─────────────────────────┘    │  │
-│  │  └────────────────┘  │  └─────────────────────────────────┘  │
-│  └──────────────────────┘                                       │
-├─────────────────────────────────────────────────────────────────┤
-│                        Dialogs                                   │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
-│  │ Connection │ │   Import   │ │  Settings  │ │  Snippet   │   │
-│  │   Dialog   │ │   Dialog   │ │   Dialog   │ │   Dialog   │   │
-│  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+### Component Diagram
+
+```mermaid
+graph TB
+    subgraph GUI["rustconn (GUI)"]
+        ImportDialog["ImportDialog"]
+        ConnectionDialog["ConnectionDialog"]
+        ProgressDialog["ProgressDialog"]
+        SplitTerminalView["SplitTerminalView"]
+        TerminalNotebook["TerminalNotebook"]
+    end
+    
+    subgraph Core["rustconn-core"]
+        SshConfigImporter["SshConfigImporter"]
+        RdpConfig["RdpConfig + SharedFolder"]
+        ProgressReporter["ProgressReporter trait"]
+    end
+    
+    ImportDialog --> SshConfigImporter
+    ConnectionDialog --> RdpConfig
+    ImportDialog --> ProgressReporter
+    SplitTerminalView --> TerminalNotebook
 ```
 
 ## Components and Interfaces
 
-### Multi-Selection Sidebar
+### 1. Custom SSH Config File Import
+
+#### Changes to `SshConfigImporter`
+
+Add a new method to parse from a custom file path:
 
 ```rust
-/// Enhanced sidebar with multi-selection support
-pub struct ConnectionSidebar {
-    container: GtkBox,
-    search_entry: SearchEntry,
-    list_view: ListView,
-    store: gio::ListStore,
-    /// Selection model - switches between Single and Multi
-    selection_model: Rc<RefCell<SelectionModelWrapper>>,
-    /// Bulk actions toolbar (visible in group ops mode)
-    bulk_actions_bar: GtkBox,
-    /// Current mode
-    group_ops_mode: Rc<RefCell<bool>>,
-}
-
-/// Wrapper to switch between selection models
-enum SelectionModelWrapper {
-    Single(SingleSelection),
-    Multi(MultiSelection),
-}
-
-impl ConnectionSidebar {
-    /// Toggles group operations mode
-    pub fn set_group_operations_mode(&self, enabled: bool);
-    
-    /// Gets all selected connection IDs
-    pub fn get_selected_ids(&self) -> Vec<Uuid>;
-    
-    /// Selects all visible items
-    pub fn select_all(&self);
-    
-    /// Clears selection
-    pub fn clear_selection(&self);
+impl SshConfigImporter {
+    /// Import from a custom SSH config file path
+    pub fn import_from_file(&self, path: &Path) -> ImportResult {
+        // Parse the file at the given path
+    }
 }
 ```
 
-### Embedded Session Tab
+#### Changes to `ImportDialog`
+
+Add new import source "SSH Config File" that:
+1. Is always available (doesn't check for ~/.ssh/config)
+2. Opens a file chooser dialog when selected
+3. Parses the selected file using `SshConfigImporter::import_from_file()`
+
+### 2. RDP Shared Folder Configuration
+
+#### New Data Model
 
 ```rust
-/// Tab content for embedded RDP/VNC sessions
-pub struct EmbeddedSessionTab {
-    container: GtkBox,
-    /// Socket widget for embedding (X11 only)
-    socket: Option<gtk4::Socket>,
-    /// Fallback label for Wayland
-    fallback_label: Option<Label>,
-    /// Session controls
-    controls: SessionControls,
-    /// Process handle
-    process: Option<Child>,
+/// A shared folder for RDP connections
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedFolder {
+    /// Local directory path to share
+    pub local_path: PathBuf,
+    /// Share name visible in the remote session
+    pub share_name: String,
 }
 
-pub struct SessionControls {
-    fullscreen_button: Button,
-    disconnect_button: Button,
+/// Updated RDP configuration
+pub struct RdpConfig {
+    // ... existing fields ...
+    /// Shared folders for drive redirection
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_folders: Vec<SharedFolder>,
+}
+```
+
+#### Command Builder Changes
+
+Update RDP command builder to include shared folder arguments:
+
+```rust
+// For FreeRDP (xfreerdp)
+// /drive:ShareName,/path/to/local/folder
+for folder in &config.shared_folders {
+    args.push(format!("/drive:{},{}", folder.share_name, folder.local_path.display()));
+}
+```
+
+### 3. Progress Indicators
+
+#### Progress Reporter Trait
+
+```rust
+/// Trait for reporting progress during long operations
+pub trait ProgressReporter {
+    /// Report progress update
+    fn report(&self, current: usize, total: usize, message: &str);
+    
+    /// Check if operation was cancelled
+    fn is_cancelled(&self) -> bool;
+}
+
+/// Callback-based progress reporter
+pub struct CallbackProgressReporter {
+    callback: Box<dyn Fn(usize, usize, &str)>,
+    cancelled: Arc<AtomicBool>,
+}
+```
+
+#### Progress Dialog Widget
+
+```rust
+pub struct ProgressDialog {
+    window: Window,
+    progress_bar: ProgressBar,
     status_label: Label,
+    cancel_button: Button,
+    cancelled: Rc<Cell<bool>>,
 }
 
-impl EmbeddedSessionTab {
-    /// Creates embedded tab, returns fallback info if embedding not supported
-    pub fn new(protocol: &str, connection: &Connection) -> (Self, bool);
-    
-    /// Starts the embedded session
-    pub fn start_session(&mut self, host: &str, port: u16, credentials: Option<&Credentials>) -> Result<(), SessionError>;
-    
-    /// Toggles fullscreen mode
-    pub fn toggle_fullscreen(&self);
-    
-    /// Disconnects the session
-    pub fn disconnect(&mut self);
+impl ProgressDialog {
+    pub fn new(parent: Option<&Window>, title: &str, cancellable: bool) -> Self;
+    pub fn update(&self, fraction: f64, message: &str);
+    pub fn is_cancelled(&self) -> bool;
+    pub fn close(&self);
 }
 ```
 
-### Bulk Actions
+### 4. Split-Screen Terminal Views
 
-```rust
-/// Bulk action handler
-pub struct BulkActionHandler {
-    state: SharedAppState,
-    sidebar: SharedSidebar,
-}
+#### Architecture
 
-impl BulkActionHandler {
-    /// Deletes all selected connections
-    pub fn delete_selected(&self, window: &ApplicationWindow) -> Result<usize, Vec<String>>;
+```mermaid
+graph TB
+    SplitTerminalView["SplitTerminalView"]
+    TabList["Unified Tab List"]
+    PaneManager["PaneManager"]
+    Pane1["Pane (Terminal)"]
+    Pane2["Pane (Terminal)"]
     
-    /// Moves selected connections to a group
-    pub fn move_to_group(&self, group_id: Option<Uuid>) -> Result<usize, String>;
-}
+    SplitTerminalView --> TabList
+    SplitTerminalView --> PaneManager
+    PaneManager --> Pane1
+    PaneManager --> Pane2
+    TabList -.-> Pane1
+    TabList -.-> Pane2
 ```
 
-### Dialog Integration
+#### Data Structures
 
 ```rust
-// ConnectionDialog - wire up existing methods
-impl ConnectionDialog {
-    /// Called when Save button is clicked
-    pub fn on_save(&self) -> Option<Connection> {
-        if let Err(e) = self.validate() {
-            self.show_error(&e);
-            return None;
-        }
-        self.build_connection()
-    }
+/// Represents a split direction
+#[derive(Debug, Clone, Copy)]
+pub enum SplitDirection {
+    Horizontal,
+    Vertical,
 }
 
-// ImportDialog - wire up existing methods  
-impl ImportDialog {
-    /// Called when Import button is clicked
-    pub fn on_import(&self) {
-        if let Some(source) = self.get_selected_source() {
-            let result = self.do_import(&source);
-            self.show_results(&result);
-        }
-    }
+/// A pane in the split view
+pub struct TerminalPane {
+    id: Uuid,
+    container: GtkBox,
+    current_session: Option<Uuid>,
 }
 
-// SettingsDialog - wire up existing methods
-impl SettingsDialog {
-    /// Called when Save button is clicked
-    pub fn on_save(&self) -> Option<AppSettings> {
-        Some(self.build_settings())
-    }
+/// Manages split terminal views
+pub struct SplitTerminalView {
+    /// Root container (Paned or single pane)
+    root: GtkBox,
+    /// All panes in the view
+    panes: Rc<RefCell<Vec<TerminalPane>>>,
+    /// Currently focused pane
+    focused_pane: Rc<RefCell<Option<Uuid>>>,
+    /// Shared session list (from TerminalNotebook)
+    sessions: Rc<RefCell<HashMap<Uuid, TerminalSession>>>,
+    /// Shared terminals map
+    terminals: Rc<RefCell<HashMap<Uuid, Terminal>>>,
 }
 
-// SnippetDialog - wire up existing methods
-impl SnippetDialog {
-    /// Called when Save button is clicked
-    pub fn on_save(&self) -> Option<Snippet> {
-        if let Err(e) = self.validate() {
-            self.show_error(&e);
-            return None;
-        }
-        self.build_snippet()
-    }
+impl SplitTerminalView {
+    /// Split the focused pane
+    pub fn split(&self, direction: SplitDirection);
+    
+    /// Close the focused pane
+    pub fn close_pane(&self);
+    
+    /// Cycle focus to next pane
+    pub fn focus_next_pane(&self);
+    
+    /// Display a session in the focused pane
+    pub fn show_session(&self, session_id: Uuid);
 }
 ```
 
 ## Data Models
 
-### Selection State
+### SharedFolder
 
-```rust
-/// Tracks multi-selection state
-pub struct SelectionState {
-    /// Selected connection IDs
-    pub selected_connections: HashSet<Uuid>,
-    /// Selected group IDs
-    pub selected_groups: HashSet<Uuid>,
-    /// Whether group operations mode is active
-    pub group_ops_active: bool,
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| local_path | PathBuf | Local directory path to share |
+| share_name | String | Name visible in remote session |
 
-### Embedded Session State
+### ProgressState
 
-```rust
-/// State for embedded RDP/VNC session
-pub struct EmbeddedSession {
-    pub id: Uuid,
-    pub connection_id: Uuid,
-    pub protocol: String,
-    pub process_id: Option<u32>,
-    pub window_id: Option<u64>,
-    pub is_fullscreen: bool,
-    pub started_at: DateTime<Utc>,
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| current | usize | Current item number |
+| total | usize | Total items to process |
+| message | String | Current status message |
+| cancelled | bool | Whether operation was cancelled |
 
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-### Property 1: Multi-Selection Consistency
+### Property 1: SSH Config Parsing Round Trip
 
-*For any* set of selection operations (select, deselect, select-all, clear), the set of selected IDs returned by `get_selected_ids()` must exactly match the items visually indicated as selected in the UI.
+*For any* valid SSH config content with Host entries, parsing the content should extract all Host entries with their associated settings (hostname, port, user, identity file).
 
-**Validates: Requirements 2.1, 2.2, 2.3, 2.6**
+**Validates: Requirements 1.2, 1.3**
 
-### Property 2: Bulk Delete Completeness
+### Property 2: Invalid SSH Config Error Handling
 
-*For any* set of selected connections, after bulk delete completes successfully, none of the deleted connection IDs should exist in the connection manager, and the count of deleted items should equal the original selection count minus any failures.
+*For any* invalid SSH config content (malformed syntax), parsing should return an error result rather than silently failing or panicking.
 
-**Validates: Requirements 3.1, 3.2, 3.3, 3.4**
+**Validates: Requirements 1.4**
 
-### Property 3: Dialog Validation Round-Trip
+### Property 3: Shared Folder CRUD Operations
 
-*For any* valid connection configuration entered in the dialog, calling `validate()` should succeed, and `build_connection()` should produce a Connection object that, when loaded back into the dialog via `set_connection()`, produces identical field values.
+*For any* RDP configuration, adding a shared folder should increase the folder count by one, and removing a shared folder should decrease it by one, with the configuration remaining valid.
 
-**Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
+**Validates: Requirements 2.3, 2.5**
 
-### Property 4: Settings Persistence Round-Trip
+### Property 4: RDP Command Builder Includes Shared Folders
 
-*For any* settings configuration, saving via `build_settings()` and then loading via `set_settings()` should produce identical settings values.
+*For any* RDP configuration with shared folders, the generated command arguments should include a `/drive:` argument for each shared folder with correct share name and path.
 
-**Validates: Requirements 6.1, 6.2**
+**Validates: Requirements 2.4**
 
-### Property 5: Snippet Variable Extraction
+### Property 5: Progress Reporter Invocation
 
-*For any* snippet command containing `${variable}` placeholders, the extracted variable list should contain exactly the unique variable names present in the command, with no duplicates.
+*For any* import operation with N items, the progress reporter should be called at least N times with monotonically increasing current values from 0 to N.
 
-**Validates: Requirements 7.2, 7.3**
+**Validates: Requirements 3.1, 3.3**
 
-### Property 6: Group Hierarchy Acyclicity
+### Property 6: Split View Structure Integrity
 
-*For any* sequence of group creation and move operations, the resulting group hierarchy must remain acyclic - no group can be its own ancestor.
+*For any* sequence of split operations (horizontal or vertical), the resulting pane structure should contain exactly (initial_panes + split_count) panes, and closing a pane should reduce the count by one.
 
-**Validates: Requirements 9.1, 9.2**
+**Validates: Requirements 4.1, 4.2, 4.6**
+
+### Property 7: Unified Tab List Consistency
+
+*For any* split view with multiple panes, adding a session should make it available in all panes, and the total session count should equal the number of unique sessions regardless of pane count.
+
+**Validates: Requirements 4.3**
+
+### Property 8: Focus Cycling Completeness
+
+*For any* split view with N panes, calling focus_next_pane() N times should cycle through all panes exactly once and return to the starting pane.
+
+**Validates: Requirements 4.8**
 
 ## Error Handling
 
-### Embedding Errors
+### SSH Config Import Errors
 
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum EmbeddingError {
-    #[error("Embedding not supported on Wayland for {protocol}")]
-    WaylandNotSupported { protocol: String },
-    
-    #[error("Failed to create socket: {0}")]
-    SocketCreationFailed(String),
-    
-    #[error("Client process failed to start: {0}")]
-    ProcessStartFailed(String),
-    
-    #[error("Client exited unexpectedly with code {code}")]
-    ClientExited { code: i32 },
-}
-```
+| Error | Handling |
+|-------|----------|
+| File not found | Display error dialog with file path |
+| Permission denied | Display error dialog with suggestion to check permissions |
+| Invalid format | Display error dialog with line number and description |
+| Empty file | Display warning that no hosts were found |
 
-### Bulk Operation Errors
+### RDP Shared Folder Errors
 
-```rust
-#[derive(Debug)]
-pub struct BulkOperationResult {
-    pub successful: usize,
-    pub failed: Vec<(Uuid, String)>,
-}
-```
+| Error | Handling |
+|-------|----------|
+| Directory not found | Warn user before connection, allow proceeding |
+| Permission denied | Warn user, suggest checking permissions |
+| Invalid share name | Validate on input, show inline error |
+
+### Progress Operation Errors
+
+| Error | Handling |
+|-------|----------|
+| Operation cancelled | Close dialog, show "Cancelled" message |
+| Partial failure | Complete operation, show summary with failures |
 
 ## Testing Strategy
 
-### Property-Based Testing Framework
+### Unit Testing
 
-The project uses **proptest** crate for property-based testing.
+- Test SSH config parsing with various valid configurations
+- Test RDP command builder with different shared folder configurations
+- Test progress reporter callback invocation
+- Test split view pane management operations
 
-### Test Configuration
+### Property-Based Testing
 
-- Minimum 100 iterations per property test
-- Each property test annotated with correctness property reference
-- Format: `// **Feature: rustconn-enhancements, Property {N}: {property_name}**`
+Using `proptest` library as specified in tech stack:
 
-### Unit Tests
+1. **SSH Config Parsing**: Generate random valid SSH config content and verify parsing extracts all entries
+2. **Shared Folder Operations**: Generate random add/remove sequences and verify count invariants
+3. **RDP Command Builder**: Generate random shared folder configurations and verify command output
+4. **Split View Operations**: Generate random split/close sequences and verify structure integrity
+5. **Focus Cycling**: Generate random pane counts and verify cycling completeness
 
-- Selection model state transitions
-- Dialog validation edge cases
-- Bulk operation partial failure handling
+Each property-based test will:
+- Run minimum 100 iterations
+- Be tagged with format: `**Feature: rustconn-enhancements, Property {number}: {property_text}**`
+- Reference the correctness property from this design document
 
-### Integration Tests
+### Integration Testing
 
-- Full multi-select workflow
-- Dialog save/load round-trips
-- Embedded session lifecycle (where supported)
-
+- Test full import workflow with custom SSH config file
+- Test RDP connection with shared folders
+- Test progress dialog during bulk import
+- Test split view with multiple terminal sessions

@@ -1,0 +1,205 @@
+# Implementation Plan
+
+- [x] 1. Fix Connection Dialog Save Button
+  - [x] 1.1 Store save button reference in ConnectionDialog struct
+    - Add `save_button: Button` field to struct
+    - Initialize during construction instead of finding via `last_child()`
+    - _Requirements: 1.1, 1.2_
+  - [x] 1.2 Connect save button handler directly in constructor
+    - Move click handler connection from `run()` to `new()`
+    - Ensure callback is properly invoked with built connection
+    - _Requirements: 1.1, 1.3_
+  - [x] 1.3 Write property test for connection validation
+    - **Property 1: Connection Validation**
+    - **Validates: Requirements 1.1, 1.2**
+
+- [x] 2. Fix Asbru-CM Import
+  - [x] 2.1 Add hostname extraction fallback logic
+    - Implement `extract_hostname()` method with fallback chain
+    - Try ip → host → name → title fields
+    - Filter out "tmp" and empty values
+    - _Requirements: 2.1, 2.2_
+  - [x] 2.2 Preserve dynamic variables in imported data
+    - Detect ${VAR} syntax in fields
+    - Store as-is without modification
+    - _Requirements: 2.3_
+  - [x] 2.3 Write property test for hostname extraction
+    - **Property 2: Asbru Hostname Extraction**
+    - **Validates: Requirements 2.1, 2.2**
+
+- [x] 3. Checkpoint - Dialog and Import Fixes
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Fix Context Menu Operations
+  - [x] 4.1 Implement connect_selected method
+    - Get selected item from sidebar
+    - Call start_connection if not a group
+    - _Requirements: 3.1_
+  - [x] 4.2 Implement edit_selected_connection method
+    - Get selected connection
+    - Open ConnectionDialog with set_connection()
+    - Handle save callback to update connection
+    - _Requirements: 3.2_
+  - [x] 4.3 Implement duplicate_selected_connection method
+    - Clone selected connection
+    - Append "(copy)" to name
+    - Generate new UUID
+    - Save and refresh sidebar
+    - _Requirements: 3.3_
+  - [x] 4.4 Implement show_move_to_group_dialog method
+    - Show dialog with group list
+    - Update connection's group_id on selection
+    - _Requirements: 3.4_
+  - [x] 4.5 Implement delete confirmation for groups
+    - Show confirmation with connection count
+    - Delete group and all contained connections
+    - _Requirements: 3.5, 3.7_
+  - [x] 4.6 Implement group edit dialog
+    - Show simple rename dialog for groups
+    - Update group name on save
+    - _Requirements: 3.6_
+  - [x] 4.7 Write property test for connection duplication
+    - **Property 3: Connection Duplication**
+    - **Validates: Requirements 3.3**
+  - [x] 4.8 Write property test for group deletion cascade
+    - **Property 4: Group Deletion Cascade**
+    - **Validates: Requirements 3.7**
+
+- [x] 5. Checkpoint - Context Menu Operations
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. Implement Group-Scoped Sorting
+  - [x] 6.1 Add sort_group method to ConnectionManager
+    - Sort connections within specific group by name
+    - Update sort_order values
+    - _Requirements: 4.1_
+  - [x] 6.2 Add sort_all method to ConnectionManager
+    - Sort all groups and their connections
+    - Sort ungrouped connections
+    - _Requirements: 4.2, 4.3_
+  - [x] 6.3 Update sort_connections action in window.rs
+    - Check if selected item is a group
+    - Call sort_group or sort_all accordingly
+    - Refresh sidebar after sorting
+    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - [x] 6.4 Write property test for group-scoped sorting
+    - **Property 5: Group-Scoped Sorting**
+    - **Validates: Requirements 4.1, 4.2, 4.3, 4.4**
+
+- [x] 7. Implement Drag-and-Drop Reordering
+  - [x] 7.1 Implement drag source prepare handler
+    - Encode item type and ID in drag data
+    - Set appropriate drag action
+    - _Requirements: 5.1, 5.4_
+  - [x] 7.2 Implement drop target handler
+    - Parse drag data
+    - Determine target position and group
+    - Call reorder/move methods
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [x] 7.3 Add reorder_connection method to ConnectionManager
+    - Update sort_order for affected connections
+    - Handle same-group reordering
+    - _Requirements: 5.1, 5.5_
+  - [x] 7.4 Add move_connection_to_group method enhancement
+    - Update group_id and sort_order
+    - Handle move to root (group_id = None)
+    - _Requirements: 5.2, 5.3_
+  - [x] 7.5 Write property test for drag-drop reordering
+    - **Property 6: Drag-Drop Reordering**
+    - **Validates: Requirements 5.1, 5.2, 5.3, 5.5**
+
+- [x] 8. Checkpoint - Sorting and Drag-Drop
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 9. Add Sort Recent Feature
+  - [x] 9.1 Add last_connected field to Connection model
+    - Add `last_connected: Option<DateTime<Utc>>` field
+    - Update serialization/deserialization
+    - _Requirements: 6.4_
+  - [x] 9.2 Add sort_by_recent method to ConnectionManager
+    - Sort by last_connected descending
+    - Place None timestamps at end
+    - _Requirements: 6.1, 6.2_
+  - [x] 9.3 Add update_last_connected method
+    - Update timestamp when connection starts
+    - Call from start_connection in window.rs
+    - _Requirements: 6.4_
+  - [x] 9.4 Add Sort Recent button to sidebar
+    - Add button with clock icon
+    - Connect to win.sort-recent action
+    - _Requirements: 6.3_
+  - [x] 9.5 Implement sort-recent action in window.rs
+    - Call sort_by_recent
+    - Refresh sidebar
+    - _Requirements: 6.1_
+  - [x] 9.6 Write property test for recent sort ordering
+    - **Property 7: Recent Sort Ordering**
+    - **Validates: Requirements 6.1, 6.2**
+  - [x] 9.7 Write property test for last connected update
+    - **Property 8: Last Connected Update**
+    - **Validates: Requirements 6.4**
+
+- [x] 10. Add Client Detection Settings Tab
+  - [x] 10.1 Create client detection module in rustconn-core
+    - Add protocol/detection.rs
+    - Implement detect_ssh_client, detect_rdp_client, detect_vnc_client
+    - Parse version from command output
+    - _Requirements: 7.2, 7.3, 7.4_
+  - [x] 10.2 Add ClientInfo struct
+    - Fields: name, path, version, installed
+    - Add installation hints for missing clients
+    - _Requirements: 7.5_
+  - [x] 10.3 Add Clients tab to SettingsDialog
+    - Create create_clients_tab method
+    - Display detected clients with status
+    - Add Refresh button
+    - _Requirements: 7.1, 7.6_
+  - [x] 10.4 Write property test for client detection
+    - **Property 9: Client Detection**
+    - **Validates: Requirements 7.2, 7.3, 7.4**
+
+- [x] 11. Add Protocol Selection to Quick Connect
+  - [x] 11.1 Update show_quick_connect_dialog
+    - Add protocol dropdown (SSH, RDP, VNC)
+    - Add port spin button
+    - Connect protocol change to port update
+    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - [x] 11.2 Implement protocol-aware connection
+    - Create appropriate ProtocolConfig based on selection
+    - Use selected port
+    - _Requirements: 8.5_
+  - [x] 11.3 Write property test for protocol port defaults
+    - **Property 10: Protocol Port Defaults**
+    - **Validates: Requirements 8.2, 8.3, 8.4, 8.5**
+
+- [x] 12. Wire Up Unused Code
+  - [x] 12.1 Wire EmbeddedSessionTab methods
+    - Connect fullscreen_button, disconnect_button
+    - Use connection_id, protocol, is_embedded methods
+    - _Requirements: 9.2, 9.3_
+  - [x] 12.2 Wire SessionControls methods
+    - Connect set_fullscreen_icon to fullscreen toggle
+    - _Requirements: 9.3_
+  - [x] 12.3 Wire AppState methods
+    - Use generate_unique_group_name for new groups
+    - Use update_group_sort_order in sorting
+    - Use session management methods
+    - _Requirements: 9.4_
+  - [x] 12.4 Wire TerminalNotebook methods
+    - Use create_external_tab for non-embedded sessions
+    - Use send_text_to_session for snippets
+    - Use tab_count for UI state
+    - _Requirements: 9.5_
+  - [x] 12.5 Wire SelectionModelWrapper methods
+    - Use as_selection_model and is_multi where needed
+    - _Requirements: 9.4_
+  - [x] 12.6 Remove or use ImportDialog close_button
+    - Either wire to close action or remove field
+    - _Requirements: 9.1_
+  - [x] 12.7 Remove or use SettingsDialog build_settings
+    - Method is duplicated in run() callback, consolidate
+    - _Requirements: 9.1_
+
+- [x] 13. Final Checkpoint - All Fixes Complete
+  - Ensure all tests pass, ask the user if questions arise.
+

@@ -160,6 +160,10 @@ pub enum ImportError {
     /// I/O error during import
     #[error("IO error during import: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Import operation was cancelled by user
+    #[error("Import cancelled")]
+    Cancelled,
 }
 
 /// Errors related to session management

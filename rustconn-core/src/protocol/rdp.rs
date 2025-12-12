@@ -1,18 +1,14 @@
 //! RDP protocol handler
 
-use std::path::PathBuf;
-use std::process::Command;
-
 use crate::error::ProtocolError;
-use crate::models::{Connection, Credentials, ProtocolConfig, RdpClient, RdpConfig};
+use crate::models::{Connection, ProtocolConfig, RdpConfig};
 
 use super::{Protocol, ProtocolResult};
 
 /// RDP protocol handler
 ///
-/// Implements the Protocol trait for RDP connections, building `FreeRDP` (xfreerdp)
-/// commands with support for resolution, color depth, audio redirection, gateway,
-/// and custom client binaries.
+/// Implements the Protocol trait for RDP connections.
+/// Native embedding via gtk-frdp will be implemented in Phase 6.
 pub struct RdpProtocol;
 
 impl RdpProtocol {
@@ -29,14 +25,6 @@ impl RdpProtocol {
             _ => Err(ProtocolError::InvalidConfig(
                 "Connection is not an RDP connection".to_string(),
             )),
-        }
-    }
-
-    /// Gets the client binary path based on configuration
-    fn get_client_binary(client: &RdpClient) -> PathBuf {
-        match client {
-            RdpClient::FreeRdp => PathBuf::from("xfreerdp"),
-            RdpClient::Custom(path) => path.clone(),
         }
     }
 }
@@ -60,72 +48,6 @@ impl Protocol for RdpProtocol {
         3389
     }
 
-    fn uses_embedded_terminal(&self) -> bool {
-        false
-    }
-
-    fn build_command(
-        &self,
-        connection: &Connection,
-        credentials: Option<&Credentials>,
-    ) -> ProtocolResult<Command> {
-        let rdp_config = Self::get_rdp_config(connection)?;
-
-        let client_binary = Self::get_client_binary(&rdp_config.client);
-        let mut cmd = Command::new(&client_binary);
-
-        // Add server address with port
-        let server = if connection.port == self.default_port() {
-            format!("/v:{}", connection.host)
-        } else {
-            format!("/v:{}:{}", connection.host, connection.port)
-        };
-        cmd.arg(&server);
-
-        // Add username
-        if let Some(username) = &connection.username {
-            cmd.arg(format!("/u:{username}"));
-        } else if let Some(creds) = credentials {
-            if let Some(username) = &creds.username {
-                cmd.arg(format!("/u:{username}"));
-            }
-        }
-
-        // Add resolution if specified
-        if let Some(resolution) = &rdp_config.resolution {
-            cmd.arg(format!("/w:{}", resolution.width));
-            cmd.arg(format!("/h:{}", resolution.height));
-        }
-
-        // Add color depth if specified
-        if let Some(depth) = rdp_config.color_depth {
-            cmd.arg(format!("/bpp:{depth}"));
-        }
-
-        // Add audio redirection
-        if rdp_config.audio_redirect {
-            cmd.arg("/sound");
-        }
-
-        // Add gateway configuration
-        if let Some(gateway) = &rdp_config.gateway {
-            cmd.arg(format!("/g:{}", gateway.hostname));
-            if gateway.port != 443 {
-                cmd.arg(format!("/gp:{}", gateway.port));
-            }
-            if let Some(gw_username) = &gateway.username {
-                cmd.arg(format!("/gu:{gw_username}"));
-            }
-        }
-
-        // Add custom arguments
-        for arg in &rdp_config.custom_args {
-            cmd.arg(arg);
-        }
-
-        Ok(cmd)
-    }
-
     fn validate_connection(&self, connection: &Connection) -> ProtocolResult<()> {
         let rdp_config = Self::get_rdp_config(connection)?;
 
@@ -138,9 +60,7 @@ impl Protocol for RdpProtocol {
 
         // Validate port is in valid range
         if connection.port == 0 {
-            return Err(ProtocolError::InvalidConfig(
-                "Port cannot be 0".to_string(),
-            ));
+            return Err(ProtocolError::InvalidConfig("Port cannot be 0".to_string()));
         }
 
         // Validate color depth if specified
@@ -152,13 +72,6 @@ impl Protocol for RdpProtocol {
             }
         }
 
-        // Validate custom client path exists if specified
-        if let RdpClient::Custom(path) = &rdp_config.client {
-            if !path.as_os_str().is_empty() && !path.exists() {
-                return Err(ProtocolError::ClientNotFound(path.clone()));
-            }
-        }
-
         Ok(())
     }
 }
@@ -166,7 +79,7 @@ impl Protocol for RdpProtocol {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ProtocolConfig, RdpGateway, Resolution};
+    use crate::models::{ProtocolConfig, Resolution};
 
     fn create_rdp_connection(config: RdpConfig) -> Connection {
         Connection::new(
@@ -183,128 +96,63 @@ mod tests {
         assert_eq!(protocol.protocol_id(), "rdp");
         assert_eq!(protocol.display_name(), "RDP");
         assert_eq!(protocol.default_port(), 3389);
-        assert!(!protocol.uses_embedded_terminal());
     }
 
     #[test]
-    fn test_build_basic_rdp_command() {
+    fn test_validate_valid_connection() {
         let protocol = RdpProtocol::new();
         let connection = create_rdp_connection(RdpConfig::default());
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-
-        // Should contain the server
-        assert!(args.iter().any(|a| a.to_str().unwrap().contains("/v:windows.example.com")));
+        assert!(protocol.validate_connection(&connection).is_ok());
     }
 
     #[test]
-    fn test_build_rdp_command_with_custom_port() {
+    fn test_validate_empty_host() {
         let protocol = RdpProtocol::new();
         let mut connection = create_rdp_connection(RdpConfig::default());
-        connection.port = 3390;
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-
-        // Should contain server:port
-        assert!(args.iter().any(|a| a.to_str().unwrap().contains("/v:windows.example.com:3390")));
+        connection.host = String::new();
+        assert!(protocol.validate_connection(&connection).is_err());
     }
 
     #[test]
-    fn test_build_rdp_command_with_username() {
+    fn test_validate_zero_port() {
         let protocol = RdpProtocol::new();
-        let connection = create_rdp_connection(RdpConfig::default())
-            .with_username("administrator");
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-
-        // Should contain username
-        assert!(args.iter().any(|a| a.to_str().unwrap().contains("/u:administrator")));
+        let mut connection = create_rdp_connection(RdpConfig::default());
+        connection.port = 0;
+        assert!(protocol.validate_connection(&connection).is_err());
     }
 
     #[test]
-    fn test_build_rdp_command_with_resolution() {
+    fn test_validate_valid_color_depth() {
+        let protocol = RdpProtocol::new();
+        for depth in [8, 15, 16, 24, 32] {
+            let config = RdpConfig {
+                color_depth: Some(depth),
+                ..Default::default()
+            };
+            let connection = create_rdp_connection(config);
+            assert!(protocol.validate_connection(&connection).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_color_depth() {
+        let protocol = RdpProtocol::new();
+        let config = RdpConfig {
+            color_depth: Some(12), // Invalid
+            ..Default::default()
+        };
+        let connection = create_rdp_connection(config);
+        assert!(protocol.validate_connection(&connection).is_err());
+    }
+
+    #[test]
+    fn test_validate_with_resolution() {
         let protocol = RdpProtocol::new();
         let config = RdpConfig {
             resolution: Some(Resolution::new(1920, 1080)),
             ..Default::default()
         };
         let connection = create_rdp_connection(config);
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-        let args_str: Vec<_> = args.iter().map(|a| a.to_str().unwrap()).collect();
-
-        assert!(args_str.iter().any(|a| a.contains("/w:1920")));
-        assert!(args_str.iter().any(|a| a.contains("/h:1080")));
-    }
-
-    #[test]
-    fn test_build_rdp_command_with_color_depth() {
-        let protocol = RdpProtocol::new();
-        let config = RdpConfig {
-            color_depth: Some(24),
-            ..Default::default()
-        };
-        let connection = create_rdp_connection(config);
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-
-        assert!(args.iter().any(|a| a.to_str().unwrap().contains("/bpp:24")));
-    }
-
-    #[test]
-    fn test_build_rdp_command_with_audio() {
-        let protocol = RdpProtocol::new();
-        let config = RdpConfig {
-            audio_redirect: true,
-            ..Default::default()
-        };
-        let connection = create_rdp_connection(config);
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-
-        assert!(args.iter().any(|a| a.to_str() == Some("/sound")));
-    }
-
-    #[test]
-    fn test_build_rdp_command_with_gateway() {
-        let protocol = RdpProtocol::new();
-        let config = RdpConfig {
-            gateway: Some(RdpGateway {
-                hostname: "gateway.example.com".to_string(),
-                port: 443,
-                username: Some("gwuser".to_string()),
-            }),
-            ..Default::default()
-        };
-        let connection = create_rdp_connection(config);
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-        let args_str: Vec<_> = args.iter().map(|a| a.to_str().unwrap()).collect();
-
-        assert!(args_str.iter().any(|a| a.contains("/g:gateway.example.com")));
-        assert!(args_str.iter().any(|a| a.contains("/gu:gwuser")));
-    }
-
-    #[test]
-    fn test_build_rdp_command_with_custom_args() {
-        let protocol = RdpProtocol::new();
-        let config = RdpConfig {
-            custom_args: vec!["/cert-ignore".to_string(), "/clipboard".to_string()],
-            ..Default::default()
-        };
-        let connection = create_rdp_connection(config);
-
-        let cmd = protocol.build_command(&connection, None).unwrap();
-        let args: Vec<_> = cmd.get_args().collect();
-
-        assert!(args.iter().any(|a| a.to_str() == Some("/cert-ignore")));
-        assert!(args.iter().any(|a| a.to_str() == Some("/clipboard")));
+        assert!(protocol.validate_connection(&connection).is_ok());
     }
 }

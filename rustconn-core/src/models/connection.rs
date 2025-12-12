@@ -6,6 +6,23 @@ use uuid::Uuid;
 
 use super::protocol::{ProtocolConfig, ProtocolType};
 
+/// Source of password/credentials for a connection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PasswordSource {
+    /// No password stored
+    #[default]
+    None,
+    /// Password stored in connection config (encrypted)
+    Stored,
+    /// Password retrieved from `KeePass` database
+    KeePass,
+    /// Password retrieved from system keyring (libsecret)
+    Keyring,
+    /// Prompt user for password on each connection
+    Prompt,
+}
+
 /// A saved remote connection configuration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Connection {
@@ -37,17 +54,21 @@ pub struct Connection {
     /// Sort order for manual ordering (lower values appear first)
     #[serde(default)]
     pub sort_order: i32,
+    /// Timestamp when the connection was last used
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_connected: Option<DateTime<Utc>>,
+    /// Source of password for this connection
+    #[serde(default)]
+    pub password_source: PasswordSource,
+    /// Domain for RDP/Windows authentication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 impl Connection {
     /// Creates a new connection with the given parameters
     #[must_use]
-    pub fn new(
-        name: String,
-        host: String,
-        port: u16,
-        protocol_config: ProtocolConfig,
-    ) -> Self {
+    pub fn new(name: String, host: String, port: u16, protocol_config: ProtocolConfig) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -62,6 +83,9 @@ impl Connection {
             updated_at: now,
             protocol_config,
             sort_order: 0,
+            last_connected: None,
+            password_source: PasswordSource::None,
+            domain: None,
         }
     }
 
@@ -98,6 +122,17 @@ impl Connection {
         )
     }
 
+    /// Creates a new SPICE connection with default configuration
+    #[must_use]
+    pub fn new_spice(name: String, host: String, port: u16) -> Self {
+        Self::new(
+            name,
+            host,
+            port,
+            ProtocolConfig::Spice(super::protocol::SpiceConfig::default()),
+        )
+    }
+
     /// Sets the username for this connection
     #[must_use]
     pub fn with_username(mut self, username: impl Into<String>) -> Self {
@@ -130,7 +165,7 @@ impl Connection {
         match self.protocol {
             ProtocolType::Ssh => 22,
             ProtocolType::Rdp => 3389,
-            ProtocolType::Vnc => 5900,
+            ProtocolType::Vnc | ProtocolType::Spice => 5900,
         }
     }
 }

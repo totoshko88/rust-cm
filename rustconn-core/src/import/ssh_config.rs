@@ -14,7 +14,7 @@ use super::traits::{ImportResult, ImportSource, SkippedEntry};
 /// Importer for SSH config files.
 ///
 /// Parses standard OpenSSH configuration files and extracts connection
-/// information including Host, HostName, Port, User, IdentityFile, and ProxyJump.
+/// information including Host, `HostName`, Port, User, `IdentityFile`, and `ProxyJump`.
 pub struct SshConfigImporter {
     /// Custom paths to search for SSH config files
     custom_paths: Vec<PathBuf>,
@@ -23,7 +23,7 @@ pub struct SshConfigImporter {
 impl SshConfigImporter {
     /// Creates a new SSH config importer with default paths
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             custom_paths: Vec::new(),
         }
@@ -31,13 +31,14 @@ impl SshConfigImporter {
 
     /// Creates a new SSH config importer with custom paths
     #[must_use]
-    pub fn with_paths(paths: Vec<PathBuf>) -> Self {
+    pub const fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self {
             custom_paths: paths,
         }
     }
 
     /// Parses SSH config content and returns an import result
+    #[must_use] 
     pub fn parse_config(&self, content: &str, source_path: &str) -> ImportResult {
         let mut result = ImportResult::new();
         let mut current_host: Option<String> = None;
@@ -52,16 +53,13 @@ impl SshConfigImporter {
             }
 
             // Parse key-value pair
-            let (key, value) = match Self::parse_line(line) {
-                Some(kv) => kv,
-                None => {
-                    result.add_skipped(SkippedEntry::with_location(
-                        format!("line {}", line_num + 1),
-                        "Invalid syntax",
-                        source_path,
-                    ));
-                    continue;
-                }
+            let Some((key, value)) = Self::parse_line(line) else {
+                result.add_skipped(SkippedEntry::with_location(
+                    format!("line {}", line_num + 1),
+                    "Invalid syntax",
+                    source_path,
+                ));
+                continue;
             };
 
             let key_lower = key.to_lowercase();
@@ -139,8 +137,7 @@ impl SshConfigImporter {
         // Get the actual hostname (HostName option or use the Host pattern)
         let hostname = options
             .get("hostname")
-            .map(String::as_str)
-            .unwrap_or(host_pattern);
+            .map_or(host_pattern, String::as_str);
 
         // Skip if hostname is empty or a pattern
         if hostname.is_empty() || hostname.contains('*') {
@@ -159,12 +156,13 @@ impl SshConfigImporter {
             .unwrap_or(22);
 
         // Determine auth method and key path
-        let (auth_method, key_path) = if let Some(identity_file) = options.get("identityfile") {
-            let path = PathBuf::from(shellexpand::tilde(identity_file).into_owned());
-            (SshAuthMethod::PublicKey, Some(path))
-        } else {
-            (SshAuthMethod::Password, None)
-        };
+        let (auth_method, key_path) = options.get("identityfile").map_or(
+            (SshAuthMethod::Password, None),
+            |identity_file| {
+                let path = PathBuf::from(shellexpand::tilde(identity_file).into_owned());
+                (SshAuthMethod::PublicKey, Some(path))
+            },
+        );
 
         // Build SSH config
         let ssh_config = SshConfig {
@@ -195,6 +193,7 @@ impl SshConfigImporter {
     }
 
     /// Extracts custom SSH options that aren't handled specially
+    #[allow(clippy::unused_self)]
     fn extract_custom_options(&self, options: &HashMap<String, String>) -> HashMap<String, String> {
         let handled_keys = [
             "hostname",

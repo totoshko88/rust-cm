@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-/// Parses a comma-separated list of key=value pairs into a HashMap.
+/// Parses a comma-separated list of key=value pairs into a `HashMap`.
 ///
 /// Format: "Key1=Value1, Key2=Value2, ..."
 ///
@@ -37,7 +37,7 @@ pub fn parse_custom_options(text: &str) -> HashMap<String, String> {
     options
 }
 
-/// Formats a HashMap of options into a comma-separated key=value string.
+/// Formats a `HashMap` of options into a comma-separated key=value string.
 ///
 /// This is the inverse of `parse_custom_options`.
 ///
@@ -52,11 +52,9 @@ pub fn parse_custom_options(text: &str) -> HashMap<String, String> {
 /// assert!(formatted.contains("ForwardAgent=yes"));
 /// ```
 #[must_use]
+#[allow(clippy::implicit_hasher)]
 pub fn format_custom_options(options: &HashMap<String, String>) -> String {
-    let mut pairs: Vec<String> = options
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect();
+    let mut pairs: Vec<String> = options.iter().map(|(k, v)| format!("{k}={v}")).collect();
     pairs.sort(); // Sort for deterministic output
     pairs.join(", ")
 }
@@ -77,7 +75,7 @@ pub fn parse_args(text: &str) -> Vec<String> {
     if text.trim().is_empty() {
         return Vec::new();
     }
-    text.split_whitespace().map(|s| s.to_string()).collect()
+    text.split_whitespace().map(std::string::ToString::to_string).collect()
 }
 
 /// Formats a vector of arguments into a space-separated string.
@@ -99,7 +97,9 @@ pub fn format_args(args: &[String]) -> String {
 
 /// Validates a connection name.
 ///
-/// Returns Ok(()) if valid, Err with message if invalid.
+/// # Errors
+///
+/// Returns `Err` with a message if the name is empty or whitespace-only.
 pub fn validate_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Connection name is required".to_string());
@@ -109,7 +109,9 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 
 /// Validates a host address.
 ///
-/// Returns Ok(()) if valid, Err with message if invalid.
+/// # Errors
+///
+/// Returns `Err` with a message if the host is empty or contains spaces.
 pub fn validate_host(host: &str) -> Result<(), String> {
     if host.trim().is_empty() {
         return Err("Host is required".to_string());
@@ -123,7 +125,9 @@ pub fn validate_host(host: &str) -> Result<(), String> {
 
 /// Validates a port number.
 ///
-/// Returns Ok(()) if valid, Err with message if invalid.
+/// # Errors
+///
+/// Returns `Err` with a message if the port is zero.
 pub fn validate_port(port: u16) -> Result<(), String> {
     if port == 0 {
         return Err("Port must be greater than 0".to_string());

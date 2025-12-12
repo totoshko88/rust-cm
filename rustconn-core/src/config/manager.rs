@@ -249,9 +249,8 @@ impl ConfigManager {
             return Ok(T::default());
         }
 
-        let content = fs::read_to_string(path).map_err(|e| {
-            ConfigError::Parse(format!("Failed to read {}: {}", path.display(), e))
-        })?;
+        let content = fs::read_to_string(path)
+            .map_err(|e| ConfigError::Parse(format!("Failed to read {}: {}", path.display(), e)))?;
 
         Self::parse_toml(&content, path)
     }
@@ -262,11 +261,7 @@ impl ConfigManager {
         T: serde::de::DeserializeOwned,
     {
         toml::from_str(content).map_err(|e| {
-            ConfigError::Deserialize(format!(
-                "Failed to parse {}: {}",
-                path.display(),
-                e
-            ))
+            ConfigError::Deserialize(format!("Failed to parse {}: {}", path.display(), e))
         })
     }
 
@@ -275,13 +270,11 @@ impl ConfigManager {
     where
         T: serde::Serialize,
     {
-        let content = toml::to_string_pretty(data).map_err(|e| {
-            ConfigError::Serialize(format!("Failed to serialize: {e}"))
-        })?;
+        let content = toml::to_string_pretty(data)
+            .map_err(|e| ConfigError::Serialize(format!("Failed to serialize: {e}")))?;
 
-        fs::write(path, content).map_err(|e| {
-            ConfigError::Write(format!("Failed to write {}: {}", path.display(), e))
-        })
+        fs::write(path, content)
+            .map_err(|e| ConfigError::Write(format!("Failed to write {}: {}", path.display(), e)))
     }
 
     // ========== Validation ==========
@@ -292,14 +285,14 @@ impl ConfigManager {
     ///
     /// Returns an error if the connection is invalid.
     pub fn validate_connection(connection: &Connection) -> ConfigResult<()> {
-        if connection.name.is_empty() {
+        if connection.name.trim().is_empty() {
             return Err(ConfigError::Validation {
                 field: "name".to_string(),
                 reason: "Connection name cannot be empty".to_string(),
             });
         }
 
-        if connection.host.is_empty() {
+        if connection.host.trim().is_empty() {
             return Err(ConfigError::Validation {
                 field: "host".to_string(),
                 reason: "Host cannot be empty".to_string(),

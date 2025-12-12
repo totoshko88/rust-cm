@@ -37,6 +37,7 @@ impl KdbxEntry {
             crate::models::ProtocolConfig::Ssh(_) => "SSH",
             crate::models::ProtocolConfig::Rdp(_) => "RDP",
             crate::models::ProtocolConfig::Vnc(_) => "VNC",
+            crate::models::ProtocolConfig::Spice(_) => "SPICE",
         };
 
         let url = format!(
@@ -104,9 +105,8 @@ impl KdbxExporter {
     pub fn export_xml(&self, path: impl AsRef<Path>) -> SecretResult<()> {
         let xml = self.generate_xml();
 
-        std::fs::write(path.as_ref(), xml).map_err(|e| {
-            SecretError::KeePassXC(format!("Failed to write KDBX XML file: {e}"))
-        })?;
+        std::fs::write(path.as_ref(), xml)
+            .map_err(|e| SecretError::KeePassXC(format!("Failed to write KDBX XML file: {e}")))?;
 
         Ok(())
     }
@@ -121,9 +121,9 @@ impl KdbxExporter {
     pub fn export_to_writer<W: Write>(&self, mut writer: W) -> SecretResult<()> {
         let xml = self.generate_xml();
 
-        writer.write_all(xml.as_bytes()).map_err(|e| {
-            SecretError::KeePassXC(format!("Failed to write KDBX XML: {e}"))
-        })?;
+        writer
+            .write_all(xml.as_bytes())
+            .map_err(|e| SecretError::KeePassXC(format!("Failed to write KDBX XML: {e}")))?;
 
         Ok(())
     }
@@ -138,7 +138,10 @@ impl KdbxExporter {
         xml.push_str("<KeePassFile>\n");
         xml.push_str("\t<Root>\n");
         xml.push_str("\t\t<Group>\n");
-        xml.push_str(&format!("\t\t\t<Name>{}</Name>\n", escape_xml(&self.database_name)));
+        xml.push_str(&format!(
+            "\t\t\t<Name>{}</Name>\n",
+            escape_xml(&self.database_name)
+        ));
         xml.push_str("\t\t\t<IsExpanded>True</IsExpanded>\n");
 
         // Group entries by their group path
@@ -146,16 +149,16 @@ impl KdbxExporter {
             std::collections::HashMap::new();
 
         for entry in &self.entries {
-            groups
-                .entry(entry.group.clone())
-                .or_default()
-                .push(entry);
+            groups.entry(entry.group.clone()).or_default().push(entry);
         }
 
         // Write groups and entries
         for (group_path, entries) in &groups {
             xml.push_str("\t\t\t<Group>\n");
-            xml.push_str(&format!("\t\t\t\t<Name>{}</Name>\n", escape_xml(group_path)));
+            xml.push_str(&format!(
+                "\t\t\t\t<Name>{}</Name>\n",
+                escape_xml(group_path)
+            ));
             xml.push_str("\t\t\t\t<IsExpanded>True</IsExpanded>\n");
 
             for entry in entries {

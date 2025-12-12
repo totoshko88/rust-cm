@@ -29,7 +29,7 @@ impl SessionLogger {
     pub fn new(log_dir: PathBuf) -> Result<Self, SessionError> {
         // Ensure log directory exists
         fs::create_dir_all(&log_dir).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to create log directory: {}", e))
+            SessionError::LoggingError(format!("Failed to create log directory: {e}"))
         })?;
 
         Ok(Self {
@@ -66,36 +66,37 @@ impl SessionLogger {
     ) -> Result<PathBuf, SessionError> {
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let safe_name = sanitize_filename(connection_name);
-        let filename = format!("{}_{}.log", safe_name, timestamp);
-        
+        let filename = format!("{safe_name}_{timestamp}.log");
+
         // Create connection-specific subdirectory
         let conn_dir = self.log_dir.join(connection_id.to_string());
         fs::create_dir_all(&conn_dir).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to create connection log directory: {}", e))
+            SessionError::LoggingError(format!("Failed to create connection log directory: {e}"))
         })?;
 
         let log_path = conn_dir.join(filename);
 
         // Create the log file with header
-        let mut file = File::create(&log_path).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to create log file: {}", e))
-        })?;
+        let mut file = File::create(&log_path)
+            .map_err(|e| SessionError::LoggingError(format!("Failed to create log file: {e}")))?;
 
         // Write log header
         writeln!(file, "# RustConn Session Log").map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log header: {}", e))
+            SessionError::LoggingError(format!("Failed to write log header: {e}"))
         })?;
-        writeln!(file, "# Connection: {} ({})", connection_name, connection_id).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log header: {}", e))
-        })?;
+        writeln!(
+            file,
+            "# Connection: {connection_name} ({connection_id})"
+        )
+        .map_err(|e| SessionError::LoggingError(format!("Failed to write log header: {e}")))?;
         writeln!(file, "# Started: {}", Utc::now().to_rfc3339()).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log header: {}", e))
+            SessionError::LoggingError(format!("Failed to write log header: {e}"))
         })?;
         writeln!(file, "#").map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log header: {}", e))
+            SessionError::LoggingError(format!("Failed to write log header: {e}"))
         })?;
         writeln!(file).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log header: {}", e))
+            SessionError::LoggingError(format!("Failed to write log header: {e}"))
         })?;
 
         // Clean up old logs
@@ -112,7 +113,7 @@ impl SessionLogger {
         let file = OpenOptions::new()
             .append(true)
             .open(path)
-            .map_err(|e| SessionError::LoggingError(format!("Failed to open log file: {}", e)))?;
+            .map_err(|e| SessionError::LoggingError(format!("Failed to open log file: {e}")))?;
 
         Ok(BufWriter::new(file))
     }
@@ -122,12 +123,12 @@ impl SessionLogger {
     /// # Errors
     /// Returns an error if writing fails
     pub fn write_to_log(writer: &mut BufWriter<File>, data: &[u8]) -> Result<(), SessionError> {
-        writer.write_all(data).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write to log: {}", e))
-        })?;
-        writer.flush().map_err(|e| {
-            SessionError::LoggingError(format!("Failed to flush log: {}", e))
-        })?;
+        writer
+            .write_all(data)
+            .map_err(|e| SessionError::LoggingError(format!("Failed to write to log: {e}")))?;
+        writer
+            .flush()
+            .map_err(|e| SessionError::LoggingError(format!("Failed to flush log: {e}")))?;
         Ok(())
     }
 
@@ -139,16 +140,16 @@ impl SessionLogger {
         let mut file = OpenOptions::new()
             .append(true)
             .open(path)
-            .map_err(|e| SessionError::LoggingError(format!("Failed to open log file: {}", e)))?;
+            .map_err(|e| SessionError::LoggingError(format!("Failed to open log file: {e}")))?;
 
         writeln!(file).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log footer: {}", e))
+            SessionError::LoggingError(format!("Failed to write log footer: {e}"))
         })?;
         writeln!(file, "#").map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log footer: {}", e))
+            SessionError::LoggingError(format!("Failed to write log footer: {e}"))
         })?;
         writeln!(file, "# Session ended: {}", Utc::now().to_rfc3339()).map_err(|e| {
-            SessionError::LoggingError(format!("Failed to write log footer: {}", e))
+            SessionError::LoggingError(format!("Failed to write log footer: {e}"))
         })?;
 
         Ok(())
@@ -157,9 +158,11 @@ impl SessionLogger {
     /// Cleans up old log files based on retention settings
     fn cleanup_old_logs(&self, conn_dir: &Path) -> Result<(), SessionError> {
         let entries: Vec<_> = fs::read_dir(conn_dir)
-            .map_err(|e| SessionError::LoggingError(format!("Failed to read log directory: {}", e)))?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "log"))
+            .map_err(|e| {
+                SessionError::LoggingError(format!("Failed to read log directory: {e}"))
+            })?
+            .filter_map(std::result::Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "log"))
             .collect();
 
         // Sort by modification time (newest first)
@@ -208,15 +211,17 @@ impl SessionLogger {
     /// Returns an error if the directory cannot be read
     pub fn list_logs(&self, connection_id: Uuid) -> Result<Vec<PathBuf>, SessionError> {
         let conn_dir = self.log_dir.join(connection_id.to_string());
-        
+
         if !conn_dir.exists() {
             return Ok(Vec::new());
         }
 
         let mut logs: Vec<_> = fs::read_dir(&conn_dir)
-            .map_err(|e| SessionError::LoggingError(format!("Failed to read log directory: {}", e)))?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "log"))
+            .map_err(|e| {
+                SessionError::LoggingError(format!("Failed to read log directory: {e}"))
+            })?
+            .filter_map(std::result::Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "log"))
             .map(|e| e.path())
             .collect();
 
