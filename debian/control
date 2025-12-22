@@ -1,0 +1,29 @@
+Source: rustconn
+Section: net
+Priority: optional
+Maintainer: Anton Isaiev <totoshko88@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc,
+               libgtk-4-dev,
+               libvte-2.91-gtk4-dev,
+               libdbus-1-dev,
+               libssl-dev,
+               pkg-config,
+               zstd
+Standards-Version: 4.6.2
+Homepage: https://github.com/totoshko88/rust-cm
+Rules-Requires-Root: no
+
+Package: rustconn
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+         openssh-client
+Recommends: freerdp2-x11,
+            tigervnc-viewer,
+            virt-viewer
+Description: Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
+ RustConn is a modern connection manager for Linux desktops.
+ It provides a GTK4-based GUI for managing SSH, RDP, VNC, and SPICE
+ remote connections with features like connection groups, credential
+ management, session logging, and import/export capabilities.

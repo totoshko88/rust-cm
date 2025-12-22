@@ -1,0 +1,8 @@
+rustconn (0.1.0-1) unstable; urgency=medium
+
+  * Initial release
+    - GTK4 GUI for managing remote connections
+    - SSH, RDP, VNC, SPICE support
+    - Connection groups and import/export
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2024 12:00:00 +0000

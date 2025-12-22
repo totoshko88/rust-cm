@@ -1,0 +1,25 @@
+#!/usr/bin/make -f
+
+export CARGO_HOME = $(CURDIR)/debian/cargo_home
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	tar --zstd -xf vendor.tar.zst
+	mkdir -p .cargo
+	cp cargo_config .cargo/config.toml
+	cargo build --release --offline -p rustconn -p rustconn-cli
+
+override_dh_auto_install:
+	install -Dm755 target/release/rustconn debian/rustconn/usr/bin/rustconn
+	install -Dm755 target/release/rustconn-cli debian/rustconn/usr/bin/rustconn-cli
+	install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop \
+		debian/rustconn/usr/share/applications/org.rustconn.RustConn.desktop
+
+override_dh_auto_test:
+	true
+
+override_dh_auto_clean:
+	cargo clean || true
+	rm -rf $(CARGO_HOME) vendor .cargo
