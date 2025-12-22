@@ -1,3 +1,15 @@
+rustconn (0.2.0-1) unstable; urgency=medium
+
+  * New upstream release
+    - Tree view state persistence (expanded/collapsed folders)
+    - Fixed RDP embedded mode window sizing
+    - Fixed native format import group hierarchy preservation
+    - Updated dependencies: ksni 0.3, resvg 0.45, dirs 6.0
+    - Dynamic version in About dialog
+    - Zero Trust providers support (AWS SSM, GCP IAP, Azure Bastion)
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2024 18:00:00 +0200
+
 rustconn (0.1.0-1) unstable; urgency=medium
 
   * Initial release
