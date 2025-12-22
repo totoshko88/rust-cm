@@ -647,7 +647,8 @@ impl SplitTerminalView {
         // Description
         let desc = gtk4::Label::new(Some(
             "🔐 Modern Connection Manager for Linux\n\
-             SSH • RDP • VNC • SPICE",
+             SSH • RDP • VNC • SPICE\n\
+             Embedded & External Clients",
         ));
         desc.add_css_class("dim-label");
         desc.set_justify(gtk4::Justification::Center);
@@ -660,7 +661,8 @@ impl SplitTerminalView {
              🔒  Secure credential storage (KeePass/Keyring)\n\
              📁  Import from Remmina, Asbru-CM, SSH config, Ansible inventory\n\
              🏷️  Organize with groups and tags\n\
-             ⚡ Performance optimizations for large connection databases",
+             ⚡ Performance optimizations for large connection databases\n\
+             🌐  Zero Trust: AWS SSM, GCP IAP, Azure Bastion, OCI Bastion",
         ));
         features.set_justify(gtk4::Justification::Left);
         features.add_css_class("dim-label");
@@ -678,7 +680,7 @@ impl SplitTerminalView {
              📂  Lazy loading for large connection trees\n\
              📜  Virtual scrolling for 1000+ connections\n\
              🎯  Debounced search for responsive typing\n\
-             🖼️  Native SPICE embedding (optional feature)",
+             🖼️  Embedded VNC/RDP/SPICE (optional features)",
         ));
         perf_features.set_justify(gtk4::Justification::Left);
         perf_features.add_css_class("dim-label");
