@@ -18,20 +18,35 @@ override_dh_auto_install:
 	# Desktop file
 	install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop \
 		debian/rustconn/usr/share/applications/org.rustconn.RustConn.desktop
-	# Icon
+	# Icons - hicolor theme (for desktop/launcher)
 	install -Dm644 rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg \
 		debian/rustconn/usr/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg
+	install -Dm644 rustconn/assets/icons/hicolor/48x48/apps/org.rustconn.RustConn.png \
+		debian/rustconn/usr/share/icons/hicolor/48x48/apps/org.rustconn.RustConn.png
+	install -Dm644 rustconn/assets/icons/hicolor/64x64/apps/org.rustconn.RustConn.png \
+		debian/rustconn/usr/share/icons/hicolor/64x64/apps/org.rustconn.RustConn.png
+	install -Dm644 rustconn/assets/icons/hicolor/128x128/apps/org.rustconn.RustConn.png \
+		debian/rustconn/usr/share/icons/hicolor/128x128/apps/org.rustconn.RustConn.png
+	install -Dm644 rustconn/assets/icons/hicolor/256x256/apps/org.rustconn.RustConn.png \
+		debian/rustconn/usr/share/icons/hicolor/256x256/apps/org.rustconn.RustConn.png
+	# AppStream cached icons (for GNOME Software)
+	install -d debian/rustconn/usr/share/app-info/icons/hicolor/64x64/apps
+	install -d debian/rustconn/usr/share/app-info/icons/hicolor/128x128/apps
+	install -Dm644 rustconn/assets/icons/hicolor/64x64/apps/org.rustconn.RustConn.png \
+		debian/rustconn/usr/share/app-info/icons/hicolor/64x64/apps/org.rustconn.RustConn.png
+	install -Dm644 rustconn/assets/icons/hicolor/128x128/apps/org.rustconn.RustConn.png \
+		debian/rustconn/usr/share/app-info/icons/hicolor/128x128/apps/org.rustconn.RustConn.png
 	# AppStream metainfo
 	install -Dm644 rustconn/assets/org.rustconn.RustConn.metainfo.xml \
 		debian/rustconn/usr/share/metainfo/org.rustconn.RustConn.metainfo.xml
-	# Screenshots for local AppStream
-	install -d debian/rustconn/usr/share/doc/rustconn/screenshots
+	# Screenshots in app-info for GNOME Software
+	install -d debian/rustconn/usr/share/app-info/screenshots/org.rustconn.RustConn
 	install -Dm644 rustconn/assets/screenshots/main.png \
-		debian/rustconn/usr/share/doc/rustconn/screenshots/main.png
+		debian/rustconn/usr/share/app-info/screenshots/org.rustconn.RustConn/main.png
 	install -Dm644 rustconn/assets/screenshots/split.png \
-		debian/rustconn/usr/share/doc/rustconn/screenshots/split.png
+		debian/rustconn/usr/share/app-info/screenshots/org.rustconn.RustConn/split.png
 	install -Dm644 rustconn/assets/screenshots/rdp.png \
-		debian/rustconn/usr/share/doc/rustconn/screenshots/rdp.png
+		debian/rustconn/usr/share/app-info/screenshots/org.rustconn.RustConn/rdp.png
 	# Cleanup
 	rm -rf vendor .cargo
 
