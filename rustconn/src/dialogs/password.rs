@@ -23,7 +23,7 @@ pub struct PasswordDialogResult {
     pub domain: String,
     /// Whether to save credentials
     pub save_credentials: bool,
-    /// Whether the user requested migration to `KeePass`
+    /// Whether the user requested migration to KeePass
     pub migrate_to_keepass: bool,
 }
 
@@ -242,14 +242,14 @@ impl PasswordDialog {
         self.window.set_title(Some(&format!("Connect to {name}")));
     }
 
-    /// Shows or hides the "Save to `KeePass`" migration button
+    /// Shows or hides the "Save to KeePass" migration button
     ///
     /// This button should be shown when:
-    /// - `KeePass` integration is enabled
-    /// - Credentials exist in Keyring but not in `KeePass`
+    /// - KeePass integration is enabled
+    /// - Credentials exist in Keyring but not in KeePass
     ///
     /// # Requirements Coverage
-    /// - Requirement 3.3: Display "Save to `KeePass`" button when migration is needed
+    /// - Requirement 3.3: Display "Save to KeePass" button when migration is needed
     pub fn set_show_migrate_button(&self, show: bool) {
         self.migrate_button.set_visible(show);
     }

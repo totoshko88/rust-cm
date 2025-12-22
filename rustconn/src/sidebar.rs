@@ -494,7 +494,7 @@ impl ConnectionSidebar {
         history_popover.set_parent(&search_entry);
 
         // Show help popover when user types '?'
-        let help_popover_for_key = help_popover;
+        let help_popover_for_key = help_popover.clone();
         let search_entry_clone = search_entry.clone();
         let search_history_clone = search_history.clone();
         let history_popover_clone = history_popover.clone();
@@ -1073,7 +1073,7 @@ impl ConnectionSidebar {
 
     /// Returns the appropriate icon name for a protocol string
     ///
-    /// For `ZeroTrust` connections, the protocol string may include provider info
+    /// For ZeroTrust connections, the protocol string may include provider info
     /// in the format "zerotrust:provider" (e.g., "zerotrust:aws", "zerotrust:gcloud").
     /// This allows showing provider-specific icons for cloud CLI connections.
     ///
@@ -1755,7 +1755,8 @@ impl ConnectionSidebar {
         let point = gtk4::graphene::Point::new(x as f32, y as f32);
         let y_in_widget = list_view
             .compute_point(&row_widget, &point)
-            .map_or(y, |p| f64::from(p.y()));
+            .map(|p| f64::from(p.y()))
+            .unwrap_or(y);
 
         // Determine drop position based on Y within the row
         // Increased ratio for easier targeting (40% top/bottom zones)
@@ -1816,7 +1817,7 @@ impl ConnectionSidebar {
     }
 
     /// Clears highlight from all group rows
-    /// CSS classes are now managed by `DropIndicator`
+    /// CSS classes are now managed by DropIndicator
     fn clear_group_highlights(_list_view: &ListView, drop_indicator: &DropIndicator) {
         drop_indicator.set_highlighted_group(None);
     }
@@ -1870,7 +1871,7 @@ impl ConnectionSidebar {
 
         for (i, (operator, description)) in operators.iter().enumerate() {
             let op_label = Label::builder()
-                .label(format!("<tt>{operator}</tt>"))
+                .label(&format!("<tt>{operator}</tt>"))
                 .use_markup(true)
                 .halign(gtk4::Align::Start)
                 .build();
@@ -1904,7 +1905,7 @@ impl ConnectionSidebar {
 
         for example in examples {
             let example_label = Label::builder()
-                .label(format!("<tt>{example}</tt>"))
+                .label(&format!("<tt>{example}</tt>"))
                 .use_markup(true)
                 .halign(gtk4::Align::Start)
                 .margin_start(8)
@@ -1967,8 +1968,8 @@ impl ConnectionSidebar {
 
         // Update history list when popover is shown
         let search_entry_clone = search_entry.clone();
-        let history_list_clone = history_list;
-        let search_history_clone = search_history;
+        let history_list_clone = history_list.clone();
+        let search_history_clone = search_history.clone();
         let popover_clone = popover.clone();
         popover.connect_show(move |_| {
             // Clear existing items
@@ -2062,8 +2063,8 @@ impl ConnectionSidebar {
     }
 
     /// Gets the IDs of all collapsed groups in the tree
-    /// Returns a `HashSet` of group UUIDs that are currently collapsed
-    /// Note: This iterates through all visible rows in the `TreeListModel`
+    /// Returns a HashSet of group UUIDs that are currently collapsed
+    /// Note: This iterates through all visible rows in the TreeListModel
     #[must_use]
     pub fn get_collapsed_groups(&self) -> std::collections::HashSet<Uuid> {
         let mut collapsed = std::collections::HashSet::new();
@@ -2097,7 +2098,7 @@ impl ConnectionSidebar {
 
     /// Applies collapsed state to groups after populating the sidebar
     /// Groups in the provided set will be collapsed, others will be expanded
-    /// This needs to be called after the tree is populated and uses `idle_add`
+    /// This needs to be called after the tree is populated and uses idle_add
     /// to ensure the tree model is fully initialized
     pub fn apply_collapsed_groups(&self, collapsed: &std::collections::HashSet<Uuid>) {
         if collapsed.is_empty() {
@@ -2188,7 +2189,7 @@ impl ConnectionSidebar {
     }
 
     /// Gets the IDs of all expanded groups in the tree
-    /// Returns a `HashSet` of group UUIDs that are currently expanded
+    /// Returns a HashSet of group UUIDs that are currently expanded
     #[must_use]
     pub fn get_expanded_groups(&self) -> HashSet<Uuid> {
         let mut expanded = HashSet::new();

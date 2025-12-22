@@ -1,4 +1,4 @@
-//! RDP session widget with `FreeRDP` integration
+//! RDP session widget with FreeRDP integration
 //!
 //! This module provides the `EmbeddedRdpWidget` struct for RDP session management
 //! within the GTK4 application.
@@ -6,17 +6,17 @@
 //! # Architecture
 //!
 //! Unlike VNC which uses a pure Rust client (`vnc-rs`) for true embedded rendering,
-//! RDP sessions use `FreeRDP` subprocess (wlfreerdp/xfreerdp) which opens its own window.
-//! The widget displays connection status and manages the `FreeRDP` process lifecycle.
+//! RDP sessions use FreeRDP subprocess (wlfreerdp/xfreerdp) which opens its own window.
+//! The widget displays connection status and manages the FreeRDP process lifecycle.
 //!
 //! ## Why not true embedded RDP?
 //!
 //! True embedded RDP (rendering frames directly in our GTK widget) would require:
 //! - A pure Rust RDP client like `ironrdp` (complex API, limited documentation)
-//! - Or `FreeRDP` with custom frame capture (requires `FreeRDP` modifications)
+//! - Or FreeRDP with custom frame capture (requires FreeRDP modifications)
 //!
 //! The current approach provides:
-//! - Reliable RDP connections via mature `FreeRDP`
+//! - Reliable RDP connections via mature FreeRDP
 //! - Session management (start/stop/status)
 //! - Automatic client detection (wlfreerdp, xfreerdp3, xfreerdp)
 //! - Qt/Wayland warning suppression for better compatibility
@@ -26,7 +26,7 @@
 //! - **Embedded mode**: Uses wlfreerdp (preferred) - opens separate window but managed by widget
 //! - **External mode**: Uses xfreerdp - explicit external window mode
 //!
-//! Both modes open `FreeRDP` in a separate window; the difference is in client selection
+//! Both modes open FreeRDP in a separate window; the difference is in client selection
 //! and user expectations.
 
 // Allow cast warnings - graphics code uses various integer sizes for coordinates
@@ -38,12 +38,12 @@
 //!
 //! # Requirements Coverage
 //!
-//! - Requirement 16.1: RDP connections via `FreeRDP`
+//! - Requirement 16.1: RDP connections via FreeRDP
 //! - Requirement 16.6: Proper cleanup on disconnect
 //! - Requirement 16.8: Fallback to xfreerdp if wlfreerdp unavailable
-//! - Requirement 6.1: `QSocketNotifier` error handling
+//! - Requirement 6.1: QSocketNotifier error handling
 //! - Requirement 6.2: Wayland requestActivate warning suppression
-//! - Requirement 6.3: `FreeRDP` threading isolation
+//! - Requirement 6.3: FreeRDP threading isolation
 //! - Requirement 6.4: Automatic fallback to external mode
 
 use gtk4::gdk;
@@ -114,7 +114,7 @@ pub enum EmbeddedRdpError {
     #[error("Wayland subsurface creation failed: {0}")]
     SubsurfaceCreation(String),
 
-    /// `FreeRDP` initialization failed
+    /// FreeRDP initialization failed
     #[error("FreeRDP initialization failed: {0}")]
     FreeRdpInit(String),
 
@@ -138,7 +138,7 @@ pub enum EmbeddedRdpError {
     #[error("Qt/Wayland threading error: {0}")]
     QtThreadingError(String),
 
-    /// `FreeRDP` process failed
+    /// FreeRDP process failed
     #[error("FreeRDP process failed: {0}")]
     ProcessFailed(String),
 
@@ -155,7 +155,7 @@ pub enum EmbeddedRdpError {
 // FreeRDP Thread Isolation (Requirement 6.3)
 // ============================================================================
 
-/// Commands that can be sent to the `FreeRDP` thread
+/// Commands that can be sent to the FreeRDP thread
 #[derive(Debug, Clone)]
 pub enum RdpCommand {
     /// Connect to an RDP server
@@ -179,7 +179,7 @@ pub enum RdpCommand {
     Shutdown,
 }
 
-/// Events emitted by the `FreeRDP` thread
+/// Events emitted by the FreeRDP thread
 #[derive(Debug, Clone)]
 pub enum RdpEvent {
     /// Connection established
@@ -201,7 +201,7 @@ pub enum RdpEvent {
     FallbackTriggered(String),
 }
 
-/// Thread state for `FreeRDP` operations
+/// Thread state for FreeRDP operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FreeRdpThreadState {
     /// Thread not started
@@ -219,25 +219,25 @@ pub enum FreeRdpThreadState {
     ShuttingDown,
 }
 
-/// Thread-safe `FreeRDP` wrapper that isolates Qt from GTK main thread
+/// Thread-safe FreeRDP wrapper that isolates Qt from GTK main thread
 ///
-/// This struct runs `FreeRDP` operations in a dedicated thread to avoid
-/// Qt/GTK threading conflicts that cause `QSocketNotifier` and Wayland
+/// This struct runs FreeRDP operations in a dedicated thread to avoid
+/// Qt/GTK threading conflicts that cause QSocketNotifier and Wayland
 /// requestActivate errors.
 ///
 /// # Requirements Coverage
 ///
-/// - Requirement 6.3: `FreeRDP` threading isolation
-/// - Requirement 6.1: `QSocketNotifier` error handling
+/// - Requirement 6.3: FreeRDP threading isolation
+/// - Requirement 6.1: QSocketNotifier error handling
 /// - Requirement 6.2: Wayland requestActivate warning suppression
 pub struct FreeRdpThread {
-    /// Handle to the `FreeRDP` process
+    /// Handle to the FreeRDP process
     process: Arc<Mutex<Option<Child>>>,
     /// Shared memory buffer for frame data
     frame_buffer: Arc<Mutex<PixelBuffer>>,
-    /// Channel for sending commands to `FreeRDP` thread
+    /// Channel for sending commands to FreeRDP thread
     command_tx: mpsc::Sender<RdpCommand>,
-    /// Channel for receiving events from `FreeRDP` thread
+    /// Channel for receiving events from FreeRDP thread
     event_rx: mpsc::Receiver<RdpEvent>,
     /// Thread handle
     thread_handle: Option<JoinHandle<()>>,
@@ -248,7 +248,7 @@ pub struct FreeRdpThread {
 }
 
 impl FreeRdpThread {
-    /// Spawns `FreeRDP` in a dedicated thread to avoid Qt/GTK conflicts
+    /// Spawns FreeRDP in a dedicated thread to avoid Qt/GTK conflicts
     ///
     /// # Arguments
     ///
@@ -301,7 +301,7 @@ impl FreeRdpThread {
         })
     }
 
-    /// Main loop for `FreeRDP` operations running in dedicated thread
+    /// Main loop for FreeRDP operations running in dedicated thread
     fn run_freerdp_loop(
         cmd_rx: mpsc::Receiver<RdpCommand>,
         evt_tx: mpsc::Sender<RdpEvent>,
@@ -384,7 +384,7 @@ impl FreeRdpThread {
         }
     }
 
-    /// Launches `FreeRDP` with Qt error suppression
+    /// Launches FreeRDP with Qt error suppression
     fn launch_freerdp(
         config: &RdpConfig,
         process: &Arc<Mutex<Option<Child>>>,
@@ -456,7 +456,7 @@ impl FreeRdpThread {
         }
     }
 
-    /// Cleans up the `FreeRDP` process
+    /// Cleans up the FreeRDP process
     fn cleanup_process(process: &Arc<Mutex<Option<Child>>>) {
         if let Some(mut child) = process.lock().unwrap().take() {
             let _ = child.kill();
@@ -464,38 +464,34 @@ impl FreeRdpThread {
         }
     }
 
-    /// Sends a command to the `FreeRDP` thread
+    /// Sends a command to the FreeRDP thread
     pub fn send_command(&self, cmd: RdpCommand) -> Result<(), EmbeddedRdpError> {
         self.command_tx
             .send(cmd)
             .map_err(|e| EmbeddedRdpError::ThreadError(e.to_string()))
     }
 
-    /// Tries to receive an event from the `FreeRDP` thread (non-blocking)
-    #[must_use]
+    /// Tries to receive an event from the FreeRDP thread (non-blocking)
     pub fn try_recv_event(&self) -> Option<RdpEvent> {
         self.event_rx.try_recv().ok()
     }
 
     /// Returns the current thread state
-    #[must_use]
     pub fn state(&self) -> FreeRdpThreadState {
         *self.state.lock().unwrap()
     }
 
     /// Returns whether fallback was triggered
-    #[must_use]
     pub fn fallback_triggered(&self) -> bool {
         *self.fallback_triggered.lock().unwrap()
     }
 
     /// Returns a reference to the frame buffer
-    #[must_use]
-    pub const fn frame_buffer(&self) -> &Arc<Mutex<PixelBuffer>> {
+    pub fn frame_buffer(&self) -> &Arc<Mutex<PixelBuffer>> {
         &self.frame_buffer
     }
 
-    /// Shuts down the `FreeRDP` thread
+    /// Shuts down the FreeRDP thread
     pub fn shutdown(&mut self) {
         let _ = self.command_tx.send(RdpCommand::Shutdown);
         if let Some(handle) = self.thread_handle.take() {
@@ -514,15 +510,15 @@ impl Drop for FreeRdpThread {
 // Qt/Wayland Warning Suppression (Requirement 6.1, 6.2)
 // ============================================================================
 
-/// Safe `FreeRDP` launcher with Qt error suppression
+/// Safe FreeRDP launcher with Qt error suppression
 ///
-/// This struct provides methods to launch `FreeRDP` with environment variables
+/// This struct provides methods to launch FreeRDP with environment variables
 /// set to suppress Qt/Wayland warnings that can cause issues when mixing
-/// Qt-based `FreeRDP` with GTK4 applications.
+/// Qt-based FreeRDP with GTK4 applications.
 ///
 /// # Requirements Coverage
 ///
-/// - Requirement 6.1: `QSocketNotifier` error handling
+/// - Requirement 6.1: QSocketNotifier error handling
 /// - Requirement 6.2: Wayland requestActivate warning suppression
 pub struct SafeFreeRdpLauncher {
     /// Whether to suppress Qt warnings
@@ -534,7 +530,7 @@ pub struct SafeFreeRdpLauncher {
 impl SafeFreeRdpLauncher {
     /// Creates a new launcher with default settings (warnings suppressed)
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             suppress_qt_warnings: true,
             force_x11: true,
@@ -548,7 +544,7 @@ impl SafeFreeRdpLauncher {
         self
     }
 
-    /// Sets whether to force X11 backend for `FreeRDP`
+    /// Sets whether to force X11 backend for FreeRDP
     #[must_use]
     pub const fn with_force_x11(mut self, force: bool) -> Self {
         self.force_x11 = force;
@@ -584,7 +580,7 @@ impl SafeFreeRdpLauncher {
     ///
     /// # Errors
     ///
-    /// Returns error if `FreeRDP` cannot be launched.
+    /// Returns error if FreeRDP cannot be launched.
     pub fn launch(&self, config: &RdpConfig) -> Result<Child, EmbeddedRdpError> {
         let binary = Self::detect_freerdp().ok_or_else(|| {
             EmbeddedRdpError::FreeRdpInit(
@@ -609,7 +605,7 @@ impl SafeFreeRdpLauncher {
             .map_err(|e| EmbeddedRdpError::FreeRdpInit(e.to_string()))
     }
 
-    /// Detects available `FreeRDP` binary
+    /// Detects available FreeRDP binary
     fn detect_freerdp() -> Option<String> {
         let candidates = ["xfreerdp3", "xfreerdp", "freerdp"];
         for candidate in candidates {
@@ -731,7 +727,7 @@ pub struct RdpConfig {
     pub port: u16,
     /// Username for authentication
     pub username: Option<String>,
-    /// Password for authentication (should use `SecretString` in production)
+    /// Password for authentication (should use SecretString in production)
     pub password: Option<String>,
     /// Domain for authentication
     pub domain: Option<String>,
@@ -743,7 +739,7 @@ pub struct RdpConfig {
     pub clipboard_enabled: bool,
     /// Shared folders for drive redirection
     pub shared_folders: Vec<EmbeddedSharedFolder>,
-    /// Additional `FreeRDP` arguments
+    /// Additional FreeRDP arguments
     pub extra_args: Vec<String>,
     /// Window geometry for external mode (x, y, width, height)
     pub window_geometry: Option<(i32, i32, i32, i32)>,
@@ -821,7 +817,7 @@ impl RdpConfig {
         self
     }
 
-    /// Adds extra `FreeRDP` arguments
+    /// Adds extra FreeRDP arguments
     #[must_use]
     pub fn with_extra_args(mut self, args: Vec<String>) -> Self {
         self.extra_args = args;
@@ -845,7 +841,7 @@ impl RdpConfig {
 
 /// Pixel buffer for frame data
 ///
-/// This struct holds the pixel data received from `FreeRDP`'s `EndPaint` callback
+/// This struct holds the pixel data received from FreeRDP's EndPaint callback
 /// and is used to blit to the Wayland surface.
 #[derive(Debug)]
 pub struct PixelBuffer {
@@ -894,7 +890,7 @@ impl PixelBuffer {
         self.has_data
     }
 
-    /// Sets the `has_data` flag
+    /// Sets the has_data flag
     pub fn set_has_data(&mut self, has_data: bool) {
         self.has_data = has_data;
     }
@@ -919,7 +915,7 @@ impl PixelBuffer {
     /// Resizes the buffer to new dimensions
     ///
     /// Preserves existing content by scaling it to the new size to avoid
-    /// visual artifacts during resize. The `has_data` flag is preserved.
+    /// visual artifacts during resize. The has_data flag is preserved.
     pub fn resize(&mut self, width: u32, height: u32) {
         if self.width == width && self.height == height {
             return; // No change needed
@@ -1049,12 +1045,12 @@ impl WaylandSurfaceHandle {
     }
 
     /// Commits pending changes to the surface
-    pub const fn commit(&self) {
+    pub fn commit(&self) {
         // In a real implementation, this would call wl_surface_commit
     }
 
     /// Damages a region of the surface for redraw
-    pub const fn damage(&self, _x: i32, _y: i32, _width: i32, _height: i32) {
+    pub fn damage(&self, _x: i32, _y: i32, _width: i32, _height: i32) {
         // In a real implementation, this would call wl_surface_damage_buffer
     }
 
@@ -1077,13 +1073,13 @@ type FallbackCallback = Box<dyn Fn(&str) + 'static>;
 /// Embedded RDP widget using Wayland subsurface
 ///
 /// This widget provides native RDP session embedding within GTK4 applications.
-/// It uses a `DrawingArea` for rendering and integrates with `FreeRDP` for
+/// It uses a `DrawingArea` for rendering and integrates with FreeRDP for
 /// protocol handling.
 ///
 /// # Features
 ///
 /// - Native Wayland subsurface integration
-/// - `FreeRDP` frame capture via `EndPaint` callback
+/// - FreeRDP frame capture via EndPaint callback
 /// - Keyboard and mouse input forwarding
 /// - Dynamic resolution changes on resize
 /// - Automatic fallback to external xfreerdp
@@ -1128,16 +1124,16 @@ pub struct EmbeddedRdpWidget {
     state: Rc<RefCell<RdpConnectionState>>,
     /// Current configuration
     config: Rc<RefCell<Option<RdpConfig>>>,
-    /// `FreeRDP` child process (for external mode)
+    /// FreeRDP child process (for external mode)
     process: Rc<RefCell<Option<Child>>>,
-    /// `FreeRDP` thread wrapper for embedded mode (Requirement 6.3)
+    /// FreeRDP thread wrapper for embedded mode (Requirement 6.3)
     freerdp_thread: Rc<RefCell<Option<FreeRdpThread>>>,
-    /// `IronRDP` command sender for embedded mode
+    /// IronRDP command sender for embedded mode
     #[cfg(feature = "rdp-embedded")]
     ironrdp_command_tx: Rc<RefCell<Option<std::sync::mpsc::Sender<RdpClientCommand>>>>,
     /// Whether using embedded mode (wlfreerdp) or external mode (xfreerdp)
     is_embedded: Rc<RefCell<bool>>,
-    /// Whether using `IronRDP` (true) or `FreeRDP` (false) for embedded mode
+    /// Whether using IronRDP (true) or FreeRDP (false) for embedded mode
     is_ironrdp: Rc<RefCell<bool>>,
     /// Current widget width
     width: Rc<RefCell<u32>>,
@@ -1476,17 +1472,17 @@ impl EmbeddedRdpWidget {
         }
     }
 
-    /// Sets up the drawing function for the `DrawingArea`
+    /// Sets up the drawing function for the DrawingArea
     ///
-    /// This function handles framebuffer rendering when `IronRDP` is available,
-    /// or shows a status overlay when using `FreeRDP` external mode.
+    /// This function handles framebuffer rendering when IronRDP is available,
+    /// or shows a status overlay when using FreeRDP external mode.
     ///
     /// # Framebuffer Rendering (Requirement 1.1)
     ///
     /// When in embedded mode with framebuffer data available:
     /// 1. Receives framebuffer updates via event channel
     /// 2. Blits pixel data to Cairo surface
-    /// 3. Queues `DrawingArea` redraw on updates
+    /// 3. Queues DrawingArea redraw on updates
     ///
     /// The pixel buffer is in BGRA format which matches Cairo's ARGB32 format.
     fn setup_drawing(&self) {
@@ -1632,7 +1628,8 @@ impl EmbeddedRdpWidget {
         let config_ref = config.borrow();
         let host = config_ref
             .as_ref()
-            .map_or("No connection", |c| c.host.as_str());
+            .map(|c| c.host.as_str())
+            .unwrap_or("No connection");
 
         cr.set_source_rgb(0.9, 0.9, 0.9);
         cr.set_font_size(18.0);
@@ -1727,7 +1724,7 @@ impl EmbeddedRdpWidget {
                             });
                         }
                     } else {
-                        eprintln!("[IronRDP] Unknown keyval: 0x{gdk_keyval:X}");
+                        eprintln!("[IronRDP] Unknown keyval: 0x{:X}", gdk_keyval);
                     }
                 } else if let Some(ref thread) = *freerdp_thread.borrow() {
                     let _ = thread.send_command(RdpCommand::KeyEvent {
@@ -1931,7 +1928,7 @@ impl EmbeddedRdpWidget {
         let is_ironrdp = self.is_ironrdp.clone();
         let freerdp_thread = self.freerdp_thread.clone();
         let ironrdp_tx = self.ironrdp_command_tx.clone();
-        let button_state_release = button_state;
+        let button_state_release = button_state.clone();
         let width_release = self.width.clone();
         let height_release = self.height.clone();
         let rdp_width_release = self.rdp_width.clone();
@@ -2233,7 +2230,7 @@ impl EmbeddedRdpWidget {
             });
     }
 
-    /// Reconnects `IronRDP` with new configuration (called from resize handler)
+    /// Reconnects IronRDP with new configuration (called from resize handler)
     #[cfg(feature = "rdp-embedded")]
     #[allow(clippy::too_many_arguments)]
     fn reconnect_ironrdp(
@@ -2274,7 +2271,7 @@ impl EmbeddedRdpWidget {
         // Create and connect the IronRDP client
         let mut client = RdpClient::new(client_config);
         if let Err(e) = client.connect() {
-            eprintln!("[IronRDP] Reconnect failed: {e}");
+            eprintln!("[IronRDP] Reconnect failed: {}", e);
             *state.borrow_mut() = RdpConnectionState::Error;
             if let Some(ref callback) = *on_error.borrow() {
                 callback(&format!("Reconnect failed: {e}"));
@@ -2289,7 +2286,7 @@ impl EmbeddedRdpWidget {
 
         // Store client in a shared reference for the polling closure
         let client = std::rc::Rc::new(std::cell::RefCell::new(Some(client)));
-        let client_ref = client;
+        let client_ref = client.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
             // Check if we're still in embedded mode
@@ -2312,7 +2309,7 @@ impl EmbeddedRdpWidget {
                 while let Some(event) = client.try_recv_event() {
                     match event {
                         RdpClientEvent::Connected { width, height } => {
-                            eprintln!("[IronRDP] Reconnected: {width}x{height}");
+                            eprintln!("[IronRDP] Reconnected: {}x{}", width, height);
                             *state.borrow_mut() = RdpConnectionState::Connected;
                             *rdp_width_ref.borrow_mut() = u32::from(width);
                             *rdp_height_ref.borrow_mut() = u32::from(height);
@@ -2341,7 +2338,7 @@ impl EmbeddedRdpWidget {
                             should_break = true;
                         }
                         RdpClientEvent::Error(msg) => {
-                            eprintln!("[IronRDP] Error after reconnect: {msg}");
+                            eprintln!("[IronRDP] Error after reconnect: {}", msg);
                             *state.borrow_mut() = RdpConnectionState::Error;
                             toolbar.set_visible(false);
                             status_label.set_visible(false);
@@ -2619,11 +2616,11 @@ impl EmbeddedRdpWidget {
     ///
     /// # Errors
     ///
-    /// Returns error if connection fails or no `FreeRDP` client is available
+    /// Returns error if connection fails or no FreeRDP client is available
     ///
     /// # Requirements Coverage
     ///
-    /// - Requirement 1.5: Fallback to `FreeRDP` external mode
+    /// - Requirement 1.5: Fallback to FreeRDP external mode
     /// - Requirement 6.4: Automatic fallback to external mode on failure
     pub fn connect(&self, config: &RdpConfig) -> Result<(), EmbeddedRdpError> {
         // Store configuration
@@ -2679,24 +2676,24 @@ impl EmbeddedRdpWidget {
         self.connect_external_with_notification(config)
     }
 
-    /// Checks if `IronRDP` native client is available
+    /// Checks if IronRDP native client is available
     ///
     /// This is determined at compile time via the `rdp-embedded` feature flag.
-    /// When `IronRDP` dependencies are resolved, this will return true.
+    /// When IronRDP dependencies are resolved, this will return true.
     #[must_use]
-    pub const fn is_ironrdp_available() -> bool {
+    pub fn is_ironrdp_available() -> bool {
         rustconn_core::is_embedded_rdp_available()
     }
 
-    /// Connects using `IronRDP` native client
+    /// Connects using IronRDP native client
     ///
-    /// This method uses the pure Rust `IronRDP` library for true embedded
+    /// This method uses the pure Rust IronRDP library for true embedded
     /// RDP rendering within the GTK widget.
     ///
     /// # Requirements Coverage
     ///
     /// - Requirement 1.1: Native RDP embedding as GTK widget
-    /// - Requirement 1.5: Fallback to `FreeRDP` if `IronRDP` fails
+    /// - Requirement 1.5: Fallback to FreeRDP if IronRDP fails
     #[cfg(feature = "rdp-embedded")]
     fn connect_ironrdp(&self, config: &RdpConfig) -> Result<(), EmbeddedRdpError> {
         use rustconn_core::{RdpClient, RdpClientConfig, RdpClientEvent};
@@ -2786,7 +2783,7 @@ impl EmbeddedRdpWidget {
 
         // Store client in a shared reference for the polling closure
         let client = std::rc::Rc::new(std::cell::RefCell::new(Some(client)));
-        let client_ref = client;
+        let client_ref = client.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
             // Check if we're still in embedded mode
@@ -2809,7 +2806,7 @@ impl EmbeddedRdpWidget {
                 while let Some(event) = client.try_recv_event() {
                     match event {
                         RdpClientEvent::Connected { width, height } => {
-                            eprintln!("[IronRDP] Connected: {width}x{height}");
+                            eprintln!("[IronRDP] Connected: {}x{}", width, height);
                             *state.borrow_mut() = RdpConnectionState::Connected;
                             *rdp_width_ref.borrow_mut() = u32::from(width);
                             *rdp_height_ref.borrow_mut() = u32::from(height);
@@ -2834,7 +2831,7 @@ impl EmbeddedRdpWidget {
                             should_break = true;
                         }
                         RdpClientEvent::Error(msg) => {
-                            eprintln!("[IronRDP] Error: {msg}");
+                            eprintln!("[IronRDP] Error: {}", msg);
                             *state.borrow_mut() = RdpConnectionState::Error;
                             toolbar.set_visible(false);
                             if let Some(ref callback) = *on_error.borrow() {
@@ -2881,7 +2878,7 @@ impl EmbeddedRdpWidget {
                             needs_redraw = true;
                         }
                         RdpClientEvent::ResolutionChanged { width, height } => {
-                            eprintln!("[IronRDP] Resolution changed: {width}x{height}");
+                            eprintln!("[IronRDP] Resolution changed: {}x{}", width, height);
                             *rdp_width_ref.borrow_mut() = u32::from(width);
                             *rdp_height_ref.borrow_mut() = u32::from(height);
                             {
@@ -3030,7 +3027,7 @@ impl EmbeddedRdpWidget {
                             return glib::ControlFlow::Break;
                         }
                         RdpEvent::Error(msg) => {
-                            eprintln!("[EmbeddedRDP] Error: {msg}");
+                            eprintln!("[EmbeddedRDP] Error: {}", msg);
                             *state.borrow_mut() = RdpConnectionState::Error;
                             if let Some(ref callback) = *on_error.borrow() {
                                 callback(&msg);
@@ -3039,7 +3036,7 @@ impl EmbeddedRdpWidget {
                             return glib::ControlFlow::Break;
                         }
                         RdpEvent::FallbackTriggered(reason) => {
-                            eprintln!("[EmbeddedRDP] Fallback triggered: {reason}");
+                            eprintln!("[EmbeddedRDP] Fallback triggered: {}", reason);
                             if let Some(ref callback) = *on_fallback.borrow() {
                                 callback(&reason);
                             }
@@ -3056,7 +3053,10 @@ impl EmbeddedRdpWidget {
                                 let current_w = *rdp_width_ref.borrow();
                                 let current_h = *rdp_height_ref.borrow();
                                 if width != current_w || height != current_h {
-                                    eprintln!("[EmbeddedRDP] Resolution changed: {width}x{height}");
+                                    eprintln!(
+                                        "[EmbeddedRDP] Resolution changed: {}x{}",
+                                        width, height
+                                    );
                                     *rdp_width_ref.borrow_mut() = width;
                                     *rdp_height_ref.borrow_mut() = height;
                                     pixel_buffer.borrow_mut().resize(width, height);
@@ -3087,7 +3087,7 @@ impl EmbeddedRdpWidget {
     /// # Requirements Coverage
     ///
     /// - Requirement 1.2: Fallback to xfreerdp in external window mode
-    /// - Requirement 6.1: `QSocketNotifier` error handling
+    /// - Requirement 6.1: QSocketNotifier error handling
     /// - Requirement 6.2: Wayland requestActivate warning suppression
     fn connect_external(&self, config: &RdpConfig) -> Result<(), EmbeddedRdpError> {
         // Use SafeFreeRdpLauncher for Qt error suppression (Requirement 6.1, 6.2)
@@ -3113,7 +3113,7 @@ impl EmbeddedRdpWidget {
     /// Disconnects from the RDP server
     ///
     /// This method properly cleans up all resources including:
-    /// - `FreeRDP` thread (if using embedded mode)
+    /// - FreeRDP thread (if using embedded mode)
     /// - External process (if using external mode)
     /// - Wayland surface resources
     /// - Pixel buffer
@@ -3161,7 +3161,7 @@ impl EmbeddedRdpWidget {
         }
     }
 
-    /// Terminates the external `FreeRDP` process if running
+    /// Terminates the external FreeRDP process if running
     ///
     /// This method gracefully terminates the process, waiting for it to exit.
     ///
@@ -3194,7 +3194,6 @@ impl EmbeddedRdpWidget {
     /// Checks if the external process is still running
     ///
     /// Returns `true` if the process is running, `false` otherwise.
-    #[must_use]
     pub fn is_process_running(&self) -> bool {
         if let Some(ref mut child) = *self.process.borrow_mut() {
             match child.try_wait() {
@@ -3247,19 +3246,19 @@ impl EmbeddedRdpWidget {
         }
     }
 
-    /// Handles `FreeRDP` `BeginPaint` callback
+    /// Handles FreeRDP BeginPaint callback
     ///
-    /// This is called by `FreeRDP` before rendering a frame region.
+    /// This is called by FreeRDP before rendering a frame region.
     /// In embedded mode, this prepares the pixel buffer for updates.
-    pub const fn on_begin_paint(&self) {
+    pub fn on_begin_paint(&self) {
         // In a real implementation, this would:
         // 1. Lock the pixel buffer
         // 2. Prepare for incoming frame data
     }
 
-    /// Handles `FreeRDP` `EndPaint` callback
+    /// Handles FreeRDP EndPaint callback
     ///
-    /// This is called by `FreeRDP` after rendering a frame region.
+    /// This is called by FreeRDP after rendering a frame region.
     /// The pixel data is blitted to the Wayland surface.
     ///
     /// # Arguments

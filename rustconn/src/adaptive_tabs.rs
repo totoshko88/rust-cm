@@ -211,7 +211,7 @@ impl AdaptiveTab {
     }
 
     /// Gets the widget
-    const fn widget(&self) -> &GtkBox {
+    fn widget(&self) -> &GtkBox {
         &self.container
     }
 }
@@ -525,7 +525,7 @@ impl AdaptiveTabBar {
 
     /// Gets the main widget
     #[must_use]
-    pub const fn widget(&self) -> &GtkBox {
+    pub fn widget(&self) -> &GtkBox {
         &self.container
     }
 

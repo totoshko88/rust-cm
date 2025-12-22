@@ -716,7 +716,7 @@ impl ExportDialog {
                 _ => ExportFormat::Ansible,
             };
 
-            let options = ExportOptions::new(format, output_path)
+            let options = ExportOptions::new(format, output_path.clone())
                 .with_passwords(include_passwords.is_active())
                 .with_groups(include_groups.is_active());
 
@@ -822,7 +822,8 @@ impl ExportDialog {
             path.to_path_buf()
         } else {
             path.parent()
-                .map_or_else(|| path.to_path_buf(), std::path::Path::to_path_buf)
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| path.to_path_buf())
         };
 
         if let Err(e) = open::that(&dir_to_open) {

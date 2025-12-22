@@ -266,7 +266,7 @@ impl ClusterDialog {
         let icon = gtk4::Image::from_icon_name(icon_name);
 
         let label = Label::builder()
-            .label(format!("{} ({})", connection.name, connection.host))
+            .label(&format!("{} ({})", connection.name, connection.host))
             .halign(gtk4::Align::Start)
             .hexpand(true)
             .build();
@@ -522,7 +522,7 @@ impl ClusterListDialog {
             ""
         };
         let count_label = Label::builder()
-            .label(format!(
+            .label(&format!(
                 "{} connections{}",
                 cluster.connection_count(),
                 broadcast_indicator

@@ -33,7 +33,7 @@ pub fn create_application() -> Application {
     // Create shared tray manager (will be initialized in build_ui)
     let tray_manager: SharedTrayManager = Rc::new(RefCell::new(None));
 
-    let tray_manager_clone = tray_manager;
+    let tray_manager_clone = tray_manager.clone();
     app.connect_activate(move |app| {
         build_ui(app, tray_manager_clone.clone());
     });
@@ -344,7 +344,7 @@ fn setup_app_actions(
     // Quit action - save collapsed groups state before quitting
     let quit_action = gio::SimpleAction::new("quit", None);
     let app_weak = app.downgrade();
-    let state_clone = state;
+    let state_clone = state.clone();
     let sidebar_rc = window.sidebar_rc();
     quit_action.connect_activate(move |_, _| {
         // Save collapsed groups state

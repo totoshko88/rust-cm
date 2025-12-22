@@ -796,6 +796,7 @@ impl AppState {
         connection: &Connection,
     ) -> Result<Option<Credentials>, String> {
         use rustconn_core::secret::KeePassStatus;
+        use secrecy::ExposeSecret;
 
         // For KeePass password source, directly use KeePassStatus to retrieve password
         // This bypasses the SecretManager which requires registered backends
@@ -816,7 +817,7 @@ impl AppState {
                     .secrets
                     .kdbx_password
                     .as_ref()
-                    .map(secrecy::ExposeSecret::expose_secret);
+                    .map(|p| p.expose_secret());
 
                 let key_file = self.settings.secrets.kdbx_key_file.as_deref();
 
@@ -856,7 +857,7 @@ impl AppState {
                         eprintln!("[resolve_credentials] No password found in KeePass");
                     }
                     Err(e) => {
-                        eprintln!("[resolve_credentials] KeePass error: {e}");
+                        eprintln!("[resolve_credentials] KeePass error: {}", e);
                     }
                 }
             }
@@ -1093,7 +1094,7 @@ impl AppState {
 
     /// Gets the collapsed groups from settings
     #[must_use]
-    pub const fn collapsed_groups(&self) -> &std::collections::HashSet<uuid::Uuid> {
+    pub fn collapsed_groups(&self) -> &std::collections::HashSet<uuid::Uuid> {
         &self.settings.ui.collapsed_groups
     }
 

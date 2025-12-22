@@ -743,7 +743,7 @@ impl TemplateManagerDialog {
 
     /// Returns a reference to the state templates
     #[must_use]
-    pub const fn state_templates(&self) -> &Rc<RefCell<Vec<ConnectionTemplate>>> {
+    pub fn state_templates(&self) -> &Rc<RefCell<Vec<ConnectionTemplate>>> {
         &self.state_templates
     }
 

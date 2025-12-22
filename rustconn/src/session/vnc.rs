@@ -789,7 +789,7 @@ impl VncSessionWidget {
 
     /// Provides credentials for authentication
     ///
-    /// This should be called in response to the `auth_required` callback.
+    /// This should be called in response to the auth_required callback.
     ///
     /// # Arguments
     ///

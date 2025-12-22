@@ -352,7 +352,7 @@ impl EmbeddedSpiceWidget {
         *self.on_reconnect.borrow_mut() = Some(Box::new(callback));
     }
 
-    /// Sets up the drawing function for the `DrawingArea`
+    /// Sets up the drawing function for the DrawingArea
     fn setup_drawing(&self) {
         let pixel_buffer = self.pixel_buffer.clone();
         let state = self.state.clone();
@@ -439,7 +439,7 @@ impl EmbeddedSpiceWidget {
     }
 
     /// Sets up keyboard and mouse input handlers
-    const fn setup_input_handlers(&self) {
+    fn setup_input_handlers(&self) {
         #[cfg(feature = "spice-embedded")]
         {
             let command_sender = self.command_sender.clone();
@@ -634,7 +634,7 @@ impl EmbeddedSpiceWidget {
     }
 
     /// Sets up clipboard buttons
-    const fn setup_clipboard_buttons(&self, copy_btn: &Button, paste_btn: &Button) {
+    fn setup_clipboard_buttons(&self, copy_btn: &Button, paste_btn: &Button) {
         #[cfg(feature = "spice-embedded")]
         {
             let command_sender = self.command_sender.clone();
@@ -685,7 +685,7 @@ impl EmbeddedSpiceWidget {
     }
 
     /// Sets up Ctrl+Alt+Del button
-    const fn setup_ctrl_alt_del_button(&self, btn: &Button) {
+    fn setup_ctrl_alt_del_button(&self, btn: &Button) {
         #[cfg(feature = "spice-embedded")]
         {
             let command_sender = self.command_sender.clone();
@@ -705,7 +705,7 @@ impl EmbeddedSpiceWidget {
 
     /// Returns the main container widget
     #[must_use]
-    pub const fn widget(&self) -> &GtkBox {
+    pub fn widget(&self) -> &GtkBox {
         &self.container
     }
 

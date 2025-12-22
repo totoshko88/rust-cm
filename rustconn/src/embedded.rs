@@ -420,10 +420,10 @@ impl RdpLauncher {
     /// * `password` - Optional password
     /// * `domain` - Optional domain
     /// * `resolution` - Optional resolution (width, height)
-    /// * `extra_args` - Extra `FreeRDP` arguments
+    /// * `extra_args` - Extra FreeRDP arguments
     /// * `window_geometry` - Optional window geometry (x, y, width, height)
     /// * `remember_window_position` - Whether to apply window geometry
-    /// * `shared_folders` - Shared folders for drive redirection (`share_name`, `local_path`)
+    /// * `shared_folders` - Shared folders for drive redirection (share_name, local_path)
     ///
     /// # Errors
     /// Returns error if the RDP client fails to start

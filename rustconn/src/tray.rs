@@ -1,14 +1,14 @@
 //! System tray icon implementation
 //!
-//! This module provides tray icon support using the `StatusNotifierItem` D-Bus protocol
+//! This module provides tray icon support using the StatusNotifierItem D-Bus protocol
 //! via the ksni crate, which is the standard for system tray icons on modern Linux
 //! desktops (GNOME, KDE, etc.) and works with Wayland.
 //!
 //! # Icon Rendering
 //!
 //! The tray icon is rendered from SVG to ARGB32 pixmap format using resvg.
-//! This ensures compatibility with all `StatusNotifierItem` implementations
-//! including GNOME's `AppIndicator` extension.
+//! This ensures compatibility with all StatusNotifierItem implementations
+//! including GNOME's AppIndicator extension.
 //!
 //! # System Requirements
 //!
@@ -73,7 +73,7 @@ impl Default for TrayState {
 
 #[cfg(feature = "tray")]
 mod tray_impl {
-    use super::{mpsc, Arc, Mutex, Receiver, TrayMessage, TrayState, Uuid};
+    use super::*;
     use ksni::{menu::StandardItem, Icon, MenuItem, Tray, TrayService};
     use std::sync::mpsc::Sender;
 
@@ -119,7 +119,7 @@ mod tray_impl {
         }]
     }
 
-    /// `RustConn` tray icon implementation
+    /// RustConn tray icon implementation
     pub struct RustConnTray {
         pub state: Arc<Mutex<TrayState>>,
         pub sender: Sender<TrayMessage>,
@@ -147,10 +147,7 @@ mod tray_impl {
         }
 
         fn tool_tip(&self) -> ksni::ToolTip {
-            let state = self
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let description = if state.active_sessions > 0 {
                 format!("{} active session(s)", state.active_sessions)
             } else {
@@ -170,10 +167,7 @@ mod tray_impl {
         }
 
         fn menu(&self) -> Vec<MenuItem<Self>> {
-            let state = self
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let mut items: Vec<MenuItem<Self>> = Vec::new();
 
             // Toggle window visibility
@@ -326,7 +320,6 @@ mod tray_impl {
             self.handle.update(|_| {});
         }
 
-        #[must_use]
         pub fn try_recv(&self) -> Option<TrayMessage> {
             self.receiver.try_recv().ok()
         }

@@ -127,7 +127,7 @@ impl NewDocumentDialog {
         let on_complete: DocumentCallback = Rc::new(RefCell::new(None));
 
         // Toggle password fields visibility
-        let password_box_clone = password_box;
+        let password_box_clone = password_box.clone();
         password_check.connect_toggled(move |check| {
             password_box_clone.set_visible(check.is_active());
         });
@@ -597,7 +597,7 @@ impl DocumentProtectionDialog {
         let doc_id: Rc<RefCell<Option<Uuid>>> = Rc::new(RefCell::new(None));
 
         // Toggle password fields visibility
-        let password_box_clone = password_box;
+        let password_box_clone = password_box.clone();
         enable_check.connect_toggled(move |check| {
             password_box_clone.set_visible(check.is_active());
         });

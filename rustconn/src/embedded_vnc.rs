@@ -12,8 +12,8 @@
 //! # Requirements Coverage
 //!
 //! - Requirement 16.2: VNC connections embedded in main window
-//! - Requirement 16.3: Wayland `wl_subsurface` for native compositor integration
-//! - Requirement 16.4: Frame buffer handling and blit to `wl_buffer`
+//! - Requirement 16.3: Wayland wl_subsurface for native compositor integration
+//! - Requirement 16.4: Frame buffer handling and blit to wl_buffer
 //! - Requirement 16.5: Keyboard and mouse input forwarding
 
 // Allow cast warnings - graphics code uses various integer sizes for coordinates
@@ -387,7 +387,7 @@ impl VncPixelBuffer {
         }
     }
 
-    /// Copies a rectangular region within the buffer (for `CopyRect` encoding)
+    /// Copies a rectangular region within the buffer (for CopyRect encoding)
     pub fn copy_rect(&mut self, src_x: u32, src_y: u32, dst_x: u32, dst_y: u32, w: u32, h: u32) {
         let stride = self.stride as usize;
         let bytes_per_pixel = 4;
@@ -468,12 +468,12 @@ impl VncWaylandSurface {
     }
 
     /// Commits pending changes to the surface
-    pub const fn commit(&self) {
+    pub fn commit(&self) {
         // In a real implementation, this would call wl_surface_commit
     }
 
     /// Damages a region of the surface for redraw
-    pub const fn damage(&self, _x: i32, _y: i32, _width: i32, _height: i32) {
+    pub fn damage(&self, _x: i32, _y: i32, _width: i32, _height: i32) {
         // In a real implementation, this would call wl_surface_damage_buffer
     }
 
@@ -725,7 +725,7 @@ impl EmbeddedVncWidget {
         *self.on_reconnect.borrow_mut() = Some(Box::new(callback));
     }
 
-    /// Sets up the drawing function for the `DrawingArea`
+    /// Sets up the drawing function for the DrawingArea
     fn setup_drawing(&self) {
         let pixel_buffer = self.pixel_buffer.clone();
         let state = self.state.clone();
@@ -1135,7 +1135,8 @@ impl EmbeddedVncWidget {
                                 height: best_h as u16,
                             });
                             eprintln!(
-                                "[VNC] Requesting standard resolution {best_w}x{best_h} for window {new_width}x{new_height}"
+                                "[VNC] Requesting standard resolution {}x{} for window {}x{}",
+                                best_w, best_h, new_width, new_height
                             );
                         }
                     }
@@ -1418,7 +1419,7 @@ impl EmbeddedVncWidget {
     /// Returns true if the `vnc-embedded` feature is enabled in rustconn-core,
     /// which provides a pure Rust VNC client implementation.
     #[must_use]
-    pub const fn detect_native_vnc() -> bool {
+    pub fn detect_native_vnc() -> bool {
         // Check if the vnc-embedded feature is available in rustconn-core
         is_embedded_vnc_available()
     }
@@ -1516,7 +1517,7 @@ impl EmbeddedVncWidget {
                 eprintln!("[EmbeddedVNC] VNC client started successfully");
             }
             Err(e) => {
-                eprintln!("[EmbeddedVNC] VNC connection failed: {e}");
+                eprintln!("[EmbeddedVNC] VNC connection failed: {}", e);
                 return Err(EmbeddedVncError::Connection(e.to_string()));
             }
         }
@@ -1581,7 +1582,8 @@ impl EmbeddedVncWidget {
                         // (requires server support for ExtendedDesktopSize)
                         if let Some(ref sender) = *command_sender_ref.borrow() {
                             eprintln!(
-                                "[VNC] Requesting initial resolution {desired_width}x{desired_height}"
+                                "[VNC] Requesting initial resolution {}x{}",
+                                desired_width, desired_height
                             );
                             let _ = sender.send(VncClientCommand::SetDesktopSize {
                                 width: desired_width as u16,
@@ -1601,7 +1603,7 @@ impl EmbeddedVncWidget {
                         return glib::ControlFlow::Break;
                     }
                     VncClientEvent::ResolutionChanged { width, height } => {
-                        eprintln!("[EmbeddedVNC] Resolution changed: {width}x{height}");
+                        eprintln!("[EmbeddedVNC] Resolution changed: {}x{}", width, height);
                         // Store VNC server resolution for coordinate transformation
                         *vnc_width_ref.borrow_mut() = width;
                         *vnc_height_ref.borrow_mut() = height;
@@ -1642,7 +1644,7 @@ impl EmbeddedVncWidget {
                         drawing_area.queue_draw();
                     }
                     VncClientEvent::Error(msg) => {
-                        eprintln!("[EmbeddedVNC] Error: {msg}");
+                        eprintln!("[EmbeddedVNC] Error: {}", msg);
                         *state.borrow_mut() = VncConnectionState::Error;
                         toolbar.set_visible(false);
                         if let Some(ref callback) = *on_error.borrow() {
@@ -1889,9 +1891,9 @@ impl EmbeddedVncWidget {
         }
     }
 
-    /// Handles VNC `CopyRect` update
+    /// Handles VNC CopyRect update
     ///
-    /// `CopyRect` is an efficient encoding where the server tells the client
+    /// CopyRect is an efficient encoding where the server tells the client
     /// to copy a region from one location to another.
     ///
     /// # Arguments

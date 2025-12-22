@@ -252,8 +252,8 @@ impl VariablesDialog {
         // Connect is_secret checkbox to toggle value/secret entry visibility
         let value_entry_clone = value_entry.clone();
         let secret_entry_clone = secret_entry.clone();
-        let value_label_clone = value_label;
-        let secret_label_clone = secret_label;
+        let value_label_clone = value_label.clone();
+        let secret_label_clone = secret_label.clone();
         is_secret_check.connect_toggled(move |check| {
             let is_secret = check.is_active();
             value_label_clone.set_visible(!is_secret);

@@ -12,9 +12,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
 
-/// Returns the protocol string for a connection, including provider info for `ZeroTrust`
+/// Returns the protocol string for a connection, including provider info for ZeroTrust
 ///
-/// For `ZeroTrust` connections, returns "zerotrust:provider" format to enable
+/// For ZeroTrust connections, returns "zerotrust:provider" format to enable
 /// provider-specific icons in the sidebar.
 ///
 /// Uses the provider enum to determine the provider type for icon display.
@@ -890,7 +890,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         new_doc_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                let dialog = NewDocumentDialog::new(Some(&win.upcast()));
+                let dialog = NewDocumentDialog::new(Some(&win.clone().upcast()));
                 let state_for_cb = state_clone.clone();
                 let _sidebar_for_cb = sidebar_clone.clone();
                 dialog.set_callback(move |result| {
@@ -935,7 +935,7 @@ impl MainWindow {
                         }
                     }
                 });
-                dialog.present(Some(&win.upcast()));
+                dialog.present(Some(&win.clone().upcast()));
             }
         });
         window.add_action(&open_doc_action);
@@ -950,9 +950,8 @@ impl MainWindow {
                 if let Some(doc_id) = state_ref.active_document_id() {
                     if let Some(doc) = state_ref.get_document(doc_id) {
                         let doc_name = doc.name.clone();
-                        let existing_path = state_ref
-                            .get_document_path(doc_id)
-                            .map(std::path::Path::to_path_buf);
+                        let existing_path =
+                            state_ref.get_document_path(doc_id).map(|p| p.to_path_buf());
                         drop(state_ref);
 
                         if let Some(path) = existing_path {
@@ -986,7 +985,7 @@ impl MainWindow {
                                     }
                                 }
                             });
-                            dialog.present(Some(&win.upcast()), doc_id, &doc_name);
+                            dialog.present(Some(&win.clone().upcast()), doc_id, &doc_name);
                         }
                     }
                 }
@@ -1006,7 +1005,8 @@ impl MainWindow {
                     let is_dirty = state_ref.is_document_dirty(doc_id);
                     let doc_name = state_ref
                         .get_document(doc_id)
-                        .map_or_else(|| "Untitled".to_string(), |d| d.name.clone());
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| "Untitled".to_string());
                     drop(state_ref);
 
                     if is_dirty {
@@ -1020,9 +1020,8 @@ impl MainWindow {
                                 Some(DocumentDialogResult::Close { id, save: true }) => {
                                     // Save then close
                                     let state_ref = state_for_cb.borrow();
-                                    let existing_path = state_ref
-                                        .get_document_path(id)
-                                        .map(std::path::Path::to_path_buf);
+                                    let existing_path =
+                                        state_ref.get_document_path(id).map(|p| p.to_path_buf());
                                     drop(state_ref);
 
                                     if let Some(path) = existing_path {
@@ -1041,7 +1040,7 @@ impl MainWindow {
                                 _ => {}
                             }
                         });
-                        dialog.present(Some(&win.upcast()), doc_id, &doc_name);
+                        dialog.present(Some(&win.clone().upcast()), doc_id, &doc_name);
                     } else {
                         // Close directly
                         let mut state_ref = state_clone.borrow_mut();
@@ -1085,7 +1084,7 @@ impl MainWindow {
                         let win_for_cb = win.clone();
 
                         dialog.save(
-                            Some(&win.upcast::<gtk4::Window>()),
+                            Some(&win.clone().upcast::<gtk4::Window>()),
                             gtk4::gio::Cancellable::NONE,
                             move |result| {
                                 if let Ok(file) = result {
@@ -1137,7 +1136,7 @@ impl MainWindow {
                 let win_for_cb = win.clone();
 
                 dialog.open(
-                    Some(&win.upcast::<gtk4::Window>()),
+                    Some(&win.clone().upcast::<gtk4::Window>()),
                     gtk4::gio::Cancellable::NONE,
                     move |result| {
                         if let Ok(file) = result {
@@ -1494,10 +1493,10 @@ impl MainWindow {
         let connections: Vec<_> = state_ref
             .list_connections()
             .iter()
-            .copied()
+            .cloned()
             .cloned()
             .collect();
-        let groups: Vec<_> = state_ref.list_groups().iter().copied().cloned().collect();
+        let groups: Vec<_> = state_ref.list_groups().iter().cloned().cloned().collect();
 
         // Perform search with ranking
         let results = search_engine.search(&parsed_query, &connections, &groups);
@@ -2027,7 +2026,7 @@ impl MainWindow {
 
                 // Connect using embedded widget (will fallback to external window if needed)
                 if let Err(e) = embedded_widget.connect(&embedded_config) {
-                    eprintln!("RDP connection failed for '{conn_name}': {e}");
+                    eprintln!("RDP connection failed for '{}': {}", conn_name, e);
                 }
 
                 // Add embedded widget to notebook - shows connection status
@@ -2051,7 +2050,7 @@ impl MainWindow {
                 let widget_for_reconnect = embedded_widget.clone();
                 embedded_widget.connect_reconnect(move || {
                     if let Err(e) = widget_for_reconnect.reconnect() {
-                        eprintln!("RDP reconnect failed: {e}");
+                        eprintln!("RDP reconnect failed: {}", e);
                     }
                 });
 
@@ -2125,7 +2124,7 @@ impl MainWindow {
                 false, // remember_window_position
                 &shared_folders,
             ) {
-                eprintln!("Failed to start RDP session '{conn_name}': {e}");
+                eprintln!("Failed to start RDP session '{}': {}", conn_name, e);
             }
 
             // Add tab widget to notebook
@@ -2199,6 +2198,7 @@ impl MainWindow {
 
         // Try to load password from KeePass
         {
+            use secrecy::ExposeSecret;
             let state_ref = state.borrow();
             let settings = state_ref.settings();
 
@@ -2208,10 +2208,13 @@ impl MainWindow {
                         .secrets
                         .kdbx_password
                         .as_ref()
-                        .map(secrecy::ExposeSecret::expose_secret);
+                        .map(|p| p.expose_secret());
                     let key_file = settings.secrets.kdbx_key_file.as_deref();
 
-                    eprintln!("DEBUG VNC: trying to load password for '{conn_name}' from KeePass");
+                    eprintln!(
+                        "DEBUG VNC: trying to load password for '{}' from KeePass",
+                        conn_name
+                    );
 
                     if let Ok(Some(password)) =
                         rustconn_core::secret::KeePassStatus::get_password_from_kdbx_with_key(
@@ -2292,7 +2295,7 @@ impl MainWindow {
                 let widget_for_reconnect = vnc_widget.clone();
                 vnc_widget.connect_reconnect(move || {
                     if let Err(e) = widget_for_reconnect.reconnect() {
-                        eprintln!("VNC reconnect failed: {e}");
+                        eprintln!("VNC reconnect failed: {}", e);
                     }
                 });
 
@@ -2300,7 +2303,7 @@ impl MainWindow {
                 if let Err(e) =
                     vnc_widget.connect_with_config(&host, port, Some(password), &vnc_config)
                 {
-                    eprintln!("Failed to connect VNC session '{conn_name}': {e}");
+                    eprintln!("Failed to connect VNC session '{}': {}", conn_name, e);
                 }
             }
 
@@ -2341,7 +2344,7 @@ impl MainWindow {
             // For SSH, show terminal in split view
             // For external sessions, show placeholder
             let terminal = notebook.get_terminal(session_id);
-            split_view.add_session(info, terminal);
+            split_view.add_session(info.clone(), terminal.clone());
             let _ = split_view.show_session(session_id);
 
             // Ensure split view is visible and expanded for SSH
@@ -2516,7 +2519,7 @@ impl MainWindow {
                     let widget_for_reconnect = vnc_widget.clone();
                     vnc_widget.connect_reconnect(move || {
                         if let Err(e) = widget_for_reconnect.reconnect() {
-                            eprintln!("VNC reconnect failed: {e}");
+                            eprintln!("VNC reconnect failed: {}", e);
                         }
                     });
 
@@ -2527,7 +2530,7 @@ impl MainWindow {
                         password.as_deref(),
                         &vnc_config,
                     ) {
-                        eprintln!("Failed to connect VNC session '{conn_name}': {e}");
+                        eprintln!("Failed to connect VNC session '{}': {}", conn_name, e);
                     }
                 }
 
@@ -2608,7 +2611,7 @@ impl MainWindow {
                     let widget_for_reconnect = spice_widget.clone();
                     spice_widget.connect_reconnect(move || {
                         if let Err(e) = widget_for_reconnect.reconnect() {
-                            eprintln!("SPICE reconnect failed: {e}");
+                            eprintln!("SPICE reconnect failed: {}", e);
                         }
                     });
 
@@ -2759,7 +2762,7 @@ impl MainWindow {
             })
             .take(64)
             .collect();
-        let log_filename = format!("{sanitized_name}_{timestamp}.log");
+        let log_filename = format!("{}_{}.log", sanitized_name, timestamp);
         let log_path = log_dir.join(&log_filename);
 
         // Create the log file and write header
@@ -2778,7 +2781,7 @@ impl MainWindow {
                     chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
                 );
                 if let Err(e) = file.write_all(header.as_bytes()) {
-                    eprintln!("Failed to write log header: {e}");
+                    eprintln!("Failed to write log header: {}", e);
                     return;
                 }
 
@@ -3167,6 +3170,8 @@ impl MainWindow {
         let window_for_keepass = window.clone();
         let state_for_save = state.clone();
         dialog.connect_save_to_keepass(move |name, host, username, password, protocol| {
+            use secrecy::ExposeSecret;
+
             let state_ref = state_for_save.borrow();
             let settings = state_ref.settings();
 
@@ -3201,7 +3206,7 @@ impl MainWindow {
                 .secrets
                 .kdbx_password
                 .as_ref()
-                .map(secrecy::ExposeSecret::expose_secret);
+                .map(|p| p.expose_secret());
 
             // Key file is optional additional authentication
             let key_file = settings.secrets.kdbx_key_file.as_deref();
@@ -3226,7 +3231,7 @@ impl MainWindow {
             }
 
             // Build URL for the entry with correct protocol
-            let url = format!("{protocol}://{host}");
+            let url = format!("{}://{}", protocol, host);
 
             // Save to KeePass
             match rustconn_core::secret::KeePassStatus::save_password_to_kdbx(
@@ -3260,6 +3265,8 @@ impl MainWindow {
         // Connect load from KeePass callback
         let state_for_load = state.clone();
         dialog.connect_load_from_keepass(move |name, host, _protocol| {
+            use secrecy::ExposeSecret;
+
             let state_ref = state_for_load.borrow();
             let settings = state_ref.settings();
 
@@ -3280,7 +3287,7 @@ impl MainWindow {
                 .secrets
                 .kdbx_password
                 .as_ref()
-                .map(secrecy::ExposeSecret::expose_secret);
+                .map(|p| p.expose_secret());
 
             // Key file is optional additional authentication
             let key_file = settings.secrets.kdbx_key_file.as_deref();
@@ -3615,9 +3622,9 @@ impl MainWindow {
             let window_for_keepass = window.clone();
             let state_for_save = state.clone();
             let conn_name = conn.name.clone();
-            let conn_host = conn.host;
+            let conn_host = conn.host.clone();
             dialog.connect_save_to_keepass(move |name, host, username, password, protocol| {
-
+                use secrecy::ExposeSecret;
 
                 let state_ref = state_for_save.borrow();
                 let settings = state_ref.settings();
@@ -3658,7 +3665,7 @@ impl MainWindow {
                     .secrets
                     .kdbx_password
                     .as_ref()
-                    .map(secrecy::ExposeSecret::expose_secret);
+                    .map(|p| p.expose_secret());
 
                 // Key file is optional additional authentication
                 let key_file = settings.secrets.kdbx_key_file.as_deref();
@@ -3716,7 +3723,7 @@ impl MainWindow {
             // Connect load from KeePass callback
             let state_for_load = state.clone();
             dialog.connect_load_from_keepass(move |name, host, _protocol| {
-
+                use secrecy::ExposeSecret;
 
                 let state_ref = state_for_load.borrow();
                 let settings = state_ref.settings();
@@ -3738,7 +3745,7 @@ impl MainWindow {
                     .secrets
                     .kdbx_password
                     .as_ref()
-                    .map(secrecy::ExposeSecret::expose_secret);
+                    .map(|p| p.expose_secret());
 
                 // Key file is optional additional authentication
                 let key_file = settings.secrets.kdbx_key_file.as_deref();
@@ -3852,7 +3859,7 @@ impl MainWindow {
             .css_classes(["dim-label"])
             .build();
         let protocol_value = Label::builder()
-            .label(format!("{:?}", conn.protocol))
+            .label(&format!("{:?}", conn.protocol))
             .halign(gtk4::Align::Start)
             .build();
         info_grid.attach(&protocol_label, 0, row, 1, 1);
@@ -3866,7 +3873,7 @@ impl MainWindow {
             .css_classes(["dim-label"])
             .build();
         let host_value = Label::builder()
-            .label(format!("{}:{}", conn.host, conn.port))
+            .label(&format!("{}:{}", conn.host, conn.port))
             .halign(gtk4::Align::Start)
             .selectable(true)
             .build();
@@ -3899,7 +3906,7 @@ impl MainWindow {
                 .css_classes(["dim-label"])
                 .build();
             let tags_value = Label::builder()
-                .label(conn.tags.join(", "))
+                .label(&conn.tags.join(", "))
                 .halign(gtk4::Align::Start)
                 .wrap(true)
                 .build();
@@ -3930,7 +3937,7 @@ impl MainWindow {
 
             for (idx, prop) in conn.custom_properties.iter().enumerate() {
                 let prop_name = Label::builder()
-                    .label(format!("{}:", prop.name))
+                    .label(&format!("{}:", prop.name))
                     .halign(gtk4::Align::End)
                     .css_classes(["dim-label"])
                     .build();
@@ -6347,8 +6354,8 @@ impl MainWindow {
         // Set up "Delete" callback
         {
             let state_clone = state.clone();
-            let templates_clone = state_templates;
-            let list_clone = templates_list;
+            let templates_clone = state_templates.clone();
+            let list_clone = templates_list.clone();
             let manager_clone = manager_window.clone();
             manager_dialog.set_on_delete(move |id| {
                 let alert = gtk4::AlertDialog::builder()
@@ -6386,9 +6393,9 @@ impl MainWindow {
 
         // Set up "Use Template" callback
         {
-            let state_clone = state;
-            let manager_clone = manager_window;
-            let sidebar_clone = sidebar;
+            let state_clone = state.clone();
+            let manager_clone = manager_window.clone();
+            let sidebar_clone = sidebar.clone();
             manager_dialog.set_on_template_selected(move |template_opt| {
                 if let Some(template) = template_opt {
                     // Create connection from template
@@ -6617,15 +6624,15 @@ impl MainWindow {
             let connections: Vec<_> = state_ref
                 .list_connections()
                 .iter()
-                .copied()
+                .cloned()
                 .cloned()
                 .collect();
             dialog.set_connections(&connections);
         }
 
         let window_clone = window.clone();
-        let state_clone = state;
-        let notebook_clone = notebook;
+        let state_clone = state.clone();
+        let notebook_clone = notebook.clone();
         dialog.run(move |result| {
             if let Some(cluster) = result {
                 if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
@@ -6669,7 +6676,7 @@ impl MainWindow {
                 state_ref
                     .get_all_clusters()
                     .iter()
-                    .copied()
+                    .cloned()
                     .cloned()
                     .collect()
             } else {
@@ -6706,7 +6713,7 @@ impl MainWindow {
         let notebook_clone = notebook.clone();
         let dialog_window = dialog_ref.window().clone();
         let dialog_ref_edit = dialog_ref.clone();
-        let refresh_after_edit = create_refresh_callback(dialog_ref_edit);
+        let refresh_after_edit = create_refresh_callback(dialog_ref_edit.clone());
         dialog_ref.set_on_edit(move |cluster_id| {
             Self::edit_cluster(
                 &dialog_window,
@@ -6720,7 +6727,7 @@ impl MainWindow {
         let state_clone = state.clone();
         let dialog_window = dialog_ref.window().clone();
         let dialog_ref_delete = dialog_ref.clone();
-        let refresh_after_delete = create_refresh_callback(dialog_ref_delete);
+        let refresh_after_delete = create_refresh_callback(dialog_ref_delete.clone());
         dialog_ref.set_on_delete(move |cluster_id| {
             Self::delete_cluster(
                 &dialog_window,
@@ -6730,11 +6737,11 @@ impl MainWindow {
             );
         });
 
-        let state_clone = state;
-        let notebook_clone = notebook;
+        let state_clone = state.clone();
+        let notebook_clone = notebook.clone();
         let dialog_window = dialog_ref.window().clone();
         let dialog_ref_new = dialog_ref.clone();
-        let refresh_after_new = create_refresh_callback(dialog_ref_new);
+        let refresh_after_new = create_refresh_callback(dialog_ref_new.clone());
         dialog_ref.set_on_new(move || {
             Self::show_new_cluster_dialog_from_manager(
                 &dialog_window,
@@ -6762,13 +6769,13 @@ impl MainWindow {
             let connections: Vec<_> = state_ref
                 .list_connections()
                 .iter()
-                .copied()
+                .cloned()
                 .cloned()
                 .collect();
             dialog.set_connections(&connections);
         }
 
-        let state_clone = state;
+        let state_clone = state.clone();
         let parent_clone = parent.clone();
         dialog.run(move |result| {
             if let Some(cluster) = result {
@@ -6782,7 +6789,7 @@ impl MainWindow {
                             // Show error dialog
                             let alert = gtk4::AlertDialog::builder()
                                 .message("Error Creating Cluster")
-                                .detail(format!("Failed to save cluster: {e}"))
+                                .detail(&format!("Failed to save cluster: {e}"))
                                 .modal(true)
                                 .build();
                             alert.show(Some(&parent_clone));
@@ -6836,7 +6843,7 @@ impl MainWindow {
         let connections: Vec<_> = state_ref
             .list_connections()
             .iter()
-            .copied()
+            .cloned()
             .cloned()
             .collect();
         drop(state_ref);
@@ -6858,7 +6865,7 @@ impl MainWindow {
                         Err(e) => {
                             let alert = gtk4::AlertDialog::builder()
                                 .message("Error Updating Cluster")
-                                .detail(format!("Failed to save cluster: {e}"))
+                                .detail(&format!("Failed to save cluster: {e}"))
                                 .modal(true)
                                 .build();
                             alert.show(Some(&parent_clone));
@@ -6892,7 +6899,7 @@ impl MainWindow {
 
         let alert = gtk4::AlertDialog::builder()
             .message("Delete Cluster?")
-            .detail(format!(
+            .detail(&format!(
                 "Are you sure you want to delete the cluster '{cluster_name}'?\n\
                 This will not delete the connections in the cluster."
             ))
@@ -6915,7 +6922,7 @@ impl MainWindow {
                         Err(e) => {
                             let alert = gtk4::AlertDialog::builder()
                                 .message("Error Deleting Cluster")
-                                .detail(format!("Failed to delete cluster: {e}"))
+                                .detail(&format!("Failed to delete cluster: {e}"))
                                 .modal(true)
                                 .build();
                             alert.show(Some(&parent_clone));

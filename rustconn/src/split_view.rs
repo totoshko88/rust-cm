@@ -754,7 +754,7 @@ impl SplitTerminalView {
         hbox.upcast()
     }
 
-    /// Load embedded SVG logo and render to `GdkPixbuf`
+    /// Load embedded SVG logo and render to GdkPixbuf
     fn load_embedded_logo(size: u32) -> Option<gtk4::gdk_pixbuf::Pixbuf> {
         // Embedded SVG icon data
         const ICON_SVG: &[u8] =

@@ -16,7 +16,7 @@
 //!
 //! # Requirements Coverage
 //!
-//! - Requirement 8.1: Create `wl_subsurface` for embedded sessions
+//! - Requirement 8.1: Create wl_subsurface for embedded sessions
 //! - Requirement 8.2: Update subsurface position on parent move/resize
 //! - Requirement 8.3: Blit framebuffer to Wayland surface using shared memory
 //! - Requirement 8.4: Fall back to Cairo rendering on X11
@@ -83,9 +83,9 @@ impl DisplayServerType {
     /// Detects the current display server
     ///
     /// Detection order:
-    /// 1. Check `GDK_BACKEND` environment variable
-    /// 2. Check `XDG_SESSION_TYPE` environment variable
-    /// 3. Check for `WAYLAND_DISPLAY` environment variable
+    /// 1. Check GDK_BACKEND environment variable
+    /// 2. Check XDG_SESSION_TYPE environment variable
+    /// 3. Check for WAYLAND_DISPLAY environment variable
     /// 4. Check for DISPLAY environment variable (X11)
     #[must_use]
     pub fn detect() -> Self {
@@ -354,11 +354,11 @@ impl DamageRect {
 /// This struct manages a Wayland subsurface for rendering embedded
 /// RDP/VNC sessions directly within the GTK widget hierarchy.
 ///
-/// On X11, it falls back to Cairo-based rendering using the `DrawingArea`.
+/// On X11, it falls back to Cairo-based rendering using the DrawingArea.
 ///
 /// # Requirements Coverage
 ///
-/// - Requirement 8.1: Create `wl_subsurface` for embedded sessions
+/// - Requirement 8.1: Create wl_subsurface for embedded sessions
 /// - Requirement 8.2: Update subsurface position on parent move/resize
 /// - Requirement 8.3: Blit framebuffer using shared memory buffers
 /// - Requirement 8.4: Fall back to Cairo rendering on X11
@@ -423,25 +423,25 @@ impl WaylandSubsurface {
 
     /// Returns whether native Wayland subsurface is being used
     #[must_use]
-    pub const fn is_native_wayland(&self) -> bool {
+    pub fn is_native_wayland(&self) -> bool {
         self.initialized && self.display_server.supports_subsurface()
     }
 
     /// Returns whether Cairo fallback is being used
     #[must_use]
-    pub const fn is_cairo_fallback(&self) -> bool {
+    pub fn is_cairo_fallback(&self) -> bool {
         self.initialized && self.display_server.use_cairo_fallback()
     }
 
     /// Returns the current buffer width
     #[must_use]
-    pub const fn width(&self) -> u32 {
+    pub fn width(&self) -> u32 {
         self.shm_buffer.width()
     }
 
     /// Returns the current buffer height
     #[must_use]
-    pub const fn height(&self) -> u32 {
+    pub fn height(&self) -> u32 {
         self.shm_buffer.height()
     }
 
@@ -465,9 +465,9 @@ impl WaylandSubsurface {
     /// Initializes the subsurface
     ///
     /// On Wayland, this would:
-    /// 1. Get the `wl_display` from GTK
-    /// 2. Create a `wl_surface`
-    /// 3. Create a `wl_subsurface` attached to the parent widget
+    /// 1. Get the wl_display from GTK
+    /// 2. Create a wl_surface
+    /// 3. Create a wl_subsurface attached to the parent widget
     /// 4. Set up shared memory pool
     ///
     /// On X11, this simply marks the subsurface as initialized for
@@ -475,7 +475,7 @@ impl WaylandSubsurface {
     ///
     /// # Arguments
     ///
-    /// * `_parent` - The parent GTK widget (`DrawingArea`)
+    /// * `_parent` - The parent GTK widget (DrawingArea)
     ///
     /// # Errors
     ///
@@ -483,7 +483,7 @@ impl WaylandSubsurface {
     ///
     /// # Requirements Coverage
     ///
-    /// - Requirement 8.1: Create `wl_subsurface` for embedded sessions
+    /// - Requirement 8.1: Create wl_subsurface for embedded sessions
     /// - Requirement 8.4: Fall back to Cairo rendering on X11
     pub fn initialize(
         &mut self,
@@ -537,7 +537,7 @@ impl WaylandSubsurface {
 
     /// Updates the subsurface position relative to the parent
     ///
-    /// On Wayland, this updates the `wl_subsurface` position.
+    /// On Wayland, this updates the wl_subsurface position.
     /// On X11, this stores the position for Cairo rendering offset.
     ///
     /// # Arguments
@@ -888,13 +888,13 @@ impl EmbeddedRenderer {
 
     /// Returns the current buffer width
     #[must_use]
-    pub const fn width(&self) -> u32 {
+    pub fn width(&self) -> u32 {
         self.subsurface.width()
     }
 
     /// Returns the current buffer height
     #[must_use]
-    pub const fn height(&self) -> u32 {
+    pub fn height(&self) -> u32 {
         self.subsurface.height()
     }
 
@@ -902,7 +902,7 @@ impl EmbeddedRenderer {
     ///
     /// # Arguments
     ///
-    /// * `drawing_area` - The `DrawingArea` widget for rendering
+    /// * `drawing_area` - The DrawingArea widget for rendering
     ///
     /// # Errors
     ///

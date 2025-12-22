@@ -291,7 +291,7 @@ impl TerminalNotebook {
         }
     }
 
-    /// Truncates a name to `max_chars` with ellipsis
+    /// Truncates a name to max_chars with ellipsis
     fn truncate_name(name: &str, max_chars: usize) -> String {
         if name.chars().count() <= max_chars {
             name.to_string()
@@ -692,10 +692,11 @@ impl TerminalNotebook {
             _ => {
                 drop(widgets);
                 // Check if it's an SSH terminal
-                self.terminals
-                    .borrow()
-                    .get(&session_id)
-                    .map(|terminal| SessionWidget::Ssh(terminal.clone()))
+                if let Some(terminal) = self.terminals.borrow().get(&session_id) {
+                    Some(SessionWidget::Ssh(terminal.clone()))
+                } else {
+                    None
+                }
             }
         }
     }
@@ -704,9 +705,9 @@ impl TerminalNotebook {
     ///
     /// Returns the appropriate widget based on session type:
     /// - SSH: VTE Terminal widget
-    /// - VNC: `VncSessionWidget` overlay
-    /// - RDP: `RdpSessionWidget` overlay
-    /// - SPICE: `SpiceSessionWidget` overlay or `EmbeddedSpiceWidget`
+    /// - VNC: VncSessionWidget overlay
+    /// - RDP: RdpSessionWidget overlay
+    /// - SPICE: SpiceSessionWidget overlay or EmbeddedSpiceWidget
     #[must_use]
     pub fn get_session_display_widget(&self, session_id: Uuid) -> Option<Widget> {
         // Check for VNC/RDP/SPICE session widgets first
@@ -1036,8 +1037,8 @@ impl TerminalNotebook {
             session_id,
             TabLabelWidgets {
                 container: tab_box.clone(),
-                icon,
-                label,
+                icon: icon.clone(),
+                label: label.clone(),
                 full_name: title.to_string(),
             },
         );
@@ -1284,13 +1285,13 @@ impl TerminalNotebook {
 
     /// Returns the main container widget for this notebook
     #[must_use]
-    pub const fn widget(&self) -> &GtkBox {
+    pub fn widget(&self) -> &GtkBox {
         &self.container
     }
 
     /// Returns the notebook widget (for internal use)
     #[must_use]
-    pub const fn notebook(&self) -> &Notebook {
+    pub fn notebook(&self) -> &Notebook {
         &self.notebook
     }
 
@@ -1311,7 +1312,7 @@ impl TerminalNotebook {
     /// This is used to control whether notebook pages expand vertically.
     /// When showing SSH sessions in split view, we want notebook pages collapsed.
     /// When showing VNC/RDP/SPICE sessions, we want the active page expanded.
-    pub const fn set_pages_vexpand(&self, _expand: bool) {
+    pub fn set_pages_vexpand(&self, _expand: bool) {
         // Don't modify individual page vexpand - it causes issues when switching
         // between different session types. Instead, control the notebook itself.
     }
@@ -1319,12 +1320,12 @@ impl TerminalNotebook {
     /// Shows only the specified page content, hides all others
     ///
     /// This ensures that inactive VNC/RDP pages don't affect layout sizing.
-    pub const fn show_only_current_page(&self) {
+    pub fn show_only_current_page(&self) {
         // No-op - hiding pages causes RDP disconnection issues
     }
 
     /// Shows all page contents (for VNC/RDP/SPICE mode)
-    pub const fn show_all_pages(&self) {
+    pub fn show_all_pages(&self) {
         // No-op - all pages are always visible
     }
 
@@ -1414,9 +1415,9 @@ impl TerminalNotebook {
         self.notebook.set_current_page(Some(page_num));
     }
 
-    /// Adds an embedded RDP tab with the `EmbeddedRdpWidget`
+    /// Adds an embedded RDP tab with the EmbeddedRdpWidget
     ///
-    /// This method adds a pre-created `EmbeddedRdpWidget` to the notebook for
+    /// This method adds a pre-created EmbeddedRdpWidget to the notebook for
     /// embedded RDP sessions with dynamic resolution support.
     ///
     /// The `EmbeddedRdpWidget` is stored in `session_widgets` to keep it alive

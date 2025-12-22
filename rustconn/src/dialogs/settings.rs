@@ -1485,10 +1485,10 @@ impl SettingsDialog {
                         hbox.set_margin_start(8);
                         hbox.set_margin_end(8);
 
-                        let file_name = key_path.file_name().map_or_else(
-                            || key_path.to_string_lossy().to_string(),
-                            |n| n.to_string_lossy().to_string(),
-                        );
+                        let file_name = key_path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| key_path.to_string_lossy().to_string());
 
                         let label = Label::builder()
                             .label(&file_name)
@@ -1514,7 +1514,7 @@ impl SettingsDialog {
             Err(e) => {
                 let row = ListBoxRow::new();
                 let label = Label::builder()
-                    .label(format!("Error listing keys: {e}"))
+                    .label(&format!("Error listing keys: {e}"))
                     .halign(gtk4::Align::Start)
                     .margin_top(8)
                     .margin_bottom(8)
@@ -1547,7 +1547,7 @@ impl SettingsDialog {
 
         // Key type and bits
         let type_label = Label::builder()
-            .label(format!("{} ({} bits)", key.key_type, key.bits))
+            .label(&format!("{} ({} bits)", key.key_type, key.bits))
             .halign(gtk4::Align::Start)
             .css_classes(["heading"])
             .build();
@@ -1748,7 +1748,7 @@ impl SettingsDialog {
 
         // Key file label
         let key_label = Label::builder()
-            .label(format!(
+            .label(&format!(
                 "Enter passphrase for:\n{}",
                 key_path.file_name().map_or_else(
                     || key_path.to_string_lossy().to_string(),
@@ -1792,7 +1792,7 @@ impl SettingsDialog {
         let keys_list = keys_list.clone();
         let error_label = error_label.clone();
         let loading_spinner = loading_spinner.clone();
-        let dialog_error_label_clone = dialog_error_label;
+        let dialog_error_label_clone = dialog_error_label.clone();
         let passphrase_entry_clone = passphrase_entry.clone();
 
         ok_btn.connect_clicked(move |_| {
@@ -1860,7 +1860,7 @@ impl SettingsDialog {
         });
 
         // Connect Enter key to submit
-        let ok_btn_clone = ok_btn;
+        let ok_btn_clone = ok_btn.clone();
         passphrase_entry.connect_activate(move |_| {
             ok_btn_clone.emit_clicked();
         });

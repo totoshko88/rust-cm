@@ -173,14 +173,14 @@ impl DashboardFilter {
 
     /// Sets the group filter
     #[must_use]
-    pub const fn with_group(mut self, group_id: Option<Uuid>) -> Self {
+    pub fn with_group(mut self, group_id: Option<Uuid>) -> Self {
         self.group_id = group_id;
         self
     }
 
     /// Sets the status filter
     #[must_use]
-    pub const fn with_status(mut self, status: Option<SessionState>) -> Self {
+    pub fn with_status(mut self, status: Option<SessionState>) -> Self {
         self.status = status;
         self
     }

@@ -1131,7 +1131,7 @@ impl ImportDialog {
         result
     }
 
-    /// Handles the special case of importing from a `RustConn` native file (.rcn)
+    /// Handles the special case of importing from a RustConn native file (.rcn)
     ///
     /// Opens a file chooser dialog for selecting a .rcn file,
     /// parses it using `NativeExport::from_file()`, and displays

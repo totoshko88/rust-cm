@@ -33,7 +33,7 @@ impl ExternalWindow {
     ) -> Self {
         let window = ApplicationWindow::builder()
             .application(app)
-            .title(format!("{} - RustConn", connection.name))
+            .title(&format!("{} - RustConn", connection.name))
             .default_width(800)
             .default_height(600)
             .build();
@@ -93,7 +93,7 @@ impl ExternalWindow {
     ) -> Self {
         let window = ApplicationWindow::builder()
             .application(app)
-            .title(format!("{} - RustConn", connection.name))
+            .title(&format!("{} - RustConn", connection.name))
             .decorated(false)
             .build();
 
@@ -171,19 +171,19 @@ impl ExternalWindow {
 
     /// Gets the window widget
     #[must_use]
-    pub const fn window(&self) -> &ApplicationWindow {
+    pub fn window(&self) -> &ApplicationWindow {
         &self.window
     }
 
     /// Gets the connection ID
     #[must_use]
-    pub const fn connection_id(&self) -> Uuid {
+    pub fn connection_id(&self) -> Uuid {
         self.connection_id
     }
 
     /// Gets the session ID
     #[must_use]
-    pub const fn session_id(&self) -> Uuid {
+    pub fn session_id(&self) -> Uuid {
         self.session_id
     }
 
@@ -219,17 +219,16 @@ impl ExternalWindowManager {
     }
 
     /// Removes a window by session ID
-    #[must_use]
     pub fn remove_window(&self, session_id: Uuid) -> Option<ExternalWindow> {
         let mut windows = self.windows.borrow_mut();
-        windows
-            .iter()
-            .position(|w| w.session_id == session_id)
-            .map(|pos| windows.remove(pos))
+        if let Some(pos) = windows.iter().position(|w| w.session_id == session_id) {
+            Some(windows.remove(pos))
+        } else {
+            None
+        }
     }
 
     /// Checks if a window exists for the given session ID
-    #[must_use]
     pub fn has_window(&self, session_id: Uuid) -> bool {
         self.windows
             .borrow()
@@ -264,7 +263,6 @@ impl ExternalWindowManager {
     }
 
     /// Gets all session IDs of open windows
-    #[must_use]
     pub fn session_ids(&self) -> Vec<Uuid> {
         self.windows.borrow().iter().map(|w| w.session_id).collect()
     }

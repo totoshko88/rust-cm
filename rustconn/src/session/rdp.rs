@@ -342,7 +342,7 @@ impl RdpSessionWidget {
 
     /// Provides credentials for NLA authentication
     ///
-    /// This should be called in response to the `auth_required` callback.
+    /// This should be called in response to the auth_required callback.
     ///
     /// # Arguments
     ///
