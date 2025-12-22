@@ -1,0 +1,70 @@
+version: 1
+script:
+  - cargo build --release -p rustconn -p rustconn-cli
+
+AppDir:
+  path: ./AppDir
+  app_info:
+    id: org.rustconn.RustConn
+    name: RustConn
+    icon: rustconn
+    version: 0.1.0
+    exec: usr/bin/rustconn
+    exec_args: $@
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+        key_url: http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C
+      - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+
+    include:
+      - libgtk-4-1
+      - libvte-2.91-gtk4-1
+      - libglib2.0-0
+      - libcairo2
+      - libpango-1.0-0
+      - libgdk-pixbuf-2.0-0
+      - libharfbuzz0b
+      - libfontconfig1
+      - libfreetype6
+      - libfribidi0
+      - libpangocairo-1.0-0
+      - libpangoft2-1.0-0
+      - libgraphene-1.0-0
+      - libepoxy0
+      - libpcre2-8-0
+      - libdbus-1-3
+
+  files:
+    include:
+      - usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0
+      - usr/lib/x86_64-linux-gnu/gtk-4.0
+      - usr/share/glib-2.0/schemas
+      - usr/share/icons/Adwaita
+      - usr/share/icons/hicolor
+
+    exclude:
+      - usr/share/doc
+      - usr/share/man
+
+  runtime:
+    env:
+      GTK_THEME: Adwaita
+      GDK_BACKEND: wayland,x11
+
+  test:
+    fedora-30:
+      image: appimagecrafters/tests-env:fedora-30
+      command: ./AppRun --version
+    debian-stable:
+      image: appimagecrafters/tests-env:debian-stable
+      command: ./AppRun --version
+    ubuntu-focal:
+      image: appimagecrafters/tests-env:ubuntu-focal
+      command: ./AppRun --version
+
+AppImage:
+  arch: x86_64
+  update-information: gh-releases-zsync|totoshko88|rust-cm|latest|RustConn-*x86_64.AppImage.zsync

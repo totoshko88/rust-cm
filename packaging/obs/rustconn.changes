@@ -1,0 +1,15 @@
+-------------------------------------------------------------------
+Mon Dec 22 2025 - totoshko88@gmail.com
+
+- Initial release 0.1.0
+  * GTK4 GUI for managing remote connections
+  * SSH support with embedded VTE terminal
+  * RDP support via FreeRDP
+  * VNC support via TigerVNC
+  * SPICE support via virt-viewer
+  * Connection groups and tags
+  * Import/export (Remmina, Asbru-CM, SSH config, Ansible)
+  * Credential backends (libsecret, KeePassXC)
+  * Session logging
+  * Command snippets
+  * Wake-on-LAN

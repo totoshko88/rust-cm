@@ -50,23 +50,23 @@ RustConn supports four remote connection protocols:
 
 ### SSH (Secure Shell)
 
-| Feature | Details |
-|---------|---------|
-| Default Port | 22 |
-| Session Type | Embedded VTE terminal |
-| Authentication | Password, SSH key, SSH agent |
-| Features | PTY support, port forwarding, X11 forwarding |
+| Feature        | Details                                      |
+|----------------|----------------------------------------------|
+| Default Port   | 22                                           |
+| Session Type   | Embedded VTE terminal                        |
+| Authentication | Password, SSH key, SSH agent                 |
+| Features       | PTY support, port forwarding, X11 forwarding |
 
 **How it works:** SSH connections open in embedded terminal tabs using VTE4 for full terminal emulation.
 
 ### RDP (Remote Desktop Protocol)
 
-| Feature | Details |
-|---------|---------|
-| Default Port | 3389 |
-| Session Type | External window (FreeRDP) or Embedded (IronRDP) |
-| Authentication | Password, NLA, TLS |
-| Features | Clipboard sharing, drive redirection, audio |
+| Feature        | Details                                         |
+|----------------|-------------------------------------------------|
+| Default Port   | 3389                                            |
+| Session Type   | External window (FreeRDP) or Embedded (IronRDP) |
+| Authentication | Password, NLA, TLS                              |
+| Features       | Clipboard sharing, drive redirection, audio     |
 
 **External client:** Requires `xfreerdp` or `xfreerdp3` (FreeRDP package)
 
@@ -74,12 +74,12 @@ RustConn supports four remote connection protocols:
 
 ### VNC (Virtual Network Computing)
 
-| Feature | Details |
-|---------|---------|
-| Default Port | 5900 |
-| Session Type | External window (TigerVNC) or Embedded (vnc-rs) |
-| Authentication | VNC password, None |
-| Features | Cross-platform, multiple security types |
+| Feature        | Details                                         |
+|----------------|-------------------------------------------------|
+| Default Port   | 5900                                            |
+| Session Type   | External window (TigerVNC) or Embedded (vnc-rs) |
+| Authentication | VNC password, None                              |
+| Features       | Cross-platform, multiple security types         |
 
 **External client:** Requires `vncviewer` (TigerVNC or TightVNC)
 
@@ -87,12 +87,12 @@ RustConn supports four remote connection protocols:
 
 ### SPICE (Simple Protocol for Independent Computing Environments)
 
-| Feature | Details |
-|---------|---------|
-| Default Port | 5900 |
-| Session Type | External window (remote-viewer) or Embedded |
-| Authentication | Password, TLS |
-| Features | Optimized for VMs, USB redirection, audio |
+| Feature        | Details                                     |
+|----------------|---------------------------------------------|
+| Default Port   | 5900                                        |
+| Session Type   | External window (remote-viewer) or Embedded |
+| Authentication | Password, TLS                               |
+| Features       | Optimized for VMs, USB redirection, audio   |
 
 **External client:** Requires `remote-viewer` (virt-viewer package)
 
@@ -292,13 +292,13 @@ Templates are connection presets that can be applied to new connections.
 
 ### Supported Formats
 
-| Format | Import | Export | Description |
-|--------|--------|--------|-------------|
-| SSH Config | ✅ | ✅ | `~/.ssh/config` format |
-| Remmina | ✅ | ✅ | Remmina `.remmina` profiles |
-| Asbru-CM | ✅ | ✅ | Asbru Connection Manager |
-| Ansible | ✅ | ✅ | Ansible inventory (INI/YAML) |
-| Native | ✅ | ✅ | RustConn `.rustconn` format |
+| Format     | Import | Export | Description                  |
+|------------|--------|--------|------------------------------|
+| SSH Config | ✅     | ✅     | `~/.ssh/config` format       |
+| Remmina    | ✅     | ✅     | Remmina `.remmina` profiles  |
+| Asbru-CM   | ✅     | ✅     | Asbru Connection Manager     |
+| Ansible    | ✅     | ✅     | Ansible inventory (INI/YAML) |
+| Native     | ✅     | ✅     | RustConn `.rustconn` format  |
 
 ### Import Connections
 
@@ -348,35 +348,35 @@ Templates are connection presets that can be applied to new connections.
 
 ### Global
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+N | New Connection |
-| Ctrl+G | New Group |
-| Ctrl+I | Import |
-| Ctrl+Shift+E | Export |
-| Ctrl+, | Settings |
-| Ctrl+Q | Quit |
+| Shortcut       | Action         |
+|----------------|----------------|
+| Ctrl+N         | New Connection |
+| Ctrl+G         | New Group      |
+| Ctrl+I         | Import         |
+| Ctrl+Shift+E   | Export         |
+| Ctrl+,         | Settings       |
+| Ctrl+Q         | Quit           |
 
 ### Navigation
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+F | Focus Search |
-| Ctrl+L | Focus Sidebar |
-| Ctrl+T | Focus Terminal |
-| Ctrl+Tab | Next Tab |
-| Ctrl+Shift+Tab | Previous Tab |
-| Ctrl+1-9 | Go to Tab N |
+| Shortcut         | Action         |
+|------------------|----------------|
+| Ctrl+F           | Focus Search   |
+| Ctrl+L           | Focus Sidebar  |
+| Ctrl+T           | Focus Terminal |
+| Ctrl+Tab         | Next Tab       |
+| Ctrl+Shift+Tab   | Previous Tab   |
+| Ctrl+1-9         | Go to Tab N    |
 
 ### Terminal
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+C | Copy |
-| Ctrl+Shift+V | Paste |
-| Ctrl+W | Close Tab |
-| Ctrl+\\ | Split Horizontal |
-| Ctrl+\| | Split Vertical |
+| Shortcut       | Action           |
+|----------------|------------------|
+| Ctrl+Shift+C   | Copy             |
+| Ctrl+Shift+V   | Paste            |
+| Ctrl+W         | Close Tab        |
+| Ctrl+\\        | Split Horizontal |
+| Ctrl+\|        | Split Vertical   |
 
 ---
 

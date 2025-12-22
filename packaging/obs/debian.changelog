@@ -1,0 +1,14 @@
+rustconn (0.1.0-1) unstable; urgency=medium
+
+  * Initial release
+    - GTK4 GUI for managing remote connections
+    - SSH support with embedded VTE terminal
+    - RDP support via FreeRDP
+    - VNC support via TigerVNC
+    - SPICE support via virt-viewer
+    - Connection groups and tags
+    - Import/export (Remmina, Asbru-CM, SSH config, Ansible)
+    - Credential backends (libsecret, KeePassXC)
+    - Session logging and command snippets
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Mon, 22 Dec 2025 12:00:00 +0000

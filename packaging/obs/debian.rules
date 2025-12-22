@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+
+export CARGO_HOME = $(CURDIR)/debian/cargo_home
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release -p rustconn -p rustconn-cli --offline
+
+override_dh_auto_install:
+	install -Dm755 target/release/rustconn debian/rustconn/usr/bin/rustconn
+	install -Dm755 target/release/rustconn-cli debian/rustconn/usr/bin/rustconn-cli
+	install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop \
+		debian/rustconn/usr/share/applications/org.rustconn.RustConn.desktop
+	# Install icons if they exist
+	for size in 16 24 32 48 64 128 256 512; do \
+		if [ -f "rustconn/assets/icons/hicolor/$${size}x$${size}/apps/rustconn.png" ]; then \
+			install -Dm644 "rustconn/assets/icons/hicolor/$${size}x$${size}/apps/rustconn.png" \
+				"debian/rustconn/usr/share/icons/hicolor/$${size}x$${size}/apps/rustconn.png"; \
+		fi; \
+	done
+	if [ -f "rustconn/assets/icons/hicolor/scalable/apps/rustconn.svg" ]; then \
+		install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/rustconn.svg" \
+			"debian/rustconn/usr/share/icons/hicolor/scalable/apps/rustconn.svg"; \
+	fi
+
+override_dh_auto_test:
+	# Skip tests during package build
+	true
+
+override_dh_auto_clean:
+	cargo clean || true
+	rm -rf $(CARGO_HOME)

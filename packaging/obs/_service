@@ -1,0 +1,20 @@
+<services>
+  <service name="obs_scm">
+    <param name="url">https://github.com/totoshko88/rust-cm.git</param>
+    <param name="scm">git</param>
+    <param name="revision">main</param>
+    <param name="versionformat">@PARENT_TAG@~@TAG_OFFSET@</param>
+    <param name="versionrewrite-pattern">v(.*)</param>
+    <param name="versionrewrite-replacement">\1</param>
+  </service>
+  <service name="tar" mode="buildtime"/>
+  <service name="recompress" mode="buildtime">
+    <param name="compression">xz</param>
+    <param name="file">*.tar</param>
+  </service>
+  <service name="set_version" mode="buildtime"/>
+  <service name="cargo_vendor" mode="buildtime">
+    <param name="srcdir">rustconn</param>
+    <param name="compression">zstd</param>
+  </service>
+</services>

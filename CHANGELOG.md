@@ -82,21 +82,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Protocol Support Matrix
 
-| Protocol | External Client | Embedded Client | Default Port |
-|----------|-----------------|-----------------|--------------|
-| SSH | OpenSSH | VTE4 terminal | 22 |
-| RDP | FreeRDP | IronRDP (optional) | 3389 |
-| VNC | TigerVNC | vnc-rs (optional) | 5900 |
-| SPICE | remote-viewer | spice-client (optional) | 5900 |
+| Protocol | External Client | Embedded Client         | Default Port |
+|----------|-----------------|-------------------------|--------------|
+| SSH      | OpenSSH         | VTE4 terminal           | 22           |
+| RDP      | FreeRDP         | IronRDP (optional)      | 3389         |
+| VNC      | TigerVNC        | vnc-rs (optional)       | 5900         |
+| SPICE    | remote-viewer   | spice-client (optional) | 5900         |
 
 ## Feature Flags
 
-| Flag | Description |
-|------|-------------|
-| `vnc-embedded` | Native VNC via `vnc-rs` (default) |
-| `rdp-embedded` | Native RDP via IronRDP (default) |
-| `spice-embedded` | Native SPICE via `spice-client` |
-| `tray` | System tray icon support |
+| Flag             | Description                       |
+|------------------|-----------------------------------|
+| `vnc-embedded`   | Native VNC via `vnc-rs` (default) |
+| `rdp-embedded`   | Native RDP via IronRDP (default)  |
+| `spice-embedded` | Native SPICE via `spice-client`   |
+| `tray`           | System tray icon support          |
 
 [Unreleased]: https://github.com/totoshko88/rustconn/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/totoshko88/rustconn/releases/tag/v0.1.0

@@ -6,12 +6,12 @@ A modern connection manager for Linux, designed to manage SSH, RDP, VNC, and SPI
 
 ## Supported Protocols
 
-| Protocol | Implementation | Session Type | Default Port |
-|----------|----------------|--------------|--------------|
-| **SSH** | VTE terminal embedding | Embedded tab | 22 |
-| **RDP** | FreeRDP (`xfreerdp`/`xfreerdp3`) or IronRDP | External window / Embedded | 3389 |
-| **VNC** | TigerVNC/TightVNC or `vnc-rs` | External window / Embedded | 5900 |
-| **SPICE** | `remote-viewer` or `spice-client` | External window / Embedded | 5900 |
+| Protocol  | Implementation                              | Session Type               | Default Port |
+|-----------|---------------------------------------------|----------------------------|--------------|
+| **SSH**   | VTE terminal embedding                      | Embedded tab               | 22           |
+| **RDP**   | FreeRDP (`xfreerdp`/`xfreerdp3`) or IronRDP | External window / Embedded | 3389         |
+| **VNC**   | TigerVNC/TightVNC or `vnc-rs`               | External window / Embedded | 5900         |
+| **SPICE** | `remote-viewer` or `spice-client`           | External window / Embedded | 5900         |
 
 ### Protocol Details
 
@@ -81,12 +81,12 @@ sudo pacman -S gtk4 vte4 dbus
 
 ### Protocol Client Dependencies
 
-| Protocol | Required Package | Optional |
-|----------|-----------------|----------|
-| SSH | OpenSSH client | Built-in |
-| RDP | `freerdp` or `freerdp3` | Yes |
-| VNC | `tigervnc` or `tightvnc` | Yes |
-| SPICE | `virt-viewer` (provides `remote-viewer`) | Yes |
+| Protocol | Required Package                         | Optional |
+|----------|------------------------------------------|----------|
+| SSH      | OpenSSH client                           | Built-in |
+| RDP      | `freerdp` or `freerdp3`                  | Yes      |
+| VNC      | `tigervnc` or `tightvnc`                 | Yes      |
+| SPICE    | `virt-viewer` (provides `remote-viewer`) | Yes      |
 
 ## Optional Features
 
@@ -105,12 +105,12 @@ cargo build --release --features spice-embedded
 cargo build --release --features tray
 ```
 
-| Feature | Crate | Description |
-|---------|-------|-------------|
-| `vnc-embedded` | `vnc-rs` 0.5 | Native VNC protocol embedding |
-| `rdp-embedded` | `ironrdp-*` | Native RDP protocol (IronRDP) |
+| Feature          | Crate                | Description                     |
+|------------------|----------------------|---------------------------------|
+| `vnc-embedded`   | `vnc-rs` 0.5         | Native VNC protocol embedding   |
+| `rdp-embedded`   | `ironrdp-*`          | Native RDP protocol (IronRDP)   |
 | `spice-embedded` | `spice-client` 0.2.0 | Native SPICE protocol embedding |
-| `tray` | `ksni` + `resvg` | System tray icon support |
+| `tray`           | `ksni` + `resvg`     | System tray icon support        |
 
 ## Usage
 
@@ -127,19 +127,19 @@ cargo run -p rustconn-cli -- --help
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+N` | New connection |
-| `Ctrl+G` | New group |
-| `Ctrl+I` | Import connections |
-| `Ctrl+Shift+E` | Export connections |
-| `Ctrl+,` | Settings |
-| `Ctrl+Shift+S` | Split vertical |
-| `Ctrl+Shift+H` | Split horizontal |
-| `Ctrl+W` | Close tab |
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+F` | Focus search |
+| Shortcut           | Action             |
+|--------------------|--------------------|
+| `Ctrl+N`           | New connection     |
+| `Ctrl+G`           | New group          |
+| `Ctrl+I`           | Import connections |
+| `Ctrl+Shift+E`     | Export connections |
+| `Ctrl+,`           | Settings           |
+| `Ctrl+Shift+S`     | Split vertical     |
+| `Ctrl+Shift+H`     | Split horizontal   |
+| `Ctrl+W`           | Close tab          |
+| `Ctrl+Tab`         | Next tab           |
+| `Ctrl+Shift+Tab`   | Previous tab       |
+| `Ctrl+F`           | Focus search       |
 
 ## Configuration
 
@@ -189,12 +189,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you find RustConn useful, consider supporting its development:
 
-| Platform | Link |
-|----------|------|
-| ☕ Ko-Fi | [ko-fi.com/totoshko88](https://ko-fi.com/totoshko88) |
-| 💳 PayPal | [PayPal QR](https://www.paypal.com/qrcodes/p2pqrc/JJLUXRZSQ5V3A) |
+| Platform    | Link                                                                                       |
+|-------------|--------------------------------------------------------------------------------------------|
+| ☕ Ko-Fi    | [ko-fi.com/totoshko88](https://ko-fi.com/totoshko88)                                       |
+| 💳 PayPal   | [PayPal QR](https://www.paypal.com/qrcodes/p2pqrc/JJLUXRZSQ5V3A)                           |
 | 💸 Payoneer | [Payoneer Link](https://link.payoneer.com/Token?t=135B68D8EB1E4860B4B632ECD755182F&src=pl) |
-| 🇺🇦 UAH | [Monobank Jar](https://send.monobank.ua/jar/2UgaGcQ3JC) |
+| 🇺🇦 UAH     | [Monobank Jar](https://send.monobank.ua/jar/2UgaGcQ3JC)                                    |
 
 ## Acknowledgments
 

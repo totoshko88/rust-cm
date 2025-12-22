@@ -4,11 +4,11 @@
 
 RustConn has been upgraded to use the latest GTK4 Rust bindings:
 
-| Component | Previous | Current |
-|-----------|----------|---------|
-| gtk4 crate | 0.9 | 0.10 |
-| vte4 crate | 0.8 | 0.9 |
-| Feature flag | v4_12 | v4_14 |
+| Component    | Previous | Current |
+|--------------|----------|---------|
+| gtk4 crate   | 0.9      | 0.10    |
+| vte4 crate   | 0.8      | 0.9     |
+| Feature flag | v4_12    | v4_14   |
 
 ## System Requirements
 
