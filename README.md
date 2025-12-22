@@ -2,7 +2,11 @@
 
 A modern connection manager for Linux, designed to manage SSH, RDP, VNC, and SPICE remote connections through a GTK4-based GUI with Wayland-native support.
 
-![RustConn Screenshot](rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg)
+![RustConn Screenshot](rustconn/assets/screenshots/main-window.png)
+
+## Demo
+
+[![RustConn Demo](https://img.youtube.com/vi/ruBBw3xWPLU/maxresdefault.jpg)](https://youtu.be/ruBBw3xWPLU)
 
 ## Supported Protocols
 
