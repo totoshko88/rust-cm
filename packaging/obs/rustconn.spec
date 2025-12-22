@@ -2,14 +2,14 @@
 # spec file for package rustconn
 #
 # Copyright (c) 2025 Anton Isaiev
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 
 Name:           rustconn
-Version:        0.1.0
+Version:        0.2.0
 Release:        0
 Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
-License:        MIT
+License:        GPL-3.0-or-later
 URL:            https://github.com/totoshko88/rust-cm
 Source0:        %{name}-%{version}.tar.xz
 Source1:        vendor.tar.zst
@@ -19,12 +19,14 @@ BuildRequires:  rust >= 1.76
 BuildRequires:  cargo-packaging
 BuildRequires:  pkgconfig(gtk4) >= 4.14
 BuildRequires:  pkgconfig(vte-2.91-gtk4)
+BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(openssl)
 BuildRequires:  zstd
 
 # Runtime dependencies
 Requires:       gtk4 >= 4.14
+Requires:       libadwaita
 Requires:       vte >= 0.74
 Requires:       openssh-clients
 
@@ -34,10 +36,22 @@ Recommends:     tigervnc
 Recommends:     virt-viewer
 
 %description
-RustConn is a modern connection manager for Linux desktops.
-It provides a GTK4-based GUI for managing SSH, RDP, VNC, and SPICE
-remote connections with features like connection groups, credential
-management, session logging, and import/export capabilities.
+RustConn is a modern connection manager for Linux desktops built with GTK4.
+It provides a unified interface for managing SSH, RDP, VNC, and SPICE
+remote connections with support for both embedded and external clients.
+
+Features:
+- SSH connections with embedded terminal and split view
+- RDP support via FreeRDP (embedded and external)
+- VNC support via TigerVNC (embedded and external)
+- SPICE support via virt-viewer (embedded and external)
+- Zero Trust providers: AWS SSM, GCP IAP, Azure Bastion, OCI Bastion
+- Connection groups and tags
+- Import/export (Remmina, Asbru-CM, SSH config, Ansible)
+- Secure credential storage (KeePassXC, libsecret)
+- Session logging
+- Command snippets and cluster commands
+- Wake-on-LAN
 
 %prep
 %autosetup -a1 -n %{name}-%{version}
@@ -56,19 +70,22 @@ EOF
 %install
 install -Dm755 target/release/rustconn %{buildroot}%{_bindir}/rustconn
 install -Dm755 target/release/rustconn-cli %{buildroot}%{_bindir}/rustconn-cli
-install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop %{buildroot}%{_datadir}/applications/org.rustconn.RustConn.desktop
+install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop \
+    %{buildroot}%{_datadir}/applications/org.rustconn.RustConn.desktop
+install -Dm644 rustconn/assets/org.rustconn.RustConn.metainfo.xml \
+    %{buildroot}%{_datadir}/metainfo/org.rustconn.RustConn.metainfo.xml
 
 # Install icons
-for size in 16 24 32 48 64 128 256 512; do
-    if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/rustconn.png" ]; then
-        install -Dm644 "rustconn/assets/icons/hicolor/${size}x${size}/apps/rustconn.png" \
-            "%{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/rustconn.png"
+for size in 48 64 128 256; do
+    if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png" ]; then
+        install -Dm644 "rustconn/assets/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png" \
+            "%{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png"
     fi
 done
 
-if [ -f "rustconn/assets/icons/hicolor/scalable/apps/rustconn.svg" ]; then
-    install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/rustconn.svg" \
-        "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/rustconn.svg"
+if [ -f "rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg" ]; then
+    install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg" \
+        "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg"
 fi
 
 %files
@@ -77,6 +94,7 @@ fi
 %{_bindir}/rustconn
 %{_bindir}/rustconn-cli
 %{_datadir}/applications/org.rustconn.RustConn.desktop
-%{_datadir}/icons/hicolor/*/apps/rustconn.*
+%{_datadir}/metainfo/org.rustconn.RustConn.metainfo.xml
+%{_datadir}/icons/hicolor/*/apps/org.rustconn.RustConn.*
 
 %changelog

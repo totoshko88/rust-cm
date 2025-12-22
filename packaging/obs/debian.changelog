@@ -1,3 +1,13 @@
+rustconn (0.2.0-1) unstable; urgency=medium
+
+  * Update to version 0.2.0
+    - Tree view state persistence (expanded/collapsed folders saved)
+    - Native format (.rcn) import/export with proper group hierarchy
+    - Fixed RDP embedded mode window sizing
+    - Updated dependencies
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Mon, 23 Dec 2024 12:00:00 +0000
+
 rustconn (0.1.0-1) unstable; urgency=medium
 
   * Initial release
@@ -11,4 +21,4 @@ rustconn (0.1.0-1) unstable; urgency=medium
     - Credential backends (libsecret, KeePassXC)
     - Session logging and command snippets
 
- -- Anton Isaiev <totoshko88@gmail.com>  Mon, 22 Dec 2025 12:00:00 +0000
+ -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2024 12:00:00 +0000

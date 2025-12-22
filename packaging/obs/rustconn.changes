@@ -1,5 +1,14 @@
 -------------------------------------------------------------------
-Mon Dec 22 2025 - totoshko88@gmail.com
+Mon Dec 23 2024 Anton Isaiev <totoshko88@gmail.com> - 0.2.0
+
+- Update to version 0.2.0
+  * Tree view state persistence (expanded/collapsed folders saved)
+  * Native format (.rcn) import/export with proper group hierarchy
+  * Fixed RDP embedded mode window sizing
+  * Updated dependencies: ksni 0.3, resvg 0.45, dirs 6.0, criterion 0.6
+
+-------------------------------------------------------------------
+Sun Dec 22 2024 Anton Isaiev <totoshko88@gmail.com> - 0.1.0
 
 - Initial release 0.1.0
   * GTK4 GUI for managing remote connections
@@ -7,6 +16,7 @@ Mon Dec 22 2025 - totoshko88@gmail.com
   * RDP support via FreeRDP
   * VNC support via TigerVNC
   * SPICE support via virt-viewer
+  * Zero Trust providers (AWS SSM, GCP IAP, Azure Bastion, OCI Bastion)
   * Connection groups and tags
   * Import/export (Remmina, Asbru-CM, SSH config, Ansible)
   * Credential backends (libsecret, KeePassXC)
