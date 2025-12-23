@@ -256,6 +256,9 @@ use ironrdp::cliprdr::CliprdrClient;
 use super::rdpdr::RustConnRdpdrBackend;
 use ironrdp::rdpdr::Rdpdr;
 
+// RDPSND (audio) - required for RDPDR to work per MS-RDPEFS spec
+use ironrdp::rdpsnd::client::{NoopRdpsndBackend, Rdpsnd};
+
 type UpgradedFramed = TokioFramed<ironrdp_tls::TlsStream<TcpStream>>;
 
 /// Runs the RDP client protocol loop using `IronRDP`
@@ -303,37 +306,42 @@ async fn run_rdp_client(
     }
 
     // Phase 2.6: Add RDPDR channel for shared folders if configured
+    // Note: RDPDR requires RDPSND channel to be present per MS-RDPEFS spec
     if !config.shared_folders.is_empty() {
+        // Add RDPSND channel first (required for RDPDR)
+        let rdpsnd = Rdpsnd::new(Box::new(NoopRdpsndBackend));
+        connector.static_channels.insert(rdpsnd);
+
         // Get computer name for display in Windows Explorer
         let computer_name = hostname::get()
             .map(|h| h.to_string_lossy().into_owned())
             .unwrap_or_else(|_| "RustConn".to_string());
 
         // Create initial drives list from shared folders config
-        // Each folder gets a unique device_id starting from 1
         let initial_drives: Vec<(u32, String)> = config
             .shared_folders
             .iter()
             .enumerate()
             .map(|(idx, folder)| {
-                // Use folder name as the drive name shown in Windows
                 #[allow(clippy::cast_possible_truncation)]
-                (idx as u32 + 1, folder.name.clone())
+                let device_id = idx as u32 + 1;
+                tracing::debug!(
+                    "RDPDR: registering drive {} '{}' -> {:?}",
+                    device_id,
+                    folder.name,
+                    folder.path
+                );
+                (device_id, folder.name.clone())
             })
             .collect();
 
         // Create backend for the first shared folder
-        // For multiple folders, we use the first one as base path
         if let Some(folder) = config.shared_folders.first() {
             let base_path = folder.path.to_string_lossy().into_owned();
             let rdpdr_backend = RustConnRdpdrBackend::new(base_path);
             let rdpdr = Rdpdr::new(Box::new(rdpdr_backend), computer_name)
                 .with_drives(Some(initial_drives));
             connector.static_channels.insert(rdpdr);
-            tracing::debug!(
-                "RDPDR channel enabled with {} shared folder(s)",
-                config.shared_folders.len()
-            );
         }
     }
 

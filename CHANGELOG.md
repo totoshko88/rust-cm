@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2024-12-23
+
+### Added
+- IronRDP clipboard integration for embedded RDP sessions (bidirectional copy/paste)
+- IronRDP shared folders (RDPDR) support for embedded RDP sessions
+- RemoteFX codec support for better RDP image quality
+- RDPSND channel (required for RDPDR per MS-RDPEFS spec)
+
+### Changed
+- Migrated IronRDP dependencies from GitHub to crates.io (version 0.11)
+- Reduced verbose logging in RDPDR module (now uses tracing::debug/trace)
+
+### Fixed
+- Pinned sspi to 0.16.0 and picky to 7.0.0-rc.16 to avoid rand_core conflicts
+
 ## [0.2.0] - 2024-12-22
 
 ### Added
@@ -62,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/rustconn/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/totoshko88/rustconn/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/totoshko88/rustconn/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/totoshko88/rustconn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/totoshko88/rustconn/releases/tag/v0.1.0

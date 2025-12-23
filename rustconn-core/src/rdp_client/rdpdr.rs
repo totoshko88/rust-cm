@@ -29,7 +29,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// RDPDR backend for Linux/Unix shared folders
 #[derive(Debug)]
@@ -86,7 +86,7 @@ impl RdpdrBackend for RustConnRdpdrBackend {
         &mut self,
         pdu: ServerDeviceAnnounceResponse,
     ) -> PduResult<()> {
-        debug!("Device announce response: {:?}", pdu);
+        tracing::debug!("RDPDR device announce response: {:?}", pdu);
         Ok(())
     }
 
@@ -100,7 +100,7 @@ impl RdpdrBackend for RustConnRdpdrBackend {
     }
 
     fn handle_drive_io_request(&mut self, req: ServerDriveIoRequest) -> PduResult<Vec<SvcMessage>> {
-        debug!("Drive IO request: {:?}", req);
+        tracing::trace!("RDPDR drive IO request: {:?}", req);
         match req {
             ServerDriveIoRequest::ServerCreateDriveRequest(create_req) => {
                 self.handle_create(create_req)
@@ -145,7 +145,12 @@ impl RustConnRdpdrBackend {
     fn handle_create(&mut self, req: DeviceCreateRequest) -> PduResult<Vec<SvcMessage>> {
         let file_id = self.alloc_file_id();
         let path = self.to_unix_path(&req.path);
-        debug!("Create request for path: {} (file_id: {})", path, file_id);
+        tracing::trace!(
+            "RDPDR create: file_id={}, path='{}', disposition={:?}",
+            file_id,
+            path,
+            req.create_disposition
+        );
 
         // Check if it's a directory request
         let is_dir_request =

@@ -85,8 +85,16 @@ Key crates used by RustConn:
 | Feature          | Crate                 | Description                       |
 |------------------|-----------------------|-----------------------------------|
 | `spice-embedded` | `spice-client` 0.2.0  | Native SPICE protocol embedding   |
-| `rdp-embedded`   | `ironrdp-*`           | Native RDP protocol (experimental)|
+| `rdp-embedded`   | `ironrdp` 0.11        | Native RDP with clipboard & shared folders |
 | `vnc-embedded`   | `vnc-rs` 0.5          | Native VNC protocol               |
+
+### Embedded RDP Features (IronRDP)
+
+When using `rdp-embedded` feature, the following capabilities are available:
+- Bidirectional clipboard (copy/paste between local and remote)
+- Shared folders (access local directories from Windows)
+- RemoteFX codec for better image quality
+- Dynamic resolution changes
 
 ## Usage
 
