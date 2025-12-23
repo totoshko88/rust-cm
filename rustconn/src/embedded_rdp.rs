@@ -2749,19 +2749,33 @@ impl EmbeddedRdpWidget {
             }
         );
 
-        // Warn about shared folders - IronRDP doesn't support drive redirection yet
+        // Log shared folders configuration
         if !config.shared_folders.is_empty() {
             eprintln!(
-                "[EmbeddedRDP] Warning: {} shared folder(s) configured but IronRDP doesn't support drive redirection yet. Use external mode for shared folders.",
+                "[EmbeddedRDP] Configuring {} shared folder(s) via RDPDR",
                 config.shared_folders.len()
             );
+            for folder in &config.shared_folders {
+                eprintln!(
+                    "[EmbeddedRDP]   - '{}' -> {:?}",
+                    folder.share_name, folder.local_path
+                );
+            }
         }
+
+        // Convert EmbeddedSharedFolder to SharedFolder for RdpClientConfig
+        let shared_folders: Vec<rustconn_core::rdp_client::SharedFolder> = config
+            .shared_folders
+            .iter()
+            .map(|f| rustconn_core::rdp_client::SharedFolder::new(&f.share_name, &f.local_path))
+            .collect();
 
         // Convert GUI config to RdpClientConfig
         let mut client_config = RdpClientConfig::new(&config.host)
             .with_port(config.port)
             .with_resolution(config.width as u16, config.height as u16)
-            .with_clipboard(config.clipboard_enabled);
+            .with_clipboard(config.clipboard_enabled)
+            .with_shared_folders(shared_folders);
 
         if let Some(ref username) = config.username {
             client_config = client_config.with_username(username);

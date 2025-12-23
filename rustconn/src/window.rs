@@ -2025,14 +2025,6 @@ impl MainWindow {
                         })
                         .collect();
                     embedded_config = embedded_config.with_shared_folders(folders);
-
-                    // Warn that IronRDP doesn't support drive redirection yet
-                    eprintln!(
-                        "[EmbeddedRDP] Warning: {} shared folder(s) configured but IronRDP \
-                         doesn't support drive redirection yet. Use external mode for shared \
-                         folders.",
-                        rdp_config.shared_folders.len()
-                    );
                 }
 
                 // Wrap in Rc to keep widget alive in notebook
