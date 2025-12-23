@@ -1,7 +1,7 @@
 #
 # spec file for package rustconn
 #
-# Copyright (c) 2025 Anton Isaiev
+# Copyright (c) 2024 Anton Isaiev
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
@@ -16,7 +16,9 @@ Source1:        vendor.tar.zst
 
 BuildRequires:  cargo >= 1.76
 BuildRequires:  rust >= 1.76
+%if 0%{?suse_version}
 BuildRequires:  cargo-packaging
+%endif
 BuildRequires:  pkgconfig(gtk4) >= 4.14
 BuildRequires:  pkgconfig(vte-2.91-gtk4)
 BuildRequires:  pkgconfig(libadwaita-1)
@@ -27,8 +29,13 @@ BuildRequires:  zstd
 # Runtime dependencies
 Requires:       gtk4 >= 4.14
 Requires:       libadwaita
+%if 0%{?suse_version}
 Requires:       vte >= 0.74
 Requires:       openssh-clients
+%else
+Requires:       vte291-gtk4
+Requires:       openssh-clients
+%endif
 
 # Optional runtime dependencies
 Recommends:     freerdp
@@ -60,12 +67,20 @@ cat > .cargo/config.toml <<EOF
 [source.crates-io]
 replace-with = "vendored-sources"
 
+[source."git+https://github.com/Devolutions/IronRDP"]
+git = "https://github.com/Devolutions/IronRDP"
+replace-with = "vendored-sources"
+
 [source.vendored-sources]
 directory = "vendor"
 EOF
 
 %build
-%{cargo_build} --release -p rustconn -p rustconn-cli
+%if 0%{?suse_version}
+%{cargo_build} -p rustconn -p rustconn-cli
+%else
+cargo build --release -p rustconn -p rustconn-cli
+%endif
 
 %install
 install -Dm755 target/release/rustconn %{buildroot}%{_bindir}/rustconn
