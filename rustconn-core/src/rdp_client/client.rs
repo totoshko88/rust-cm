@@ -246,6 +246,7 @@ use tokio::net::TcpStream;
 type UpgradedFramed = TokioFramed<ironrdp_tls::TlsStream<TcpStream>>;
 
 /// Runs the RDP client protocol loop using `IronRDP`
+#[allow(clippy::future_not_send)]
 async fn run_rdp_client(
     config: RdpClientConfig,
     event_tx: std::sync::mpsc::Sender<RdpClientEvent>,
@@ -372,10 +373,9 @@ fn build_connector_config(config: &RdpClientConfig) -> Config {
     }
 }
 
-/// Placeholder type for network client (not used, we pass None)
-
 /// Runs the active RDP session, processing framebuffer updates and input
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::future_not_send)]
 async fn run_active_session(
     framed: UpgradedFramed,
     connection_result: ConnectionResult,
@@ -506,6 +506,18 @@ async fn run_active_session(
                     }
                 }
                 RdpClientCommand::Authenticate { .. } => {}
+                RdpClientCommand::ClipboardData { format_id, data } => {
+                    // TODO: Send clipboard data to server via CLIPRDR channel
+                    tracing::debug!(
+                        "Clipboard data for format {}: {} bytes",
+                        format_id,
+                        data.len()
+                    );
+                }
+                RdpClientCommand::ClipboardCopy(formats) => {
+                    // TODO: Notify server about available clipboard formats
+                    tracing::debug!("Clipboard copy with {} formats", formats.len());
+                }
             }
         }
 

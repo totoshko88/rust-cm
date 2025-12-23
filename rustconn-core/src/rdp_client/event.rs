@@ -10,6 +10,47 @@
 #![allow(clippy::option_if_let_else)]
 #![allow(clippy::redundant_clone)]
 
+/// Clipboard format information for RDP clipboard operations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardFormatInfo {
+    /// Format ID (standard Windows clipboard format or custom)
+    pub id: u32,
+    /// Format name (for custom formats)
+    pub name: Option<String>,
+}
+
+impl ClipboardFormatInfo {
+    /// Standard text format (`CF_TEXT`)
+    pub const TEXT: u32 = 1;
+    /// Unicode text format (`CF_UNICODETEXT`)
+    pub const UNICODE_TEXT: u32 = 13;
+    /// HTML format
+    pub const HTML: u32 = 0xC0A0;
+    /// File list format (`CF_HDROP`)
+    pub const FILE_LIST: u32 = 15;
+
+    /// Creates a new clipboard format info
+    #[must_use]
+    pub const fn new(id: u32, name: Option<String>) -> Self {
+        Self { id, name }
+    }
+
+    /// Creates a Unicode text format
+    #[must_use]
+    pub const fn unicode_text() -> Self {
+        Self {
+            id: Self::UNICODE_TEXT,
+            name: None,
+        }
+    }
+
+    /// Returns true if this is a text format
+    #[must_use]
+    pub const fn is_text(&self) -> bool {
+        matches!(self.id, Self::TEXT | Self::UNICODE_TEXT)
+    }
+}
+
 /// Rectangle coordinates for RDP operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RdpRect {
@@ -330,6 +371,12 @@ pub enum RdpClientEvent {
     /// Server clipboard text
     ClipboardText(String),
 
+    /// Server clipboard data available (formats list)
+    ClipboardFormatsAvailable(Vec<ClipboardFormatInfo>),
+
+    /// Server requests clipboard data from client
+    ClipboardDataRequest(ClipboardFormatInfo),
+
     /// Authentication required (for NLA)
     AuthRequired,
 
@@ -404,6 +451,17 @@ pub enum RdpClientCommand {
 
     /// Send clipboard text to server
     ClipboardText(String),
+
+    /// Send clipboard data to server (response to `ClipboardDataRequest`)
+    ClipboardData {
+        /// Format ID
+        format_id: u32,
+        /// Data bytes
+        data: Vec<u8>,
+    },
+
+    /// Notify server that client clipboard has new data
+    ClipboardCopy(Vec<ClipboardFormatInfo>),
 
     /// Request screen refresh
     RefreshScreen,

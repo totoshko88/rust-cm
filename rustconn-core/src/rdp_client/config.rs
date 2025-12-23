@@ -4,6 +4,37 @@
 #![allow(clippy::struct_excessive_bools)]
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+/// Shared folder configuration for RDP drive redirection
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SharedFolder {
+    /// Display name for the shared folder (visible in Windows Explorer)
+    pub name: String,
+    /// Local path to share
+    pub path: PathBuf,
+    /// Read-only access
+    pub read_only: bool,
+}
+
+impl SharedFolder {
+    /// Creates a new shared folder configuration
+    #[must_use]
+    pub fn new(name: impl Into<String>, path: impl Into<PathBuf>) -> Self {
+        Self {
+            name: name.into(),
+            path: path.into(),
+            read_only: false,
+        }
+    }
+
+    /// Sets read-only mode
+    #[must_use]
+    pub const fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+}
 
 /// Configuration for RDP client connection
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -50,6 +81,26 @@ pub struct RdpClientConfig {
 
     /// Security protocol to use
     pub security_protocol: RdpSecurityProtocol,
+
+    /// Shared folders for drive redirection (RDPDR)
+    #[serde(default)]
+    pub shared_folders: Vec<SharedFolder>,
+
+    /// Enable dynamic resolution changes (MS-RDPEDISP)
+    #[serde(default = "default_true")]
+    pub dynamic_resolution: bool,
+
+    /// Scale factor for `HiDPI` displays (100 = 100%)
+    #[serde(default = "default_scale_factor")]
+    pub scale_factor: u32,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+const fn default_scale_factor() -> u32 {
+    100
 }
 
 /// RDP security protocol options
@@ -85,6 +136,9 @@ impl Default for RdpClientConfig {
             ignore_certificate: true,
             nla_enabled: true,
             security_protocol: RdpSecurityProtocol::default(),
+            shared_folders: Vec::new(),
+            dynamic_resolution: true,
+            scale_factor: 100,
         }
     }
 }
@@ -153,6 +207,34 @@ impl RdpClientConfig {
     #[must_use]
     pub const fn with_nla(mut self, enabled: bool) -> Self {
         self.nla_enabled = enabled;
+        self
+    }
+
+    /// Adds a shared folder for drive redirection
+    #[must_use]
+    pub fn with_shared_folder(mut self, folder: SharedFolder) -> Self {
+        self.shared_folders.push(folder);
+        self
+    }
+
+    /// Adds multiple shared folders
+    #[must_use]
+    pub fn with_shared_folders(mut self, folders: Vec<SharedFolder>) -> Self {
+        self.shared_folders = folders;
+        self
+    }
+
+    /// Enables or disables dynamic resolution
+    #[must_use]
+    pub const fn with_dynamic_resolution(mut self, enabled: bool) -> Self {
+        self.dynamic_resolution = enabled;
+        self
+    }
+
+    /// Sets the scale factor for `HiDPI` displays
+    #[must_use]
+    pub const fn with_scale_factor(mut self, factor: u32) -> Self {
+        self.scale_factor = factor;
         self
     }
 

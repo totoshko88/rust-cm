@@ -69,33 +69,33 @@ fn arb_security_protocol() -> impl Strategy<Value = RdpSecurityProtocol> {
 // Strategy for generating RDP client config
 fn arb_rdp_client_config() -> impl Strategy<Value = RdpClientConfig> {
     (
-        arb_host(),
-        arb_port(),
-        arb_username(),
-        arb_domain(),
-        arb_resolution(),
-        arb_color_depth(),
-        any::<bool>(), // clipboard_enabled
-        any::<bool>(), // audio_enabled
-        1u64..=300,    // timeout_secs
-        any::<bool>(), // ignore_certificate
-        any::<bool>(), // nla_enabled
-        arb_security_protocol(),
+        (
+            arb_host(),
+            arb_port(),
+            arb_username(),
+            arb_domain(),
+            arb_resolution(),
+            arb_color_depth(),
+        ),
+        (
+            any::<bool>(), // clipboard_enabled
+            any::<bool>(), // audio_enabled
+            1u64..=300,    // timeout_secs
+            any::<bool>(), // ignore_certificate
+            any::<bool>(), // nla_enabled
+            arb_security_protocol(),
+        ),
+        (
+            any::<bool>(),    // dynamic_resolution
+            100u32..=300u32,  // scale_factor
+        ),
     )
         .prop_map(
             |(
-                host,
-                port,
-                username,
-                domain,
-                (width, height),
-                color_depth,
-                clipboard_enabled,
-                audio_enabled,
-                timeout_secs,
-                ignore_certificate,
-                nla_enabled,
-                security_protocol,
+                (host, port, username, domain, (width, height), color_depth),
+                (clipboard_enabled, audio_enabled, timeout_secs, ignore_certificate, nla_enabled,
+                    security_protocol),
+                (dynamic_resolution, scale_factor),
             )| {
                 RdpClientConfig {
                     host,
@@ -112,6 +112,9 @@ fn arb_rdp_client_config() -> impl Strategy<Value = RdpClientConfig> {
                     ignore_certificate,
                     nla_enabled,
                     security_protocol,
+                    shared_folders: Vec::new(),
+                    dynamic_resolution,
+                    scale_factor,
                 }
             },
         )

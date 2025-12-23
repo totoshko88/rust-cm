@@ -43,6 +43,8 @@
 
 #[cfg(feature = "rdp-embedded")]
 mod client;
+#[cfg(feature = "rdp-embedded")]
+pub mod clipboard;
 mod config;
 mod error;
 mod event;
@@ -50,11 +52,11 @@ pub mod input;
 
 #[cfg(feature = "rdp-embedded")]
 pub use client::{RdpClient, RdpClientState, RdpCommandSender, RdpEventReceiver};
-pub use config::{RdpClientConfig, RdpSecurityProtocol};
+pub use config::{RdpClientConfig, RdpSecurityProtocol, SharedFolder};
 pub use error::RdpClientError;
 pub use event::{
-    convert_to_bgra, create_frame_update, create_frame_update_with_conversion, PixelFormat,
-    RdpClientCommand, RdpClientEvent, RdpRect,
+    convert_to_bgra, create_frame_update, create_frame_update_with_conversion,
+    ClipboardFormatInfo, PixelFormat, RdpClientCommand, RdpClientEvent, RdpRect,
 };
 
 /// Check if embedded RDP support is available
