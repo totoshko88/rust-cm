@@ -31,16 +31,6 @@ RustConn includes several performance optimizations for handling large connectio
 - **String Interning**: Memory optimization for repeated strings (protocol names, hostnames)
 - **Batch Processing**: Efficient import/export of large connection sets with progress reporting
 
-### Optional: Native SPICE Embedding
-
-Enable native SPICE protocol embedding (instead of external `remote-viewer`) by building with the `spice-embedded` feature:
-
-```bash
-cargo build --release --features spice-embedded
-```
-
-This requires the `spice-client` crate (version 0.2.0) and provides embedded SPICE sessions within the application window.
-
 ## Installation
 
 ### From Source

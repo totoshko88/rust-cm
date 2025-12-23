@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2024-12-23
+## [0.3.1] - 2025-12-23
+
+### Changed
+- Code cleanup: fixed all Clippy warnings (pedantic, nursery)
+- Applied rustfmt formatting across all crates
+- Added Deactivation-Reactivation sequence handling for RDP sessions
+
+### Fixed
+- Removed sensitive clipboard debug logging (security improvement)
+- Fixed nested if statements and match patterns in RDPDR module
+
+## [0.3.0] - 2025-12-23
 
 ### Added
 - IronRDP clipboard integration for embedded RDP sessions (bidirectional copy/paste)
@@ -22,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Pinned sspi to 0.16.0 and picky to 7.0.0-rc.16 to avoid rand_core conflicts
 
-## [0.2.0] - 2024-12-22
+## [0.2.0] - 2025-12-22
 
 ### Added
 - Tree view state persistence (expanded/collapsed folders saved between sessions)
@@ -44,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Removed obsolete TODO comment and unused variable in window.rs
 
-## [0.1.0] - 2024-12-01
+## [0.1.0] - 2025-12-01
 
 ### Added
 - Initial release of RustConn connection manager
@@ -77,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/rustconn/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/totoshko88/rustconn/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/totoshko88/rustconn/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/totoshko88/rustconn/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/totoshko88/rustconn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/totoshko88/rustconn/releases/tag/v0.1.0

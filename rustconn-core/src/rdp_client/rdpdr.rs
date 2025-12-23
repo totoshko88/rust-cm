@@ -6,18 +6,17 @@
 use ironrdp::core::impl_as_any;
 use ironrdp::pdu::PduResult;
 use ironrdp::rdpdr::pdu::efs::{
-    ClientDriveQueryDirectoryResponse, ClientDriveQueryInformationResponse,
+    Boolean, ClientDriveQueryDirectoryResponse, ClientDriveQueryInformationResponse,
     ClientDriveQueryVolumeInformationResponse, ClientDriveSetInformationResponse,
-    DeviceCloseResponse, DeviceControlResponse, DeviceCreateResponse,
-    DeviceIoResponse, DeviceReadResponse, DeviceWriteResponse, FileAttributes,
-    FileBasicInformation, FileBothDirectoryInformation, FileInformationClass,
-    FileInformationClassLevel, FileFsAttributeInformation, FileFsFullSizeInformation,
-    FileFsSizeInformation, FileFsVolumeInformation, FileStandardInformation,
-    FileSystemAttributes, FileSystemInformationClass, FileSystemInformationClassLevel,
-    Information, NtStatus, ServerDeviceAnnounceResponse, ServerDriveIoRequest,
-    Boolean, CreateDisposition, CreateOptions, DeviceCloseRequest, DeviceControlRequest,
-    DeviceCreateRequest, DeviceReadRequest, DeviceWriteRequest,
-    ServerDriveQueryDirectoryRequest, ServerDriveQueryInformationRequest,
+    CreateDisposition, CreateOptions, DeviceCloseRequest, DeviceCloseResponse,
+    DeviceControlRequest, DeviceControlResponse, DeviceCreateRequest, DeviceCreateResponse,
+    DeviceIoResponse, DeviceReadRequest, DeviceReadResponse, DeviceWriteRequest,
+    DeviceWriteResponse, FileAttributes, FileBasicInformation, FileBothDirectoryInformation,
+    FileFsAttributeInformation, FileFsFullSizeInformation, FileFsSizeInformation,
+    FileFsVolumeInformation, FileInformationClass, FileInformationClassLevel,
+    FileStandardInformation, FileSystemAttributes, FileSystemInformationClass,
+    FileSystemInformationClassLevel, Information, NtStatus, ServerDeviceAnnounceResponse,
+    ServerDriveIoRequest, ServerDriveQueryDirectoryRequest, ServerDriveQueryInformationRequest,
     ServerDriveQueryVolumeInformationRequest, ServerDriveSetInformationRequest,
 };
 use ironrdp::rdpdr::pdu::esc::{ScardCall, ScardIoCtlCode};
@@ -142,6 +141,8 @@ impl RdpdrBackend for RustConnRdpdrBackend {
 }
 
 impl RustConnRdpdrBackend {
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_create(&mut self, req: DeviceCreateRequest) -> PduResult<Vec<SvcMessage>> {
         let file_id = self.alloc_file_id();
         let path = self.to_unix_path(&req.path);
@@ -193,24 +194,23 @@ impl RustConnRdpdrBackend {
                 }
                 Err(_) => {
                     // Directory doesn't exist, try to create if requested
-                    if req.create_disposition == CreateDisposition::FILE_CREATE
-                        || req.create_disposition == CreateDisposition::FILE_OPEN_IF
+                    if (req.create_disposition == CreateDisposition::FILE_CREATE
+                        || req.create_disposition == CreateDisposition::FILE_OPEN_IF)
+                        && std::fs::create_dir_all(&path).is_ok()
                     {
-                        if std::fs::create_dir_all(&path).is_ok() {
-                            if let Ok(file) = OpenOptions::new().read(true).open(&path) {
-                                self.file_handles.insert(file_id, file);
-                                self.file_paths.insert(file_id, path);
-                                return Ok(vec![SvcMessage::from(RdpdrPdu::DeviceCreateResponse(
-                                    DeviceCreateResponse {
-                                        device_io_reply: DeviceIoResponse::new(
-                                            req.device_io_request,
-                                            NtStatus::SUCCESS,
-                                        ),
-                                        file_id,
-                                        information: Information::FILE_SUPERSEDED,
-                                    },
-                                ))]);
-                            }
+                        if let Ok(file) = OpenOptions::new().read(true).open(&path) {
+                            self.file_handles.insert(file_id, file);
+                            self.file_paths.insert(file_id, path);
+                            return Ok(vec![SvcMessage::from(RdpdrPdu::DeviceCreateResponse(
+                                DeviceCreateResponse {
+                                    device_io_reply: DeviceIoResponse::new(
+                                        req.device_io_request,
+                                        NtStatus::SUCCESS,
+                                    ),
+                                    file_id,
+                                    information: Information::FILE_SUPERSEDED,
+                                },
+                            ))]);
                         }
                     }
                 }
@@ -219,6 +219,7 @@ impl RustConnRdpdrBackend {
 
         // Handle file creation/opening
         let mut opts = OpenOptions::new();
+        #[allow(clippy::match_same_arms)]
         match req.create_disposition {
             CreateDisposition::FILE_OPEN => {
                 opts.read(true);
@@ -281,6 +282,7 @@ impl RustConnRdpdrBackend {
         }
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_close(&mut self, req: DeviceCloseRequest) -> PduResult<Vec<SvcMessage>> {
         let file_id = req.device_io_request.file_id;
         self.file_handles.remove(&file_id);
@@ -288,14 +290,12 @@ impl RustConnRdpdrBackend {
         self.dir_entries.remove(&file_id);
         Ok(vec![SvcMessage::from(RdpdrPdu::DeviceCloseResponse(
             DeviceCloseResponse {
-                device_io_response: DeviceIoResponse::new(
-                    req.device_io_request,
-                    NtStatus::SUCCESS,
-                ),
+                device_io_response: DeviceIoResponse::new(req.device_io_request, NtStatus::SUCCESS),
             },
         ))])
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_read(&mut self, req: DeviceReadRequest) -> PduResult<Vec<SvcMessage>> {
         let file_id = req.device_io_request.file_id;
         if let Some(file) = self.file_handles.get_mut(&file_id) {
@@ -331,6 +331,7 @@ impl RustConnRdpdrBackend {
         ))])
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_write(&mut self, req: DeviceWriteRequest) -> PduResult<Vec<SvcMessage>> {
         let file_id = req.device_io_request.file_id;
         if let Some(file) = self.file_handles.get_mut(&file_id) {
@@ -365,45 +366,39 @@ impl RustConnRdpdrBackend {
         ))])
     }
 
-
+    #[allow(clippy::unnecessary_wraps)]
     #[allow(clippy::needless_pass_by_ref_mut)]
     fn handle_query_info(
         &mut self,
         req: ServerDriveQueryInformationRequest,
     ) -> PduResult<Vec<SvcMessage>> {
         let file_id = req.device_io_request.file_id;
-        let file = match self.file_handles.get(&file_id) {
-            Some(f) => f,
-            None => {
-                return Ok(vec![SvcMessage::from(
-                    RdpdrPdu::ClientDriveQueryInformationResponse(
-                        ClientDriveQueryInformationResponse {
-                            device_io_response: DeviceIoResponse::new(
-                                req.device_io_request,
-                                NtStatus::NO_SUCH_FILE,
-                            ),
-                            buffer: None,
-                        },
-                    ),
-                )]);
-            }
+        let Some(file) = self.file_handles.get(&file_id) else {
+            return Ok(vec![SvcMessage::from(
+                RdpdrPdu::ClientDriveQueryInformationResponse(
+                    ClientDriveQueryInformationResponse {
+                        device_io_response: DeviceIoResponse::new(
+                            req.device_io_request,
+                            NtStatus::NO_SUCH_FILE,
+                        ),
+                        buffer: None,
+                    },
+                ),
+            )]);
         };
 
-        let meta = match file.metadata() {
-            Ok(m) => m,
-            Err(_) => {
-                return Ok(vec![SvcMessage::from(
-                    RdpdrPdu::ClientDriveQueryInformationResponse(
-                        ClientDriveQueryInformationResponse {
-                            device_io_response: DeviceIoResponse::new(
-                                req.device_io_request,
-                                NtStatus::UNSUCCESSFUL,
-                            ),
-                            buffer: None,
-                        },
-                    ),
-                )]);
-            }
+        let Ok(meta) = file.metadata() else {
+            return Ok(vec![SvcMessage::from(
+                RdpdrPdu::ClientDriveQueryInformationResponse(
+                    ClientDriveQueryInformationResponse {
+                        device_io_response: DeviceIoResponse::new(
+                            req.device_io_request,
+                            NtStatus::UNSUCCESSFUL,
+                        ),
+                        buffer: None,
+                    },
+                ),
+            )]);
         };
 
         let path = self.file_paths.get(&file_id).cloned().unwrap_or_default();
@@ -413,6 +408,7 @@ impl RustConnRdpdrBackend {
             .unwrap_or_default();
         let file_attrs = get_file_attributes(&meta, &file_name);
 
+        #[allow(clippy::cast_possible_wrap)]
         let buffer = match req.file_info_class_lvl {
             FileInformationClassLevel::FILE_BASIC_INFORMATION => {
                 Some(FileInformationClass::Basic(FileBasicInformation {
@@ -441,16 +437,15 @@ impl RustConnRdpdrBackend {
 
         Ok(vec![SvcMessage::from(
             RdpdrPdu::ClientDriveQueryInformationResponse(ClientDriveQueryInformationResponse {
-                device_io_response: DeviceIoResponse::new(
-                    req.device_io_request,
-                    NtStatus::SUCCESS,
-                ),
+                device_io_response: DeviceIoResponse::new(req.device_io_request, NtStatus::SUCCESS),
                 buffer,
             }),
         )])
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     #[allow(clippy::needless_pass_by_ref_mut)]
+    #[allow(clippy::unused_self)]
     fn handle_query_volume(
         &mut self,
         req: ServerDriveQueryVolumeInformationRequest,
@@ -467,16 +462,14 @@ impl RustConnRdpdrBackend {
                     },
                 ))
             }
-            FileSystemInformationClassLevel::FILE_FS_VOLUME_INFORMATION => {
-                Some(FileSystemInformationClass::FileFsVolumeInformation(
-                    FileFsVolumeInformation {
-                        volume_creation_time: unix_to_filetime(0),
-                        volume_serial_number: 0x1234_5678,
-                        supports_objects: Boolean::False,
-                        volume_label: "RustConn".to_owned(),
-                    },
-                ))
-            }
+            FileSystemInformationClassLevel::FILE_FS_VOLUME_INFORMATION => Some(
+                FileSystemInformationClass::FileFsVolumeInformation(FileFsVolumeInformation {
+                    volume_creation_time: unix_to_filetime(0),
+                    volume_serial_number: 0x1234_5678,
+                    supports_objects: Boolean::False,
+                    volume_label: "RustConn".to_owned(),
+                }),
+            ),
             FileSystemInformationClassLevel::FILE_FS_SIZE_INFORMATION => {
                 // Return some reasonable defaults
                 Some(FileSystemInformationClass::FileFsSizeInformation(
@@ -488,17 +481,15 @@ impl RustConnRdpdrBackend {
                     },
                 ))
             }
-            FileSystemInformationClassLevel::FILE_FS_FULL_SIZE_INFORMATION => {
-                Some(FileSystemInformationClass::FileFsFullSizeInformation(
-                    FileFsFullSizeInformation {
-                        total_alloc_units: 1_000_000,
-                        caller_available_alloc_units: 500_000,
-                        actual_available_alloc_units: 500_000,
-                        sectors_per_alloc_unit: 8,
-                        bytes_per_sector: 512,
-                    },
-                ))
-            }
+            FileSystemInformationClassLevel::FILE_FS_FULL_SIZE_INFORMATION => Some(
+                FileSystemInformationClass::FileFsFullSizeInformation(FileFsFullSizeInformation {
+                    total_alloc_units: 1_000_000,
+                    caller_available_alloc_units: 500_000,
+                    actual_available_alloc_units: 500_000,
+                    sectors_per_alloc_unit: 8,
+                    bytes_per_sector: 512,
+                }),
+            ),
             _ => None,
         };
 
@@ -515,6 +506,7 @@ impl RustConnRdpdrBackend {
         )])
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_query_directory(
         &mut self,
         req: ServerDriveQueryDirectoryRequest,
@@ -541,53 +533,58 @@ impl RustConnRdpdrBackend {
             };
 
             // Read directory entries
-            let entries: Vec<String> = match std::fs::read_dir(&path) {
-                Ok(dir) => dir
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.path().to_string_lossy().into_owned())
-                    .collect(),
-                Err(_) => Vec::new(),
-            };
+            let entries: Vec<String> = std::fs::read_dir(&path).map_or_else(
+                |_| Vec::new(),
+                |dir| {
+                    dir.filter_map(std::result::Result::ok)
+                        .map(|e| e.path().to_string_lossy().into_owned())
+                        .collect()
+                },
+            );
 
             self.dir_entries.insert(file_id, entries);
         }
 
         // Get next entry
         let entries = self.dir_entries.get_mut(&file_id);
-        let entry_path = entries.and_then(|e| if e.is_empty() { None } else { Some(e.remove(0)) });
-
-        match entry_path {
-            Some(full_path) => {
-                let file_name = PathBuf::from(&full_path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-
-                if let Ok(meta) = std::fs::metadata(&full_path) {
-                    let file_attrs = get_file_attributes(&meta, &file_name);
-                    let info = FileBothDirectoryInformation::new(
-                        unix_to_filetime(meta.ctime()),
-                        unix_to_filetime(meta.ctime()),
-                        unix_to_filetime(meta.atime()),
-                        unix_to_filetime(meta.mtime()),
-                        meta.size() as i64,
-                        file_attrs,
-                        file_name,
-                    );
-                    return Ok(vec![SvcMessage::from(
-                        RdpdrPdu::ClientDriveQueryDirectoryResponse(
-                            ClientDriveQueryDirectoryResponse {
-                                device_io_reply: DeviceIoResponse::new(
-                                    req.device_io_request,
-                                    NtStatus::SUCCESS,
-                                ),
-                                buffer: Some(FileInformationClass::BothDirectory(info)),
-                            },
-                        ),
-                    )]);
-                }
+        let entry_path = entries.and_then(|e| {
+            if e.is_empty() {
+                None
+            } else {
+                Some(e.remove(0))
             }
-            None => {}
+        });
+
+        if let Some(full_path) = entry_path {
+            let file_name = PathBuf::from(&full_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+
+            if let Ok(meta) = std::fs::metadata(&full_path) {
+                let file_attrs = get_file_attributes(&meta, &file_name);
+                #[allow(clippy::cast_possible_wrap)]
+                let info = FileBothDirectoryInformation::new(
+                    unix_to_filetime(meta.ctime()),
+                    unix_to_filetime(meta.ctime()),
+                    unix_to_filetime(meta.atime()),
+                    unix_to_filetime(meta.mtime()),
+                    meta.size() as i64,
+                    file_attrs,
+                    file_name,
+                );
+                return Ok(vec![SvcMessage::from(
+                    RdpdrPdu::ClientDriveQueryDirectoryResponse(
+                        ClientDriveQueryDirectoryResponse {
+                            device_io_reply: DeviceIoResponse::new(
+                                req.device_io_request,
+                                NtStatus::SUCCESS,
+                            ),
+                            buffer: Some(FileInformationClass::BothDirectory(info)),
+                        },
+                    ),
+                )]);
+            }
         }
 
         // No more entries
@@ -605,7 +602,10 @@ impl RustConnRdpdrBackend {
         )])
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     #[allow(clippy::needless_pass_by_ref_mut)]
+    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::unused_self)]
     fn handle_set_info(
         &mut self,
         req: ServerDriveSetInformationRequest,
@@ -613,8 +613,12 @@ impl RustConnRdpdrBackend {
         // Basic implementation - just acknowledge
         Ok(vec![SvcMessage::from(
             RdpdrPdu::ClientDriveSetInformationResponse(
-                ClientDriveSetInformationResponse::new(&req, NtStatus::SUCCESS)
-                    .unwrap_or_else(|_| ClientDriveSetInformationResponse::new(&req, NtStatus::UNSUCCESSFUL).expect("infallible")),
+                ClientDriveSetInformationResponse::new(&req, NtStatus::SUCCESS).unwrap_or_else(
+                    |_| {
+                        ClientDriveSetInformationResponse::new(&req, NtStatus::UNSUCCESSFUL)
+                            .expect("infallible")
+                    },
+                ),
             ),
         )])
     }
@@ -626,7 +630,9 @@ const fn unix_to_filetime(unix_secs: i64) -> i64 {
     // Unix epoch is January 1, 1970
     // Difference is 11644473600 seconds
     const EPOCH_DIFF: i64 = 116_444_736_000_000_000;
-    unix_secs.saturating_mul(10_000_000).saturating_add(EPOCH_DIFF)
+    unix_secs
+        .saturating_mul(10_000_000)
+        .saturating_add(EPOCH_DIFF)
 }
 
 /// Gets Windows file attributes from Unix metadata

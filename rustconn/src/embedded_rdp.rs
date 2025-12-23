@@ -1356,7 +1356,6 @@ impl EmbeddedRdpWidget {
                 // Check if we have remote clipboard text
                 if let Some(ref text) = *remote_clipboard_text.borrow() {
                     let char_count = text.len();
-                    eprintln!("[RDP] Copying {} chars from remote to local clipboard", char_count);
 
                     // Copy to local clipboard
                     let display = drawing_area.display();
@@ -1367,23 +1366,16 @@ impl EmbeddedRdpWidget {
                     status_label.set_text(&format!("Copied {char_count} chars"));
                     status_label.set_visible(true);
                     let status_hide = status_label.clone();
-                    glib::timeout_add_local_once(
-                        std::time::Duration::from_secs(2),
-                        move || {
-                            status_hide.set_visible(false);
-                        },
-                    );
+                    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+                        status_hide.set_visible(false);
+                    });
                 } else {
-                    eprintln!("[RDP] No remote clipboard text available");
                     status_label.set_text("No remote clipboard data");
                     status_label.set_visible(true);
                     let status_hide = status_label.clone();
-                    glib::timeout_add_local_once(
-                        std::time::Duration::from_secs(2),
-                        move || {
-                            status_hide.set_visible(false);
-                        },
-                    );
+                    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+                        status_hide.set_visible(false);
+                    });
                 }
             });
         }
@@ -1422,7 +1414,6 @@ impl EmbeddedRdpWidget {
                     move |result: Result<Option<glib::GString>, glib::Error>| {
                         if let Ok(Some(text)) = result {
                             let char_count = text.len();
-                            eprintln!("[RDP] Pasting {char_count} chars to remote");
 
                             #[cfg(feature = "rdp-embedded")]
                             if using_ironrdp {
@@ -1474,7 +1465,6 @@ impl EmbeddedRdpWidget {
                     // Send via IronRDP
                     if let Some(ref tx) = *ironrdp_tx.borrow() {
                         let _ = tx.send(RdpClientCommand::SendCtrlAltDel);
-                        eprintln!("[IronRDP] Sent Ctrl+Alt+Del");
                     }
                 } else {
                     // Send via FreeRDP thread
@@ -2757,8 +2747,9 @@ impl EmbeddedRdpWidget {
             );
             for folder in &config.shared_folders {
                 eprintln!(
-                    "[EmbeddedRDP]   - '{}' -> {:?}",
-                    folder.share_name, folder.local_path
+                    "[EmbeddedRDP]   - '{}' -> {}",
+                    folder.share_name,
+                    folder.local_path.display()
                 );
             }
         }
@@ -2957,44 +2948,97 @@ impl EmbeddedRdpWidget {
                         RdpClientEvent::ClipboardText(text) => {
                             // Server sent clipboard text - store it and enable Copy button
                             eprintln!(
-                                "[IronRDP] Clipboard text received: {} chars",
+                                "[Clipboard] Received text from server: {} chars",
                                 text.len()
                             );
                             *remote_clipboard_text.borrow_mut() = Some(text);
                             copy_button.set_sensitive(true);
-                            copy_button.set_tooltip_text(Some(
-                                "Copy remote clipboard to local",
-                            ));
+                            copy_button.set_tooltip_text(Some("Copy remote clipboard to local"));
                         }
                         RdpClientEvent::ClipboardFormatsAvailable(formats) => {
                             // Server has clipboard data available
-                            eprintln!(
-                                "[IronRDP] Clipboard formats available: {:?}",
-                                formats
-                            );
+                            eprintln!("[Clipboard] Formats available: {} formats", formats.len());
                             *remote_clipboard_formats.borrow_mut() = formats;
+                        }
+                        RdpClientEvent::ClipboardInitiateCopy(formats) => {
+                            // Backend wants to send format list to server (initialization)
+                            if let Some(ref sender) = *ironrdp_tx.borrow() {
+                                let _ = sender.send(RdpClientCommand::ClipboardCopy(formats));
+                            }
                         }
                         RdpClientEvent::ClipboardDataRequest(format) => {
                             // Server requests clipboard data from us
-                            eprintln!(
-                                "[IronRDP] Server requests clipboard format: {:?}",
-                                format
+                            // Get local clipboard and send to server
+                            eprintln!("[Clipboard] Server requests data for format {}", format.id);
+                            let display = drawing_area.display();
+                            let clipboard = display.clipboard();
+                            let tx = ironrdp_tx.clone();
+                            let format_id = format.id;
+
+                            clipboard.read_text_async(
+                                None::<&gtk4::gio::Cancellable>,
+                                move |result| {
+                                    if let Ok(Some(text)) = result {
+                                        eprintln!(
+                                            "[Clipboard] Sending {} chars to server",
+                                            text.len()
+                                        );
+                                        if let Some(ref sender) = *tx.borrow() {
+                                            // Send as UTF-16 for CF_UNICODETEXT
+                                            if format_id == 13 {
+                                                // CF_UNICODETEXT
+                                                let data: Vec<u8> = text
+                                                    .encode_utf16()
+                                                    .flat_map(u16::to_le_bytes)
+                                                    .chain([0, 0]) // null terminator
+                                                    .collect();
+                                                let _ =
+                                                    sender.send(RdpClientCommand::ClipboardData {
+                                                        format_id,
+                                                        data,
+                                                    });
+                                            } else {
+                                                // CF_TEXT - send as bytes
+                                                let mut data = text.as_bytes().to_vec();
+                                                data.push(0); // null terminator
+                                                let _ =
+                                                    sender.send(RdpClientCommand::ClipboardData {
+                                                        format_id,
+                                                        data,
+                                                    });
+                                            }
+                                        }
+                                    }
+                                },
                             );
-                            // TODO: Send local clipboard data to server
                         }
                         RdpClientEvent::ClipboardPasteRequest(format) => {
                             // Backend requests to fetch data from server
-                            eprintln!(
-                                "[IronRDP] Requesting clipboard data for format: {:?}",
-                                format
-                            );
                             if let Some(ref sender) = *ironrdp_tx.borrow() {
                                 let _ = sender.send(RdpClientCommand::RequestClipboardData {
                                     format_id: format.id,
                                 });
                             }
                         }
-                        _ => {}
+                        RdpClientEvent::CursorDefault => {
+                            // Reset to default cursor
+                            drawing_area.set_cursor_from_name(Some("default"));
+                        }
+                        RdpClientEvent::CursorHidden => {
+                            // Hide cursor
+                            drawing_area.set_cursor_from_name(Some("none"));
+                        }
+                        RdpClientEvent::CursorPosition { .. } => {
+                            // Server-side cursor position update - we handle this client-side
+                        }
+                        RdpClientEvent::CursorUpdate { .. } => {
+                            // Custom cursor bitmap - for now just use default
+                            // TODO: Create custom cursor from bitmap data
+                            drawing_area.set_cursor_from_name(Some("default"));
+                        }
+                        RdpClientEvent::ServerMessage(msg) => {
+                            eprintln!("[IronRDP] Server message: {}", msg);
+                        }
                     }
                 }
             }

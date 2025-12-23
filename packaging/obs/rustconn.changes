@@ -1,4 +1,22 @@
 -------------------------------------------------------------------
+Mon Dec 23 2025 Anton Isaiev <totoshko88@gmail.com> - 0.3.1
+
+- Update to version 0.3.1
+  * Code cleanup: fixed all Clippy warnings (pedantic, nursery)
+  * Applied rustfmt formatting across all crates
+  * Added Deactivation-Reactivation sequence handling for RDP sessions
+  * Removed sensitive clipboard debug logging (security improvement)
+
+-------------------------------------------------------------------
+Mon Dec 23 2025 Anton Isaiev <totoshko88@gmail.com> - 0.3.0
+
+- Update to version 0.3.0
+  * IronRDP clipboard integration (bidirectional copy/paste)
+  * IronRDP shared folders (RDPDR) support
+  * RemoteFX codec for better RDP image quality
+  * Migrated IronRDP from GitHub to crates.io (v0.11)
+
+-------------------------------------------------------------------
 Mon Dec 23 2024 Anton Isaiev <totoshko88@gmail.com> - 0.2.0
 
 - Update to version 0.2.0

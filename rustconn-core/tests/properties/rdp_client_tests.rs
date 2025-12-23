@@ -86,15 +86,21 @@ fn arb_rdp_client_config() -> impl Strategy<Value = RdpClientConfig> {
             arb_security_protocol(),
         ),
         (
-            any::<bool>(),    // dynamic_resolution
-            100u32..=300u32,  // scale_factor
+            any::<bool>(),   // dynamic_resolution
+            100u32..=300u32, // scale_factor
         ),
     )
         .prop_map(
             |(
                 (host, port, username, domain, (width, height), color_depth),
-                (clipboard_enabled, audio_enabled, timeout_secs, ignore_certificate, nla_enabled,
-                    security_protocol),
+                (
+                    clipboard_enabled,
+                    audio_enabled,
+                    timeout_secs,
+                    ignore_certificate,
+                    nla_enabled,
+                    security_protocol,
+                ),
                 (dynamic_resolution, scale_factor),
             )| {
                 RdpClientConfig {

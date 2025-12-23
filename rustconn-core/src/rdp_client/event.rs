@@ -374,6 +374,10 @@ pub enum RdpClientEvent {
     /// Server clipboard data available (formats list)
     ClipboardFormatsAvailable(Vec<ClipboardFormatInfo>),
 
+    /// Client wants to send format list to server (initiate copy)
+    /// This is triggered by the backend during initialization or when local clipboard changes
+    ClipboardInitiateCopy(Vec<ClipboardFormatInfo>),
+
     /// Server requests clipboard data from client
     ClipboardDataRequest(ClipboardFormatInfo),
 

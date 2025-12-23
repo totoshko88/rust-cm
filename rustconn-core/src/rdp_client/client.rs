@@ -229,6 +229,7 @@ impl Drop for RdpClient {
 // IronRDP Integration
 // ============================================================================
 
+use ironrdp::connector::connection_activation::ConnectionActivationState;
 use ironrdp::connector::{
     BitmapConfig, ClientConnector, Config, ConnectionResult, Credentials, DesktopSize,
 };
@@ -239,12 +240,13 @@ use ironrdp::pdu::input::mouse::PointerFlags;
 use ironrdp::pdu::input::MousePdu;
 use ironrdp::pdu::rdp::capability_sets::{
     BitmapCodecs, CaptureFlags, Codec, CodecProperty, EntropyBits, MajorPlatformType,
-    RemoteFxContainer, RfxCapset, RfxCaps, RfxClientCapsContainer, RfxICap, RfxICapFlags,
+    RemoteFxContainer, RfxCaps, RfxCapset, RfxClientCapsContainer, RfxICap, RfxICapFlags,
 };
 use ironrdp::pdu::rdp::client_info::PerformanceFlags;
+use ironrdp::pdu::WriteBuf;
 use ironrdp::session::image::DecodedImage;
-use ironrdp::session::{ActiveStage, ActiveStageOutput};
-use ironrdp_tokio::{split_tokio_framed, FramedWrite, TokioFramed};
+use ironrdp::session::{fast_path, ActiveStage, ActiveStageOutput};
+use ironrdp_tokio::{single_sequence_step_read, split_tokio_framed, FramedWrite, TokioFramed};
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 
@@ -313,9 +315,10 @@ async fn run_rdp_client(
         connector.static_channels.insert(rdpsnd);
 
         // Get computer name for display in Windows Explorer
-        let computer_name = hostname::get()
-            .map(|h| h.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "RustConn".to_string());
+        let computer_name = hostname::get().map_or_else(
+            |_| "RustConn".to_string(),
+            |h| h.to_string_lossy().into_owned(),
+        );
 
         // Create initial drives list from shared folders config
         let initial_drives: Vec<(u32, String)> = config
@@ -440,11 +443,13 @@ fn build_connector_config(config: &RdpClientConfig) -> Config {
         performance_flags: PerformanceFlags::default(),
         license_cache: None,
         no_server_pointer: false,
-        pointer_software_rendering: true,
+        // Use hardware pointer - server sends cursor bitmap separately
+        // This avoids cursor artifacts in the framebuffer
+        pointer_software_rendering: false,
     }
 }
 
-/// Builds bitmap codecs configuration with RemoteFX support
+/// Builds bitmap codecs configuration with `RemoteFX` support
 fn build_bitmap_codecs() -> BitmapCodecs {
     // RemoteFX codec for high-quality graphics
     let remotefx_codec = Codec {
@@ -555,12 +560,9 @@ async fn run_active_session(
                 }
                 RdpClientCommand::SetDesktopSize { width, height } => {
                     // Request resolution change via Display Control Virtual Channel
-                    if let Some(result) = active_stage.encode_resize(
-                        u32::from(width),
-                        u32::from(height),
-                        None,
-                        None,
-                    ) {
+                    if let Some(result) =
+                        active_stage.encode_resize(u32::from(width), u32::from(height), None, None)
+                    {
                         match result {
                             Ok(frame) => {
                                 let _ = writer.write_all(&frame).await;
@@ -585,63 +587,39 @@ async fn run_active_session(
                 RdpClientCommand::RefreshScreen => {
                     // Request full screen refresh
                     // This is handled by sending a Refresh PDU or waiting for server updates
-                    eprintln!("[IronRDP] Screen refresh requested");
+                    tracing::debug!("Screen refresh requested");
                 }
                 RdpClientCommand::ClipboardText(text) => {
-                    // Try to send via CLIPRDR channel first
-                    if let Some(cliprdr) =
-                        active_stage.get_svc_processor_mut::<CliprdrClient>()
-                    {
-                        // Convert text to clipboard format and initiate copy
-                        let format = ironrdp::cliprdr::pdu::ClipboardFormat {
-                            id: ironrdp::cliprdr::pdu::ClipboardFormatId::CF_UNICODETEXT,
-                            name: None,
-                        };
-                        if let Ok(messages) = cliprdr.initiate_copy(&[format]) {
-                            if let Ok(frame) =
-                                active_stage.process_svc_processor_messages(messages)
-                            {
-                                let _ = writer.write_all(&frame).await;
-                            }
-                        }
-                        tracing::debug!("Clipboard text sent via CLIPRDR: {} chars", text.len());
-                    } else {
-                        // Fallback: send as Unicode key events
-                        tracing::debug!(
-                            "Pasting {} chars via Unicode key events (no CLIPRDR)",
-                            text.len()
-                        );
-                        for ch in text.chars() {
-                            let event_press = create_unicode_event(ch, true);
-                            let event_release = create_unicode_event(ch, false);
-                            send_input_events(
-                                &mut active_stage,
-                                &mut image,
-                                &mut writer,
-                                &[event_press],
-                            )
-                            .await;
-                            send_input_events(
-                                &mut active_stage,
-                                &mut image,
-                                &mut writer,
-                                &[event_release],
-                            )
-                            .await;
-                        }
+                    // Send text as Unicode key events - this is the most reliable method
+                    // CLIPRDR requires complex handshake that's hard to get right
+                    tracing::debug!("Pasting {} chars via Unicode key events", text.len());
+                    for ch in text.chars() {
+                        let event_press = create_unicode_event(ch, true);
+                        let event_release = create_unicode_event(ch, false);
+                        send_input_events(
+                            &mut active_stage,
+                            &mut image,
+                            &mut writer,
+                            &[event_press],
+                        )
+                        .await;
+                        send_input_events(
+                            &mut active_stage,
+                            &mut image,
+                            &mut writer,
+                            &[event_release],
+                        )
+                        .await;
                     }
                 }
                 RdpClientCommand::Authenticate { .. } => {}
                 RdpClientCommand::ClipboardData { format_id, data } => {
                     // Send clipboard data to server via CLIPRDR channel
-                    if let Some(cliprdr) =
-                        active_stage.get_svc_processor_mut::<CliprdrClient>()
-                    {
+                    if let Some(cliprdr) = active_stage.get_svc_processor_mut::<CliprdrClient>() {
                         let response =
                             ironrdp::cliprdr::pdu::OwnedFormatDataResponse::new_data(data.clone());
                         if let Ok(messages) = cliprdr.submit_format_data(response) {
-                            if let Ok(frame) =
-                                active_stage.process_svc_processor_messages(messages)
+                            if let Ok(frame) = active_stage.process_svc_processor_messages(messages)
                             {
                                 let _ = writer.write_all(&frame).await;
                                 tracing::debug!(
@@ -655,9 +633,7 @@ async fn run_active_session(
                 }
                 RdpClientCommand::ClipboardCopy(formats) => {
                     // Notify server about available clipboard formats
-                    if let Some(cliprdr) =
-                        active_stage.get_svc_processor_mut::<CliprdrClient>()
-                    {
+                    if let Some(cliprdr) = active_stage.get_svc_processor_mut::<CliprdrClient>() {
                         let clipboard_formats: Vec<ironrdp::cliprdr::pdu::ClipboardFormat> =
                             formats
                                 .iter()
@@ -676,8 +652,7 @@ async fn run_active_session(
                                 })
                                 .collect();
                         if let Ok(messages) = cliprdr.initiate_copy(&clipboard_formats) {
-                            if let Ok(frame) =
-                                active_stage.process_svc_processor_messages(messages)
+                            if let Ok(frame) = active_stage.process_svc_processor_messages(messages)
                             {
                                 let _ = writer.write_all(&frame).await;
                                 tracing::debug!(
@@ -690,21 +665,31 @@ async fn run_active_session(
                 }
                 RdpClientCommand::RequestClipboardData { format_id } => {
                     // Request clipboard data from server (initiate paste)
-                    if let Some(cliprdr) =
-                        active_stage.get_svc_processor_mut::<CliprdrClient>()
-                    {
+                    tracing::debug!(
+                        "RequestClipboardData command received for format {}",
+                        format_id
+                    );
+                    if let Some(cliprdr) = active_stage.get_svc_processor_mut::<CliprdrClient>() {
                         let format = ironrdp::cliprdr::pdu::ClipboardFormatId::new(format_id);
-                        if let Ok(messages) = cliprdr.initiate_paste(format) {
-                            if let Ok(frame) =
-                                active_stage.process_svc_processor_messages(messages)
-                            {
-                                let _ = writer.write_all(&frame).await;
-                                tracing::debug!(
-                                    "Clipboard paste initiated for format {}",
-                                    format_id
-                                );
+                        match cliprdr.initiate_paste(format) {
+                            Ok(messages) => {
+                                tracing::debug!("initiate_paste succeeded");
+                                if let Ok(frame) =
+                                    active_stage.process_svc_processor_messages(messages)
+                                {
+                                    let _ = writer.write_all(&frame).await;
+                                    tracing::debug!(
+                                        "Clipboard paste request sent for format {}",
+                                        format_id
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("initiate_paste failed: {}", e);
                             }
                         }
+                    } else {
+                        tracing::warn!("CLIPRDR channel not available");
                     }
                 }
             }
@@ -763,14 +748,86 @@ async fn run_active_session(
                                     tracing::info!("RDP session terminated: {reason:?}");
                                     return Ok(());
                                 }
-                                ActiveStageOutput::DeactivateAll(deactivate_info) => {
-                                    // Server is deactivating the session, possibly for resize
-                                    // Send a resolution changed event to notify GUI
-                                    eprintln!(
-                                        "[IronRDP] Received deactivate-all: {deactivate_info:?}"
+                                ActiveStageOutput::DeactivateAll(mut connection_activation) => {
+                                    // Execute the Deactivation-Reactivation Sequence:
+                                    // https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdpbcgr/dfc234ce-481a-4674-9a5d-2a7bafb14432
+                                    tracing::debug!(
+                                        "Received Server Deactivate All PDU, \
+                                         executing Deactivation-Reactivation Sequence"
                                     );
-                                    // The session will be reactivated with new parameters
-                                    // We should wait for new graphics updates
+
+                                    let mut buf = WriteBuf::new();
+                                    loop {
+                                        let written = match single_sequence_step_read(
+                                            &mut reader,
+                                            &mut *connection_activation,
+                                            &mut buf,
+                                        )
+                                        .await
+                                        {
+                                            Ok(w) => w,
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "Reactivation sequence error: {}",
+                                                    e
+                                                );
+                                                break;
+                                            }
+                                        };
+
+                                        if written.size().is_some() {
+                                            if let Err(e) = writer.write_all(buf.filled()).await {
+                                                tracing::warn!(
+                                                    "Failed to send reactivation response: {}",
+                                                    e
+                                                );
+                                                break;
+                                            }
+                                        }
+
+                                        if let ConnectionActivationState::Finalized {
+                                            io_channel_id,
+                                            user_channel_id,
+                                            desktop_size,
+                                            no_server_pointer,
+                                            pointer_software_rendering,
+                                        } = connection_activation.state
+                                        {
+                                            tracing::debug!(
+                                                ?desktop_size,
+                                                "Deactivation-Reactivation Sequence completed"
+                                            );
+
+                                            // Update image size with the new desktop size
+                                            image = DecodedImage::new(
+                                                IronPixelFormat::BgrA32,
+                                                desktop_size.width,
+                                                desktop_size.height,
+                                            );
+
+                                            // Update the active stage with new channel IDs
+                                            // and pointer settings
+                                            active_stage.set_fastpath_processor(
+                                                fast_path::ProcessorBuilder {
+                                                    io_channel_id,
+                                                    user_channel_id,
+                                                    no_server_pointer,
+                                                    pointer_software_rendering,
+                                                }
+                                                .build(),
+                                            );
+                                            active_stage.set_no_server_pointer(no_server_pointer);
+
+                                            // Notify GUI about resolution change
+                                            let _ =
+                                                event_tx.send(RdpClientEvent::ResolutionChanged {
+                                                    width: desktop_size.width,
+                                                    height: desktop_size.height,
+                                                });
+
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                         }

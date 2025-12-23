@@ -8,7 +8,6 @@ use ironrdp::cliprdr::backend::{ClipboardMessage, ClipboardMessageProxy, Cliprdr
 use ironrdp::cliprdr::pdu::{
     ClipboardFormat, ClipboardFormatId, ClipboardGeneralCapabilityFlags, FileContentsRequest,
     FileContentsResponse, FormatDataRequest, FormatDataResponse, LockDataId,
-    OwnedFormatDataResponse,
 };
 use ironrdp::core::impl_as_any;
 use std::sync::mpsc::Sender;
@@ -32,6 +31,7 @@ impl ClipboardMessageProxy for RustConnClipboardProxy {
     fn send_clipboard_message(&self, message: ClipboardMessage) {
         match message {
             ClipboardMessage::SendInitiateCopy(formats) => {
+                // Backend wants to send format list to server (initiate copy)
                 let format_infos: Vec<ClipboardFormatInfo> = formats
                     .iter()
                     .map(|f| {
@@ -39,22 +39,26 @@ impl ClipboardMessageProxy for RustConnClipboardProxy {
                         ClipboardFormatInfo::new(f.id.value(), name)
                     })
                     .collect();
+                trace!("Sending ClipboardCopy with {} formats", format_infos.len());
                 let _ = self
                     .event_tx
-                    .send(RdpClientEvent::ClipboardFormatsAvailable(format_infos));
+                    .send(RdpClientEvent::ClipboardInitiateCopy(format_infos));
             }
             ClipboardMessage::SendInitiatePaste(format_id) => {
-                // Request to fetch data from server - send as event to trigger initiate_paste
+                trace!("Requesting clipboard data for format {}", format_id.value());
                 let format_info = ClipboardFormatInfo::new(format_id.value(), None);
                 let _ = self
                     .event_tx
                     .send(RdpClientEvent::ClipboardPasteRequest(format_info));
             }
             ClipboardMessage::SendFormatData(response) => {
+                // This is called when IronRDP wants us to send data to server
+                // But we also use it to extract received data
                 let data = response.data();
-                if let Ok(text) = string_from_utf16(data) {
-                    let _ = self.event_tx.send(RdpClientEvent::ClipboardText(text));
-                }
+                trace!(
+                    "SendFormatData called with {} bytes (this is for sending TO server)",
+                    data.len()
+                );
             }
             ClipboardMessage::Error(err) => {
                 warn!("Clipboard error: {}", err);
@@ -103,9 +107,10 @@ impl CliprdrBackend for RustConnClipboardBackend {
     }
 
     fn on_request_format_list(&mut self) {
-        debug!("Server requested format list");
-        // Server wants to know what formats we have available
-        // For now, we don't have any local clipboard data to offer
+        trace!("Server requested format list - sending empty list to complete initialization");
+        // Send an empty format list to complete the initialization handshake
+        self.proxy
+            .send_clipboard_message(ClipboardMessage::SendInitiateCopy(Vec::new()));
     }
 
     fn client_capabilities(&self) -> ClipboardGeneralCapabilityFlags {
@@ -120,15 +125,29 @@ impl CliprdrBackend for RustConnClipboardBackend {
     }
 
     fn on_remote_copy(&mut self, available_formats: &[ClipboardFormat]) {
-        trace!(?available_formats, "Remote copy - formats available");
+        debug!(
+            "on_remote_copy called with {} formats: {:?}",
+            available_formats.len(),
+            available_formats
+                .iter()
+                .map(|f| f.id.value())
+                .collect::<Vec<_>>()
+        );
 
-        // Notify GUI about available formats
-        self.proxy
-            .send_clipboard_message(ClipboardMessage::SendInitiateCopy(
-                available_formats.to_vec(),
-            ));
+        // Notify GUI about available formats (for UI display)
+        let format_infos: Vec<ClipboardFormatInfo> = available_formats
+            .iter()
+            .map(|f| {
+                let name = f.name.as_ref().map(|n| format!("{n:?}"));
+                ClipboardFormatInfo::new(f.id.value(), name)
+            })
+            .collect();
+        let _ = self
+            .proxy
+            .event_tx
+            .send(RdpClientEvent::ClipboardFormatsAvailable(format_infos));
 
-        // Auto-request text data if available (CF_UNICODETEXT preferred, then CF_TEXT)
+        // Check if text format is available and auto-request it
         let text_format = available_formats
             .iter()
             .find(|f| f.id == ClipboardFormatId::CF_UNICODETEXT)
@@ -139,11 +158,15 @@ impl CliprdrBackend for RustConnClipboardBackend {
             });
 
         if let Some(format) = text_format {
-            debug!("Auto-requesting clipboard text in format {:?}", format.id);
+            debug!(
+                "Text format available (id={}), requesting paste",
+                format.id.value()
+            );
             self.pending_paste_format = Some(format.id);
-            // Request the data - this will trigger on_format_data_response when server responds
             self.proxy
                 .send_clipboard_message(ClipboardMessage::SendInitiatePaste(format.id));
+        } else {
+            debug!("No text format available in clipboard");
         }
     }
 
@@ -154,38 +177,59 @@ impl CliprdrBackend for RustConnClipboardBackend {
     }
 
     fn on_format_data_response(&mut self, response: FormatDataResponse<'_>) {
-        trace!("Format data response received");
-
         let data = response.data();
+        let format_id = self.pending_paste_format.take();
+        debug!(
+            "on_format_data_response called: {} bytes, format: {:?}",
+            data.len(),
+            format_id
+        );
 
-        if let Some(format_id) = self.pending_paste_format.take() {
-            match format_id {
-                ClipboardFormatId::CF_UNICODETEXT => {
-                    if let Ok(text) = string_from_utf16(data) {
-                        let owned = OwnedFormatDataResponse::new_data(text.into_bytes());
-                        self.proxy
-                            .send_clipboard_message(ClipboardMessage::SendFormatData(owned));
-                    } else {
-                        warn!("Failed to decode Unicode clipboard text");
-                    }
-                }
-                ClipboardFormatId::CF_TEXT => {
-                    if let Ok(text) = String::from_utf8(data.to_vec()) {
-                        let owned = OwnedFormatDataResponse::new_data(text.into_bytes());
-                        self.proxy
-                            .send_clipboard_message(ClipboardMessage::SendFormatData(owned));
-                    }
-                }
-                _ => {
-                    let owned = OwnedFormatDataResponse::new_data(data.to_vec());
-                    self.proxy
-                        .send_clipboard_message(ClipboardMessage::SendFormatData(owned));
+        match format_id {
+            Some(ClipboardFormatId::CF_UNICODETEXT) | None => {
+                if let Ok(text) = string_from_utf16(data) {
+                    debug!("Clipboard text decoded (UTF-16): {} chars", text.len());
+                    let _ = self
+                        .proxy
+                        .event_tx
+                        .send(RdpClientEvent::ClipboardText(text));
+                } else {
+                    warn!("Failed to decode clipboard data as UTF-16");
                 }
             }
-        } else {
-            let owned = OwnedFormatDataResponse::new_data(data.to_vec());
-            self.proxy
-                .send_clipboard_message(ClipboardMessage::SendFormatData(owned));
+            Some(ClipboardFormatId::CF_TEXT) => {
+                if let Ok(text) = String::from_utf8(data.to_vec()) {
+                    debug!("Clipboard text decoded (ANSI): {} chars", text.len());
+                    let _ = self
+                        .proxy
+                        .event_tx
+                        .send(RdpClientEvent::ClipboardText(text));
+                } else {
+                    let text: String = data.iter().map(|&b| b as char).collect();
+                    debug!("Clipboard text decoded (Latin-1): {} chars", text.len());
+                    let _ = self
+                        .proxy
+                        .event_tx
+                        .send(RdpClientEvent::ClipboardText(text));
+                }
+            }
+            Some(_) => {
+                if let Ok(text) = string_from_utf16(data) {
+                    debug!("Clipboard text decoded (auto): {} chars", text.len());
+                    let _ = self
+                        .proxy
+                        .event_tx
+                        .send(RdpClientEvent::ClipboardText(text));
+                } else if let Ok(text) = String::from_utf8(data.to_vec()) {
+                    debug!("Clipboard text decoded (UTF-8): {} chars", text.len());
+                    let _ = self
+                        .proxy
+                        .event_tx
+                        .send(RdpClientEvent::ClipboardText(text));
+                } else {
+                    warn!("Failed to decode clipboard data");
+                }
+            }
         }
     }
 
@@ -220,10 +264,7 @@ fn string_from_utf16(data: &[u8]) -> Result<String, std::string::FromUtf16Error>
 /// Converts a Rust String to UTF-16LE bytes with null terminator
 #[must_use]
 pub fn string_to_utf16(text: &str) -> Vec<u8> {
-    let mut result: Vec<u8> = text
-        .encode_utf16()
-        .flat_map(u16::to_le_bytes)
-        .collect();
+    let mut result: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
     result.extend_from_slice(&[0, 0]);
     result
 }

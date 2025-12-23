@@ -1,3 +1,23 @@
+rustconn (0.3.1-1) unstable; urgency=medium
+
+  * New upstream release
+    - Code cleanup: fixed all Clippy warnings
+    - Applied rustfmt formatting
+    - Added Deactivation-Reactivation for RDP sessions
+    - Removed sensitive clipboard debug logging
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Mon, 23 Dec 2025 21:00:00 +0200
+
+rustconn (0.3.0-1) unstable; urgency=medium
+
+  * New upstream release
+    - IronRDP clipboard integration (bidirectional copy/paste)
+    - IronRDP shared folders (RDPDR) support
+    - RemoteFX codec for better RDP image quality
+    - Migrated IronRDP from GitHub to crates.io (v0.11)
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Mon, 23 Dec 2025 18:30:00 +0200
+
 rustconn (0.2.0-1) unstable; urgency=medium
 
   * New upstream release
@@ -8,7 +28,7 @@ rustconn (0.2.0-1) unstable; urgency=medium
     - Dynamic version in About dialog
     - Zero Trust providers support (AWS SSM, GCP IAP, Azure Bastion)
 
- -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2024 18:00:00 +0200
+ -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2025 18:00:00 +0200
 
 rustconn (0.1.0-1) unstable; urgency=medium
 
@@ -17,4 +37,4 @@ rustconn (0.1.0-1) unstable; urgency=medium
     - SSH, RDP, VNC, SPICE support
     - Connection groups and import/export
 
- -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2024 12:00:00 +0000
+ -- Anton Isaiev <totoshko88@gmail.com>  Sun, 22 Dec 2025 12:00:00 +0000
