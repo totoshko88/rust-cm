@@ -446,13 +446,25 @@ fn show_about_dialog(parent: &gtk4::ApplicationWindow) {
         ],
     );
 
-    // Load and set the application logo from the canonical icon location
-    let logo_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg"
-    );
-    if let Ok(logo) = gtk4::gdk::Texture::from_filename(logo_path) {
-        about.set_logo(Some(&logo));
+    // Load and set the application logo
+    // Try multiple locations: system paths first, then development path
+    let icon_paths = [
+        // System installation paths
+        "/usr/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg",
+        "/usr/local/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg",
+        "/app/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg", // Flatpak
+        // Development path (cargo run)
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg"
+        ),
+    ];
+
+    for path in &icon_paths {
+        if let Ok(logo) = gtk4::gdk::Texture::from_filename(path) {
+            about.set_logo(Some(&logo));
+            break;
+        }
     }
 
     about.present();
