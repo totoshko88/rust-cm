@@ -442,7 +442,7 @@ fn build_connector_config(config: &RdpClientConfig) -> Config {
         enable_audio_playback: config.audio_enabled,
         performance_flags: PerformanceFlags::default(),
         license_cache: None,
-        timezone_info: TimezoneInfo::default(),
+        timezone_info: get_timezone_info(),
         enable_server_pointer: true,
         // Use hardware pointer - server sends cursor bitmap separately
         // This avoids cursor artifacts in the framebuffer
@@ -466,7 +466,33 @@ fn build_bitmap_codecs() -> BitmapCodecs {
         )),
     };
 
-    BitmapCodecs(vec![remotefx_codec])
+    // ImageRemoteFx codec (required for GFX)
+    let image_remotefx_codec = Codec {
+        id: 0x4, // CODEC_ID_IMAGE_REMOTEFX
+        property: CodecProperty::ImageRemoteFx(RemoteFxContainer::ClientContainer(
+            RfxClientCapsContainer {
+                capture_flags: CaptureFlags::empty(),
+                caps_data: RfxCaps(RfxCapset(vec![RfxICap {
+                    flags: RfxICapFlags::empty(),
+                    entropy_bits: EntropyBits::Rlgr3,
+                }])),
+            },
+        )),
+    };
+
+    BitmapCodecs(vec![remotefx_codec, image_remotefx_codec])
+}
+
+/// Gets the local timezone information
+fn get_timezone_info() -> TimezoneInfo {
+    let offset = chrono::Local::now().offset().local_minus_utc();
+    // Bias is UTC - Local in minutes
+    let bias = -(offset / 60);
+
+    TimezoneInfo {
+        bias,
+        ..TimezoneInfo::default()
+    }
 }
 
 /// Runs the active RDP session, processing framebuffer updates and input

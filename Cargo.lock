@@ -3652,6 +3652,7 @@ dependencies = [
 name = "rustconn-cli"
 version = "0.3.1"
 dependencies = [
+ "chrono",
  "clap",
  "rustconn-core",
  "serde",

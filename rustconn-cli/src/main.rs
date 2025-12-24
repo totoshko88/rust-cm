@@ -106,6 +106,43 @@ pub enum Commands {
         #[arg(short, long, default_value = "10")]
         timeout: u64,
     },
+
+    /// Delete a connection
+    #[command(about = "Delete a connection")]
+    Delete {
+        /// Connection name or UUID
+        name: String,
+    },
+
+    /// Show connection details
+    #[command(about = "Show connection details")]
+    Show {
+        /// Connection name or UUID
+        name: String,
+    },
+
+    /// Update a connection
+    #[command(about = "Update an existing connection")]
+    Update {
+        /// Connection name or UUID
+        name: String,
+
+        /// New name
+        #[arg(short, long)]
+        new_name: Option<String>,
+
+        /// New host
+        #[arg(short = 'H', long)]
+        host: Option<String>,
+
+        /// New port
+        #[arg(short, long)]
+        port: Option<u16>,
+
+        /// New username
+        #[arg(short, long)]
+        user: Option<String>,
+    },
 }
 
 /// Output format for the list command
@@ -169,6 +206,21 @@ fn main() {
         Commands::Export { format, output } => cmd_export(format, &output),
         Commands::Import { format, file } => cmd_import(format, &file),
         Commands::Test { name, timeout } => cmd_test(&name, timeout),
+        Commands::Delete { name } => cmd_delete(&name),
+        Commands::Show { name } => cmd_show(&name),
+        Commands::Update {
+            name,
+            new_name,
+            host,
+            port,
+            user,
+        } => cmd_update(
+            &name,
+            new_name.as_deref(),
+            host.as_deref(),
+            port,
+            user.as_deref(),
+        ),
     };
 
     if let Err(e) = result {
@@ -1251,6 +1303,140 @@ fn print_test_summary(summary: &rustconn_core::testing::TestSummary) {
     } else {
         println!("  {RED}Pass rate: {pass_rate:.1}%{RESET}");
     }
+}
+
+/// Delete connection command handler
+fn cmd_delete(name: &str) -> Result<(), CliError> {
+    // Load connections
+    let config_manager = ConfigManager::new()
+        .map_err(|e| CliError::Config(format!("Failed to initialize config: {e}")))?;
+
+    let connections = config_manager
+        .load_connections()
+        .map_err(|e| CliError::Config(format!("Failed to load connections: {e}")))?;
+
+    // Find the connection to get its ID
+    let connection = find_connection(&connections, name)?;
+    let id = connection.id;
+    let conn_name = connection.name.clone();
+
+    // Remove from list
+    let mut connections = connections;
+    connections.retain(|c| c.id != id);
+
+    // Save connections
+    config_manager
+        .save_connections(&connections)
+        .map_err(|e| CliError::Config(format!("Failed to save connections: {e}")))?;
+
+    println!("Deleted connection '{conn_name}' (ID: {id})");
+
+    Ok(())
+}
+
+/// Show connection details command handler
+fn cmd_show(name: &str) -> Result<(), CliError> {
+    // Load connections
+    let config_manager = ConfigManager::new()
+        .map_err(|e| CliError::Config(format!("Failed to initialize config: {e}")))?;
+
+    let connections = config_manager
+        .load_connections()
+        .map_err(|e| CliError::Config(format!("Failed to load connections: {e}")))?;
+
+    // Find the connection
+    let connection = find_connection(&connections, name)?;
+
+    println!("Connection Details:");
+    println!("  ID:       {}", connection.id);
+    println!("  Name:     {}", connection.name);
+    println!("  Host:     {}", connection.host);
+    println!("  Port:     {}", connection.port);
+    println!("  Protocol: {}", connection.protocol);
+
+    if let Some(ref user) = connection.username {
+        println!("  Username: {user}");
+    }
+
+    // Protocol specific details
+    match connection.protocol_config {
+        rustconn_core::models::ProtocolConfig::Ssh(ref config) => {
+            if let Some(ref key) = config.key_path {
+                println!("  Key Path: {}", key.display());
+            }
+            if let Some(ref jump) = config.proxy_jump {
+                println!("  Proxy Jump: {jump}");
+            }
+        }
+        rustconn_core::models::ProtocolConfig::Rdp(ref config) => {
+            if let Some(ref domain) = connection.domain {
+                println!("  Domain:   {domain}");
+            }
+            if let Some(ref res) = config.resolution {
+                println!("  Resolution: {}x{}", res.width, res.height);
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Update connection command handler
+fn cmd_update(
+    name: &str,
+    new_name: Option<&str>,
+    host: Option<&str>,
+    port: Option<u16>,
+    user: Option<&str>,
+) -> Result<(), CliError> {
+    // Load connections
+    let config_manager = ConfigManager::new()
+        .map_err(|e| CliError::Config(format!("Failed to initialize config: {e}")))?;
+
+    let mut connections = config_manager
+        .load_connections()
+        .map_err(|e| CliError::Config(format!("Failed to load connections: {e}")))?;
+
+    // Find the connection index
+    let index = connections
+        .iter()
+        .position(|c| c.name == name || c.id.to_string() == name)
+        .ok_or_else(|| CliError::ConnectionNotFound(name.to_string()))?;
+
+    let connection = &mut connections[index];
+
+    // Update fields
+    if let Some(new_name) = new_name {
+        connection.name = new_name.to_string();
+    }
+    if let Some(host) = host {
+        connection.host = host.to_string();
+    }
+    if let Some(port) = port {
+        connection.port = port;
+    }
+    if let Some(user) = user {
+        connection.username = Some(user.to_string());
+    }
+
+    connection.updated_at = chrono::Utc::now();
+
+    // Validate
+    ConfigManager::validate_connection(connection)
+        .map_err(|e| CliError::Config(format!("Invalid connection: {e}")))?;
+
+    let id = connection.id;
+    let name = connection.name.clone();
+
+    // Save connections
+    config_manager
+        .save_connections(&connections)
+        .map_err(|e| CliError::Config(format!("Failed to save connections: {e}")))?;
+
+    println!("Updated connection '{name}' (ID: {id})");
+
+    Ok(())
 }
 
 /// Exit codes for CLI operations
