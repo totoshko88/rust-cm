@@ -166,7 +166,6 @@ impl LogViewerDialog {
     }
 
     /// Gets the default log directory
-    #[allow(clippy::or_fun_call)]
     fn get_default_log_dir() -> PathBuf {
         // Use XDG data directory or fallback to home directory
         std::env::var("XDG_DATA_HOME")

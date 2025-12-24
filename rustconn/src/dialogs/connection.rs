@@ -259,12 +259,18 @@ impl ConnectionDialog {
             basic_grid,
             name_entry,
             host_entry,
+            host_label,
             port_spin,
+            port_label,
             username_entry,
+            username_label,
             tags_entry,
+            tags_label,
             protocol_dropdown,
             password_source_dropdown,
+            password_source_label,
             password_entry,
+            password_entry_label,
             load_from_keepass_button,
             save_to_keepass_button,
         ) = Self::create_basic_tab();
@@ -371,7 +377,24 @@ impl ConnectionDialog {
         protocol_stack.set_visible_child_name("ssh");
 
         // Connect protocol dropdown to stack
-        Self::connect_protocol_dropdown(&protocol_dropdown, &protocol_stack, &port_spin);
+        Self::connect_protocol_dropdown(
+            &protocol_dropdown,
+            &protocol_stack,
+            &port_spin,
+            &host_entry,
+            &host_label,
+            &port_label,
+            &username_entry,
+            &username_label,
+            &tags_entry,
+            &tags_label,
+            &password_source_dropdown,
+            &password_source_label,
+            &password_entry,
+            &password_entry_label,
+            &load_from_keepass_button,
+            &save_to_keepass_button,
+        );
 
         // === Variables Tab ===
         let (variables_tab, variables_list, add_variable_button) = Self::create_variables_tab();
@@ -737,9 +760,41 @@ impl ConnectionDialog {
     }
 
     /// Connects the protocol dropdown to update the stack and port
-    fn connect_protocol_dropdown(dropdown: &DropDown, stack: &Stack, port_spin: &SpinButton) {
+    #[allow(clippy::too_many_arguments)]
+    fn connect_protocol_dropdown(
+        dropdown: &DropDown,
+        stack: &Stack,
+        port_spin: &SpinButton,
+        host_entry: &Entry,
+        host_label: &Label,
+        port_label: &Label,
+        username_entry: &Entry,
+        username_label: &Label,
+        tags_entry: &Entry,
+        tags_label: &Label,
+        password_source_dropdown: &DropDown,
+        password_source_label: &Label,
+        password_entry: &Entry,
+        password_label: &Label,
+        load_from_keepass_button: &Button,
+        save_to_keepass_button: &Button,
+    ) {
         let stack_clone = stack.clone();
         let port_clone = port_spin.clone();
+        let host_entry = host_entry.clone();
+        let host_label = host_label.clone();
+        let port_label = port_label.clone();
+        let username_entry = username_entry.clone();
+        let username_label = username_label.clone();
+        let tags_entry = tags_entry.clone();
+        let tags_label = tags_label.clone();
+        let password_source_dropdown = password_source_dropdown.clone();
+        let password_source_label = password_source_label.clone();
+        let password_entry = password_entry.clone();
+        let password_label = password_label.clone();
+        let load_from_keepass_button = load_from_keepass_button.clone();
+        let save_to_keepass_button = save_to_keepass_button.clone();
+
         dropdown.connect_selected_notify(move |dropdown| {
             let protocols = ["ssh", "rdp", "vnc", "spice", "zerotrust"];
             let selected = dropdown.selected() as usize;
@@ -750,6 +805,24 @@ impl ConnectionDialog {
                 if Self::is_default_port(port_clone.value()) {
                     port_clone.set_value(default_port);
                 }
+
+                let is_zerotrust = protocol_id == "zerotrust";
+                let visible = !is_zerotrust;
+
+                host_entry.set_visible(visible);
+                host_label.set_visible(visible);
+                port_clone.set_visible(visible);
+                port_label.set_visible(visible);
+                username_entry.set_visible(visible);
+                username_label.set_visible(visible);
+                tags_entry.set_visible(visible);
+                tags_label.set_visible(visible);
+                password_source_dropdown.set_visible(visible);
+                password_source_label.set_visible(visible);
+                password_entry.set_visible(visible);
+                password_label.set_visible(visible);
+                load_from_keepass_button.set_visible(visible);
+                save_to_keepass_button.set_visible(visible);
             }
         });
     }
@@ -1090,7 +1163,12 @@ impl ConnectionDialog {
     }
 
     /// Creates a labeled entry row in a grid
-    fn create_labeled_entry(grid: &Grid, row: &mut i32, label: &str, placeholder: &str) -> Entry {
+    fn create_labeled_entry(
+        grid: &Grid,
+        row: &mut i32,
+        label: &str,
+        placeholder: &str,
+    ) -> (Entry, Label) {
         let label_widget = Label::builder()
             .label(label)
             .halign(gtk4::Align::End)
@@ -1102,7 +1180,7 @@ impl ConnectionDialog {
         grid.attach(&label_widget, 0, *row, 1, 1);
         grid.attach(&entry, 1, *row, 2, 1);
         *row += 1;
-        entry
+        (entry, label_widget)
     }
 
     /// Creates a labeled dropdown row in a grid
@@ -1112,7 +1190,7 @@ impl ConnectionDialog {
         label: &str,
         options: &[&str],
         default: u32,
-    ) -> DropDown {
+    ) -> (DropDown, Label) {
         let label_widget = Label::builder()
             .label(label)
             .halign(gtk4::Align::End)
@@ -1123,7 +1201,7 @@ impl ConnectionDialog {
         grid.attach(&label_widget, 0, *row, 1, 1);
         grid.attach(&dropdown, 1, *row, 2, 1);
         *row += 1;
-        dropdown
+        (dropdown, label_widget)
     }
 
     #[allow(clippy::type_complexity)]
@@ -1131,12 +1209,18 @@ impl ConnectionDialog {
         Grid,
         Entry,
         Entry,
+        Label,
         SpinButton,
+        Label,
         Entry,
+        Label,
         Entry,
+        Label,
         DropDown,
         DropDown,
+        Label,
         Entry,
+        Label,
         Button,
         Button,
     ) {
@@ -1152,10 +1236,11 @@ impl ConnectionDialog {
         let mut row = 0;
 
         // Name
-        let name_entry = Self::create_labeled_entry(&grid, &mut row, "Name:", "Connection name");
+        let (name_entry, _) =
+            Self::create_labeled_entry(&grid, &mut row, "Name:", "Connection name");
 
         // Protocol
-        let protocol_dropdown = Self::create_labeled_dropdown(
+        let (protocol_dropdown, _) = Self::create_labeled_dropdown(
             &grid,
             &mut row,
             "Protocol:",
@@ -1164,16 +1249,17 @@ impl ConnectionDialog {
         );
 
         // Host
-        let host_entry = Self::create_labeled_entry(&grid, &mut row, "Host:", "hostname or IP");
+        let (host_entry, host_label) =
+            Self::create_labeled_entry(&grid, &mut row, "Host:", "hostname or IP");
 
         // Port
-        let port_spin = Self::create_port_spin(&grid, &mut row);
+        let (port_spin, port_label) = Self::create_port_spin(&grid, &mut row);
 
         // Username
-        let username_entry = Self::create_username_entry(&grid, &mut row);
+        let (username_entry, username_label) = Self::create_username_entry(&grid, &mut row);
 
         // Password Source
-        let password_source_dropdown = Self::create_labeled_dropdown(
+        let (password_source_dropdown, password_source_label) = Self::create_labeled_dropdown(
             &grid,
             &mut row,
             "Password:",
@@ -1182,29 +1268,40 @@ impl ConnectionDialog {
         );
 
         // Password entry with Load/Save to KeePass buttons
-        let (password_entry, load_from_keepass_button, save_to_keepass_button) =
-            Self::create_password_entry_row(&grid, &mut row);
+        let (
+            password_entry,
+            load_from_keepass_button,
+            save_to_keepass_button,
+            password_entry_label,
+        ) = Self::create_password_entry_row(&grid, &mut row);
 
         // Tags
-        let tags_entry = Self::create_labeled_entry(&grid, &mut row, "Tags:", "tag1, tag2, ...");
+        let (tags_entry, tags_label) =
+            Self::create_labeled_entry(&grid, &mut row, "Tags:", "tag1, tag2, ...");
 
         (
             grid,
             name_entry,
             host_entry,
+            host_label,
             port_spin,
+            port_label,
             username_entry,
+            username_label,
             tags_entry,
+            tags_label,
             protocol_dropdown,
             password_source_dropdown,
+            password_source_label,
             password_entry,
+            password_entry_label,
             load_from_keepass_button,
             save_to_keepass_button,
         )
     }
 
     /// Creates the port spin button row
-    fn create_port_spin(grid: &Grid, row: &mut i32) -> SpinButton {
+    fn create_port_spin(grid: &Grid, row: &mut i32) -> (SpinButton, Label) {
         let port_label = Label::builder()
             .label("Port:")
             .halign(gtk4::Align::End)
@@ -1218,11 +1315,11 @@ impl ConnectionDialog {
         grid.attach(&port_label, 0, *row, 1, 1);
         grid.attach(&port_spin, 1, *row, 1, 1);
         *row += 1;
-        port_spin
+        (port_spin, port_label)
     }
 
     /// Creates the username entry with current user as placeholder
-    fn create_username_entry(grid: &Grid, row: &mut i32) -> Entry {
+    fn create_username_entry(grid: &Grid, row: &mut i32) -> (Entry, Label) {
         let username_label = Label::builder()
             .label("Username:")
             .halign(gtk4::Align::End)
@@ -1240,11 +1337,11 @@ impl ConnectionDialog {
         grid.attach(&username_label, 0, *row, 1, 1);
         grid.attach(&username_entry, 1, *row, 2, 1);
         *row += 1;
-        username_entry
+        (username_entry, username_label)
     }
 
     /// Creates the password entry row with Load/Save `KeePass` buttons
-    fn create_password_entry_row(grid: &Grid, row: &mut i32) -> (Entry, Button, Button) {
+    fn create_password_entry_row(grid: &Grid, row: &mut i32) -> (Entry, Button, Button, Label) {
         let password_entry_label = Label::builder()
             .label("Password Value:")
             .halign(gtk4::Align::End)
@@ -1276,6 +1373,7 @@ impl ConnectionDialog {
             password_entry,
             load_from_keepass_button,
             save_to_keepass_button,
+            password_entry_label,
         )
     }
 

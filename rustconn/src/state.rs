@@ -821,7 +821,7 @@ impl AppState {
 
                 let key_file = self.settings.secrets.kdbx_key_file.as_deref();
 
-                eprintln!(
+                tracing::debug!(
                     "[resolve_credentials] KeePass lookup: key='{}', has_password={}, has_key_file={}",
                     lookup_key,
                     db_password.is_some(),
@@ -835,10 +835,7 @@ impl AppState {
                     &lookup_key,
                 ) {
                     Ok(Some(password)) => {
-                        eprintln!(
-                            "[resolve_credentials] Found password in KeePass ({} chars)",
-                            password.len()
-                        );
+                        tracing::debug!("[resolve_credentials] Found password in KeePass");
                         // Build credentials with optional username and password
                         let mut creds = if let Some(ref username) = connection.username {
                             Credentials::with_password(username, &password)
@@ -854,10 +851,10 @@ impl AppState {
                         return Ok(Some(creds));
                     }
                     Ok(None) => {
-                        eprintln!("[resolve_credentials] No password found in KeePass");
+                        tracing::debug!("[resolve_credentials] No password found in KeePass");
                     }
                     Err(e) => {
-                        eprintln!("[resolve_credentials] KeePass error: {}", e);
+                        tracing::error!("[resolve_credentials] KeePass error: {}", e);
                     }
                 }
             }

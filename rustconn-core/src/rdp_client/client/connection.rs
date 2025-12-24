@@ -1,6 +1,6 @@
-use super::super::{RdpClientConfig, RdpClientError, RdpClientEvent};
 use super::super::clipboard::RustConnClipboardBackend;
 use super::super::rdpdr::RustConnRdpdrBackend;
+use super::super::{RdpClientConfig, RdpClientError, RdpClientEvent};
 use ironrdp::cliprdr::CliprdrClient;
 use ironrdp::connector::{
     BitmapConfig, ClientConnector, Config, ConnectionResult, Credentials, DesktopSize,
@@ -13,7 +13,7 @@ use ironrdp::pdu::rdp::capability_sets::{
 use ironrdp::pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
 use ironrdp::rdpdr::Rdpdr;
 use ironrdp::rdpsnd::client::{NoopRdpsndBackend, Rdpsnd};
-use ironrdp_tokio::{TokioFramed};
+use ironrdp_tokio::TokioFramed;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 

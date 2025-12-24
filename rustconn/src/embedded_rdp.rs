@@ -1750,7 +1750,7 @@ impl EmbeddedRdpWidget {
                             });
                         }
                     } else {
-                        eprintln!("[IronRDP] Unknown keyval: 0x{:X}", gdk_keyval);
+                        tracing::warn!("[IronRDP] Unknown keyval: 0x{:X}", gdk_keyval);
                     }
                 } else if let Some(ref thread) = *freerdp_thread.borrow() {
                     let _ = thread.send_command(RdpCommand::KeyEvent {
@@ -2193,9 +2193,12 @@ impl EmbeddedRdpWidget {
                             // Update status label
                             status_label_clone.set_text("Reconnecting...");
 
-                            eprintln!(
+                            tracing::debug!(
                                 "[IronRDP] Reconnecting with new resolution {}x{} (was {}x{})",
-                                new_w, new_h, cfg.width, cfg.height
+                                new_w,
+                                new_h,
+                                cfg.width,
+                                cfg.height
                             );
 
                             // Update config with new resolution
@@ -2297,7 +2300,7 @@ impl EmbeddedRdpWidget {
         // Create and connect the IronRDP client
         let mut client = RdpClient::new(client_config);
         if let Err(e) = client.connect() {
-            eprintln!("[IronRDP] Reconnect failed: {}", e);
+            tracing::error!("[IronRDP] Reconnect failed: {}", e);
             *state.borrow_mut() = RdpConnectionState::Error;
             if let Some(ref callback) = *on_error.borrow() {
                 callback(&format!("Reconnect failed: {e}"));
@@ -2335,7 +2338,7 @@ impl EmbeddedRdpWidget {
                 while let Some(event) = client.try_recv_event() {
                     match event {
                         RdpClientEvent::Connected { width, height } => {
-                            eprintln!("[IronRDP] Reconnected: {}x{}", width, height);
+                            tracing::debug!("[IronRDP] Reconnected: {}x{}", width, height);
                             *state.borrow_mut() = RdpConnectionState::Connected;
                             *rdp_width_ref.borrow_mut() = u32::from(width);
                             *rdp_height_ref.borrow_mut() = u32::from(height);
@@ -2353,7 +2356,7 @@ impl EmbeddedRdpWidget {
                             needs_redraw = true;
                         }
                         RdpClientEvent::Disconnected => {
-                            eprintln!("[IronRDP] Disconnected after reconnect");
+                            tracing::debug!("[IronRDP] Disconnected after reconnect");
                             *state.borrow_mut() = RdpConnectionState::Disconnected;
                             toolbar.set_visible(false);
                             status_label.set_visible(false);
@@ -2364,7 +2367,7 @@ impl EmbeddedRdpWidget {
                             should_break = true;
                         }
                         RdpClientEvent::Error(msg) => {
-                            eprintln!("[IronRDP] Error after reconnect: {}", msg);
+                            tracing::error!("[IronRDP] Error after reconnect: {}", msg);
                             *state.borrow_mut() = RdpConnectionState::Error;
                             toolbar.set_visible(false);
                             status_label.set_visible(false);
@@ -2724,11 +2727,12 @@ impl EmbeddedRdpWidget {
     fn connect_ironrdp(&self, config: &RdpConfig) -> Result<(), EmbeddedRdpError> {
         use rustconn_core::{RdpClient, RdpClientConfig, RdpClientEvent};
 
-        eprintln!(
+        tracing::debug!(
             "[EmbeddedRDP] Attempting IronRDP connection to {}:{}",
-            config.host, config.port
+            config.host,
+            config.port
         );
-        eprintln!(
+        tracing::debug!(
             "[EmbeddedRDP] Username: {:?}, Domain: {:?}, Password: {}",
             config.username,
             config.domain,
@@ -2741,12 +2745,12 @@ impl EmbeddedRdpWidget {
 
         // Log shared folders configuration
         if !config.shared_folders.is_empty() {
-            eprintln!(
+            tracing::debug!(
                 "[EmbeddedRDP] Configuring {} shared folder(s) via RDPDR",
                 config.shared_folders.len()
             );
             for folder in &config.shared_folders {
-                eprintln!(
+                tracing::debug!(
                     "[EmbeddedRDP]   - '{}' -> {}",
                     folder.share_name,
                     folder.local_path.display()
@@ -2850,7 +2854,7 @@ impl EmbeddedRdpWidget {
                 while let Some(event) = client.try_recv_event() {
                     match event {
                         RdpClientEvent::Connected { width, height } => {
-                            eprintln!("[IronRDP] Connected: {}x{}", width, height);
+                            tracing::debug!("[IronRDP] Connected: {}x{}", width, height);
                             *state.borrow_mut() = RdpConnectionState::Connected;
                             *rdp_width_ref.borrow_mut() = u32::from(width);
                             *rdp_height_ref.borrow_mut() = u32::from(height);
@@ -2865,7 +2869,7 @@ impl EmbeddedRdpWidget {
                             needs_redraw = true;
                         }
                         RdpClientEvent::Disconnected => {
-                            eprintln!("[IronRDP] Disconnected");
+                            tracing::debug!("[IronRDP] Disconnected");
                             *state.borrow_mut() = RdpConnectionState::Disconnected;
                             toolbar.set_visible(false);
                             if let Some(ref callback) = *on_state_changed.borrow() {
@@ -2875,7 +2879,7 @@ impl EmbeddedRdpWidget {
                             should_break = true;
                         }
                         RdpClientEvent::Error(msg) => {
-                            eprintln!("[IronRDP] Error: {}", msg);
+                            tracing::error!("[IronRDP] Error: {}", msg);
                             *state.borrow_mut() = RdpConnectionState::Error;
                             toolbar.set_visible(false);
                             if let Some(ref callback) = *on_error.borrow() {
@@ -2922,7 +2926,7 @@ impl EmbeddedRdpWidget {
                             needs_redraw = true;
                         }
                         RdpClientEvent::ResolutionChanged { width, height } => {
-                            eprintln!("[IronRDP] Resolution changed: {}x{}", width, height);
+                            tracing::debug!("[IronRDP] Resolution changed: {}x{}", width, height);
                             *rdp_width_ref.borrow_mut() = u32::from(width);
                             *rdp_height_ref.borrow_mut() = u32::from(height);
                             {
@@ -2943,21 +2947,21 @@ impl EmbeddedRdpWidget {
                             needs_redraw = true;
                         }
                         RdpClientEvent::AuthRequired => {
-                            eprintln!("[IronRDP] Authentication required");
+                            tracing::debug!("[IronRDP] Authentication required");
                         }
                         RdpClientEvent::ClipboardText(text) => {
                             // Server sent clipboard text - store it and enable Copy button
-                            eprintln!(
-                                "[Clipboard] Received text from server: {} chars",
-                                text.len()
-                            );
+                            tracing::debug!("[Clipboard] Received text from server");
                             *remote_clipboard_text.borrow_mut() = Some(text);
                             copy_button.set_sensitive(true);
                             copy_button.set_tooltip_text(Some("Copy remote clipboard to local"));
                         }
                         RdpClientEvent::ClipboardFormatsAvailable(formats) => {
                             // Server has clipboard data available
-                            eprintln!("[Clipboard] Formats available: {} formats", formats.len());
+                            tracing::debug!(
+                                "[Clipboard] Formats available: {} formats",
+                                formats.len()
+                            );
                             *remote_clipboard_formats.borrow_mut() = formats;
                         }
                         RdpClientEvent::ClipboardInitiateCopy(formats) => {
@@ -3037,7 +3041,7 @@ impl EmbeddedRdpWidget {
                             drawing_area.set_cursor_from_name(Some("default"));
                         }
                         RdpClientEvent::ServerMessage(msg) => {
-                            eprintln!("[IronRDP] Server message: {}", msg);
+                            tracing::debug!("[IronRDP] Server message: {}", msg);
                         }
                     }
                 }
@@ -3090,9 +3094,10 @@ impl EmbeddedRdpWidget {
 
     /// Connects using embedded mode (wlfreerdp) with thread isolation (Requirement 6.3)
     fn connect_embedded(&self, config: &RdpConfig) -> Result<(), EmbeddedRdpError> {
-        eprintln!(
+        tracing::debug!(
             "[EmbeddedRDP] Attempting embedded connection to {}:{}",
-            config.host, config.port
+            config.host,
+            config.port
         );
 
         // Initialize Wayland surface
@@ -3147,7 +3152,7 @@ impl EmbeddedRdpWidget {
                 while let Some(event) = thread.try_recv_event() {
                     match event {
                         RdpEvent::Connected => {
-                            eprintln!("[EmbeddedRDP] Connected!");
+                            tracing::debug!("[EmbeddedRDP] Connected!");
                             *state.borrow_mut() = RdpConnectionState::Connected;
                             if let Some(ref callback) = *on_state_changed.borrow() {
                                 callback(RdpConnectionState::Connected);
@@ -3155,7 +3160,7 @@ impl EmbeddedRdpWidget {
                             drawing_area.queue_draw();
                         }
                         RdpEvent::Disconnected => {
-                            eprintln!("[EmbeddedRDP] Disconnected");
+                            tracing::debug!("[EmbeddedRDP] Disconnected");
                             *state.borrow_mut() = RdpConnectionState::Disconnected;
                             if let Some(ref callback) = *on_state_changed.borrow() {
                                 callback(RdpConnectionState::Disconnected);
@@ -3164,7 +3169,7 @@ impl EmbeddedRdpWidget {
                             return glib::ControlFlow::Break;
                         }
                         RdpEvent::Error(msg) => {
-                            eprintln!("[EmbeddedRDP] Error: {}", msg);
+                            tracing::error!("[EmbeddedRDP] Error: {}", msg);
                             *state.borrow_mut() = RdpConnectionState::Error;
                             if let Some(ref callback) = *on_error.borrow() {
                                 callback(&msg);
@@ -3173,7 +3178,7 @@ impl EmbeddedRdpWidget {
                             return glib::ControlFlow::Break;
                         }
                         RdpEvent::FallbackTriggered(reason) => {
-                            eprintln!("[EmbeddedRDP] Fallback triggered: {}", reason);
+                            tracing::warn!("[EmbeddedRDP] Fallback triggered: {}", reason);
                             if let Some(ref callback) = *on_fallback.borrow() {
                                 callback(&reason);
                             }
@@ -3190,9 +3195,10 @@ impl EmbeddedRdpWidget {
                                 let current_w = *rdp_width_ref.borrow();
                                 let current_h = *rdp_height_ref.borrow();
                                 if width != current_w || height != current_h {
-                                    eprintln!(
+                                    tracing::debug!(
                                         "[EmbeddedRDP] Resolution changed: {}x{}",
-                                        width, height
+                                        width,
+                                        height
                                     );
                                     *rdp_width_ref.borrow_mut() = width;
                                     *rdp_height_ref.borrow_mut() = height;
@@ -3205,7 +3211,7 @@ impl EmbeddedRdpWidget {
                         }
                         RdpEvent::AuthRequired => {
                             // Handle authentication request
-                            eprintln!("[EmbeddedRDP] Authentication required");
+                            tracing::debug!("[EmbeddedRDP] Authentication required");
                         }
                     }
                 }

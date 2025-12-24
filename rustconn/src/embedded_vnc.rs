@@ -863,7 +863,7 @@ impl EmbeddedVncWidget {
                 // GDK Key values are compatible with X11 keysyms
                 let keysym = keyval.into_glib();
                 if let Some(ref sender) = *command_sender.borrow() {
-                    let _ = sender.send(VncClientCommand::KeyEvent {
+                    let _ = sender.blocking_send(VncClientCommand::KeyEvent {
                         keysym,
                         pressed: true,
                     });
@@ -887,7 +887,7 @@ impl EmbeddedVncWidget {
             if embedded && current_state == VncConnectionState::Connected && !view_only {
                 let keysym = keyval.into_glib();
                 if let Some(ref sender) = *command_sender.borrow() {
-                    let _ = sender.send(VncClientCommand::KeyEvent {
+                    let _ = sender.blocking_send(VncClientCommand::KeyEvent {
                         keysym,
                         pressed: false,
                     });
@@ -942,7 +942,7 @@ impl EmbeddedVncWidget {
                 let buttons = *button_state_motion.borrow();
 
                 if let Some(ref sender) = *command_sender.borrow() {
-                    let _ = sender.send(VncClientCommand::PointerEvent {
+                    let _ = sender.blocking_send(VncClientCommand::PointerEvent {
                         x: vnc_x,
                         y: vnc_y,
                         buttons,
@@ -1010,7 +1010,7 @@ impl EmbeddedVncWidget {
                 *button_state_press.borrow_mut() = buttons;
 
                 if let Some(ref sender) = *command_sender.borrow() {
-                    let _ = sender.send(VncClientCommand::PointerEvent {
+                    let _ = sender.blocking_send(VncClientCommand::PointerEvent {
                         x: vnc_x,
                         y: vnc_y,
                         buttons,
@@ -1068,7 +1068,7 @@ impl EmbeddedVncWidget {
                 *button_state_release.borrow_mut() = buttons;
 
                 if let Some(ref sender) = *command_sender.borrow() {
-                    let _ = sender.send(VncClientCommand::PointerEvent {
+                    let _ = sender.blocking_send(VncClientCommand::PointerEvent {
                         x: vnc_x,
                         y: vnc_y,
                         buttons,
@@ -1130,7 +1130,7 @@ impl EmbeddedVncWidget {
 
                         if let Some(ref sender) = *command_sender.borrow() {
                             #[allow(clippy::cast_possible_truncation)]
-                            let _ = sender.send(VncClientCommand::SetDesktopSize {
+                            let _ = sender.blocking_send(VncClientCommand::SetDesktopSize {
                                 width: best_w as u16,
                                 height: best_h as u16,
                             });
@@ -1182,7 +1182,9 @@ impl EmbeddedVncWidget {
 
                 // For VNC, clipboard sync happens via ServerCutText messages
                 // This button shows a hint that clipboard is synced
-                eprintln!("[VNC] Clipboard sync: VNC clipboard is automatically synchronized");
+                tracing::debug!(
+                    "[VNC] Clipboard sync: VNC clipboard is automatically synchronized"
+                );
 
                 // Get GTK clipboard and show notification
                 let display = drawing_area.display();
@@ -1191,7 +1193,7 @@ impl EmbeddedVncWidget {
                     None::<&gtk4::gio::Cancellable>,
                     move |result: Result<Option<glib::GString>, glib::Error>| {
                         if let Ok(Some(text)) = result {
-                            eprintln!("[VNC] Local clipboard has {} chars", text.len());
+                            tracing::debug!("[VNC] Local clipboard has {} chars", text.len());
                         }
                     },
                 );
@@ -1225,12 +1227,13 @@ impl EmbeddedVncWidget {
                     move |result: Result<Option<glib::GString>, glib::Error>| {
                         if let Ok(Some(text)) = result {
                             let char_count = text.len();
-                            eprintln!("[VNC] Pasting {char_count} chars to remote");
+                            tracing::debug!("[VNC] Pasting {char_count} chars to remote");
 
                             // Send text as key presses via VNC client
                             // (ClipboardText only syncs clipboard, doesn't paste)
                             if let Some(ref sender) = *tx.borrow() {
-                                let _ = sender.send(VncClientCommand::TypeText(text.to_string()));
+                                let _ = sender
+                                    .blocking_send(VncClientCommand::TypeText(text.to_string()));
                                 // Show brief feedback
                                 status.set_text(&format!("Pasted {char_count} chars"));
                                 status.set_visible(true);
@@ -1273,8 +1276,8 @@ impl EmbeddedVncWidget {
 
             // Send Ctrl+Alt+Del via VNC client
             if let Some(ref sender) = *command_sender.borrow() {
-                let _ = sender.send(VncClientCommand::SendCtrlAltDel);
-                eprintln!("[VNC] Sent Ctrl+Alt+Del");
+                let _ = sender.blocking_send(VncClientCommand::SendCtrlAltDel);
+                tracing::debug!("[VNC] Sent Ctrl+Alt+Del");
             }
         });
     }
@@ -1487,9 +1490,10 @@ impl EmbeddedVncWidget {
     /// Connects using embedded mode (native VNC library)
     #[cfg(feature = "vnc-embedded")]
     fn connect_embedded(&self, config: &VncConfig) -> Result<(), EmbeddedVncError> {
-        eprintln!(
+        tracing::debug!(
             "[EmbeddedVNC] Attempting embedded connection to {}:{}",
-            config.host, config.port
+            config.host,
+            config.port
         );
 
         // Initialize Wayland surface
@@ -1514,10 +1518,10 @@ impl EmbeddedVncWidget {
         let mut client = VncClient::new(vnc_config);
         match client.connect() {
             Ok(()) => {
-                eprintln!("[EmbeddedVNC] VNC client started successfully");
+                tracing::debug!("[EmbeddedVNC] VNC client started successfully");
             }
             Err(e) => {
-                eprintln!("[EmbeddedVNC] VNC connection failed: {}", e);
+                tracing::error!("[EmbeddedVNC] VNC connection failed: {}", e);
                 return Err(EmbeddedVncError::Connection(e.to_string()));
             }
         }
@@ -1572,7 +1576,7 @@ impl EmbeddedVncWidget {
             while let Some(event) = client_guard.try_recv_event() {
                 match event {
                     VncClientEvent::Connected => {
-                        eprintln!("[EmbeddedVNC] Connected!");
+                        tracing::debug!("[EmbeddedVNC] Connected!");
                         *state.borrow_mut() = VncConnectionState::Connected;
                         toolbar.set_visible(true);
                         if let Some(ref callback) = *on_state_changed.borrow() {
@@ -1581,11 +1585,12 @@ impl EmbeddedVncWidget {
                         // Request desired resolution after connection
                         // (requires server support for ExtendedDesktopSize)
                         if let Some(ref sender) = *command_sender_ref.borrow() {
-                            eprintln!(
+                            tracing::debug!(
                                 "[VNC] Requesting initial resolution {}x{}",
-                                desired_width, desired_height
+                                desired_width,
+                                desired_height
                             );
-                            let _ = sender.send(VncClientCommand::SetDesktopSize {
+                            let _ = sender.blocking_send(VncClientCommand::SetDesktopSize {
                                 width: desired_width as u16,
                                 height: desired_height as u16,
                             });
@@ -1593,7 +1598,7 @@ impl EmbeddedVncWidget {
                         drawing_area.queue_draw();
                     }
                     VncClientEvent::Disconnected => {
-                        eprintln!("[EmbeddedVNC] Disconnected");
+                        tracing::debug!("[EmbeddedVNC] Disconnected");
                         *state.borrow_mut() = VncConnectionState::Disconnected;
                         toolbar.set_visible(false);
                         if let Some(ref callback) = *on_state_changed.borrow() {
@@ -1603,7 +1608,7 @@ impl EmbeddedVncWidget {
                         return glib::ControlFlow::Break;
                     }
                     VncClientEvent::ResolutionChanged { width, height } => {
-                        eprintln!("[EmbeddedVNC] Resolution changed: {}x{}", width, height);
+                        tracing::debug!("[EmbeddedVNC] Resolution changed: {}x{}", width, height);
                         // Store VNC server resolution for coordinate transformation
                         *vnc_width_ref.borrow_mut() = width;
                         *vnc_height_ref.borrow_mut() = height;
@@ -1644,7 +1649,7 @@ impl EmbeddedVncWidget {
                         drawing_area.queue_draw();
                     }
                     VncClientEvent::Error(msg) => {
-                        eprintln!("[EmbeddedVNC] Error: {}", msg);
+                        tracing::error!("[EmbeddedVNC] Error: {}", msg);
                         *state.borrow_mut() = VncConnectionState::Error;
                         toolbar.set_visible(false);
                         if let Some(ref callback) = *on_error.borrow() {
@@ -1976,7 +1981,7 @@ impl EmbeddedVncWidget {
 
         if let Some(ref sender) = *self.command_sender.borrow() {
             use rustconn_core::VncClientCommand;
-            let _ = sender.send(VncClientCommand::SendCtrlAltDel);
+            let _ = sender.blocking_send(VncClientCommand::SendCtrlAltDel);
         }
     }
 

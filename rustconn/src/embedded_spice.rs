@@ -27,7 +27,7 @@ use std::rc::Rc;
 #[cfg(feature = "spice-embedded")]
 use gtk4::glib;
 #[cfg(feature = "spice-embedded")]
-use rustconn_core::{SpiceClient, SpiceClientCommand, SpiceClientEvent, SpiceClientState};
+use rustconn_core::{SpiceClient, SpiceClientCommand, SpiceClientEvent};
 use rustconn_core::{SpiceClientConfig, SpiceClientError};
 
 /// Connection state for embedded SPICE widget
@@ -386,9 +386,8 @@ impl EmbeddedSpiceWidget {
                     let offset_y = (h - scaled_h) / 2;
 
                     // Create image surface from pixel buffer
-                    #[allow(clippy::cast_sign_loss)]
                     let stride = cairo::Format::ARgb32
-                        .stride_for_width(buf_w as u32)
+                        .stride_for_width(buffer.width())
                         .unwrap_or(buf_w * 4);
 
                     if let Ok(surface) = cairo::ImageSurface::create_for_data(
@@ -452,7 +451,7 @@ impl EmbeddedSpiceWidget {
             let state_key = state.clone();
             let is_embedded_key = is_embedded.clone();
 
-            key_controller.connect_key_pressed(move |_, keyval, keycode, _| {
+            key_controller.connect_key_pressed(move |_, _keyval, keycode, _| {
                 let current_state = *state_key.borrow();
                 let embedded = *is_embedded_key.borrow();
 
@@ -522,7 +521,9 @@ impl EmbeddedSpiceWidget {
                         let rel_x = (x - offset_x) / scale;
                         let rel_y = (y - offset_y) / scale;
 
+                        #[allow(clippy::cast_sign_loss)]
                         let spice_x = rel_x.clamp(0.0, spice_w - 1.0) as u16;
+                        #[allow(clippy::cast_sign_loss)]
                         let spice_y = rel_y.clamp(0.0, spice_h - 1.0) as u16;
 
                         if let Some(ref sender) = *cmd_sender_motion.borrow() {
@@ -625,10 +626,13 @@ impl EmbeddedSpiceWidget {
         let height = self.height.clone();
 
         self.drawing_area.connect_resize(move |_, w, h| {
-            #[allow(clippy::cast_sign_loss)]
-            {
-                *width.borrow_mut() = w as u32;
-                *height.borrow_mut() = h as u32;
+            if w >= 0 && h >= 0 {
+                if let Ok(w_u32) = u32::try_from(w) {
+                    *width.borrow_mut() = w_u32;
+                }
+                if let Ok(h_u32) = u32::try_from(h) {
+                    *height.borrow_mut() = h_u32;
+                }
             }
         });
     }

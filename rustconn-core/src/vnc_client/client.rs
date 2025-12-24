@@ -7,12 +7,13 @@ use super::{VncClientCommand, VncClientConfig, VncClientError, VncClientEvent, V
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use vnc::{
     ClientKeyEvent, ClientMouseEvent, PixelFormat, VncConnector, VncEncoding, VncEvent, X11Event,
 };
 
 /// Sender for commands to the VNC client (thread-safe, non-async)
-pub type VncCommandSender = std::sync::mpsc::Sender<VncClientCommand>;
+pub type VncCommandSender = mpsc::Sender<VncClientCommand>;
 
 /// Receiver for events from the VNC client (thread-safe, non-async)
 pub type VncEventReceiver = std::sync::mpsc::Receiver<VncClientEvent>;
@@ -22,10 +23,10 @@ pub type VncEventReceiver = std::sync::mpsc::Receiver<VncClientEvent>;
 /// This struct provides the interface for connecting to VNC servers
 /// and receiving framebuffer updates. It runs the VNC protocol in
 /// a background thread with its own Tokio runtime and communicates
-/// via `std::sync::mpsc` channels for cross-runtime compatibility.
+/// via channels for cross-runtime compatibility.
 pub struct VncClient {
-    /// Channel for sending commands to the VNC task (`std::sync` for cross-runtime)
-    command_tx: Option<std::sync::mpsc::Sender<VncClientCommand>>,
+    /// Channel for sending commands to the VNC task
+    command_tx: Option<mpsc::Sender<VncClientCommand>>,
     /// Channel for receiving events from the VNC task (`std::sync` for cross-runtime)
     event_rx: Option<std::sync::mpsc::Receiver<VncClientEvent>>,
     /// Connection state (atomic for cross-thread access)
@@ -62,9 +63,10 @@ impl VncClient {
             return Err(VncClientError::AlreadyConnected);
         }
 
-        // Use std::sync::mpsc for cross-runtime compatibility
+        // Use std::sync::mpsc for events (cross-runtime compatibility)
         let (event_tx, event_rx) = std::sync::mpsc::channel();
-        let (command_tx, command_rx) = std::sync::mpsc::channel();
+        // Use tokio::sync::mpsc for commands (async select compatibility)
+        let (command_tx, command_rx) = mpsc::channel(32);
 
         self.event_rx = Some(event_rx);
         self.command_tx = Some(command_tx);
@@ -126,7 +128,7 @@ impl VncClient {
             .as_ref()
             .ok_or(VncClientError::NotConnected)?;
 
-        tx.send(command)
+        tx.blocking_send(command)
             .map_err(|e| VncClientError::ChannelError(e.to_string()))
     }
 
@@ -181,7 +183,7 @@ impl VncClient {
     /// Disconnects from the VNC server
     pub fn disconnect(&mut self) {
         if let Some(tx) = &self.command_tx {
-            let _ = tx.send(VncClientCommand::Disconnect);
+            let _ = tx.blocking_send(VncClientCommand::Disconnect);
         }
         self.command_tx = None;
         self.event_rx = None;
@@ -212,7 +214,7 @@ impl VncClient {
     ///
     /// This allows the caller to send commands from multiple places.
     #[must_use]
-    pub fn command_sender(&self) -> Option<std::sync::mpsc::Sender<VncClientCommand>> {
+    pub fn command_sender(&self) -> Option<mpsc::Sender<VncClientCommand>> {
         self.command_tx.clone()
     }
 }
@@ -222,7 +224,7 @@ impl VncClient {
 async fn run_vnc_client(
     config: VncClientConfig,
     event_tx: std::sync::mpsc::Sender<VncClientEvent>,
-    command_rx: std::sync::mpsc::Receiver<VncClientCommand>,
+    mut command_rx: mpsc::Receiver<VncClientCommand>,
 ) -> Result<(), VncClientError> {
     // Connect to the server
     let tcp = TcpStream::connect(config.server_address())
@@ -264,155 +266,103 @@ async fn run_vnc_client(
     let refresh_interval = std::time::Duration::from_millis(16); // ~60 FPS
 
     loop {
-        // Check for commands from GUI (non-blocking)
-        match command_rx.try_recv() {
-            Ok(VncClientCommand::Disconnect) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                break;
-            }
-            Ok(VncClientCommand::KeyEvent { keysym, pressed }) => {
-                let event = X11Event::KeyEvent(ClientKeyEvent {
-                    keycode: keysym,
-                    down: pressed,
-                });
-                let _ = vnc.input(event).await;
-            }
-            Ok(VncClientCommand::PointerEvent { x, y, buttons }) => {
-                let event = X11Event::PointerEvent(ClientMouseEvent {
-                    position_x: x,
-                    position_y: y,
-                    bottons: buttons, // Note: typo in vnc-rs library
-                });
-                let _ = vnc.input(event).await;
-            }
-            Ok(VncClientCommand::ClipboardText(text)) => {
-                let event = X11Event::CopyText(text);
-                let _ = vnc.input(event).await;
-            }
-            Ok(VncClientCommand::RefreshScreen) => {
-                let _ = vnc.input(X11Event::Refresh).await;
-            }
-            Ok(VncClientCommand::SetDesktopSize { width, height }) => {
-                // SetDesktopSize requires server support for ExtendedDesktopSize extension
-                // vnc-rs doesn't directly support this, but we can try to send a resize request
-                // For now, log the request and refresh the screen
-                eprintln!(
-                    "[VNC] SetDesktopSize requested: {width}x{height} (server support required)"
-                );
-                // Request a full refresh which may trigger resolution update on some servers
-                let _ = vnc.input(X11Event::Refresh).await;
-            }
-            Ok(VncClientCommand::SendCtrlAltDel) => {
-                // Send Ctrl+Alt+Del key sequence
-                // X11 keysyms: Control_L=0xffe3, Alt_L=0xffe9, Delete=0xffff
-                const CTRL_L: u32 = 0xffe3;
-                const ALT_L: u32 = 0xffe9;
-                const DELETE: u32 = 0xffff;
-
-                // Press Ctrl
-                let _ = vnc
-                    .input(X11Event::KeyEvent(ClientKeyEvent {
-                        keycode: CTRL_L,
-                        down: true,
-                    }))
-                    .await;
-                // Press Alt
-                let _ = vnc
-                    .input(X11Event::KeyEvent(ClientKeyEvent {
-                        keycode: ALT_L,
-                        down: true,
-                    }))
-                    .await;
-                // Press Delete
-                let _ = vnc
-                    .input(X11Event::KeyEvent(ClientKeyEvent {
-                        keycode: DELETE,
-                        down: true,
-                    }))
-                    .await;
-                // Release Delete
-                let _ = vnc
-                    .input(X11Event::KeyEvent(ClientKeyEvent {
-                        keycode: DELETE,
-                        down: false,
-                    }))
-                    .await;
-                // Release Alt
-                let _ = vnc
-                    .input(X11Event::KeyEvent(ClientKeyEvent {
-                        keycode: ALT_L,
-                        down: false,
-                    }))
-                    .await;
-                // Release Ctrl
-                let _ = vnc
-                    .input(X11Event::KeyEvent(ClientKeyEvent {
-                        keycode: CTRL_L,
-                        down: false,
-                    }))
-                    .await;
-
-                eprintln!("[VNC] Sent Ctrl+Alt+Del");
-            }
-            Ok(VncClientCommand::TypeText(text)) => {
-                // Type text by emulating key presses for each character
-                // This is used for paste functionality since VNC clipboard
-                // only syncs the clipboard content, not actually pastes it
-                for ch in text.chars() {
-                    // Convert character to X11 keysym
-                    // For ASCII characters, keysym equals the character code
-                    // For Unicode, we use the Unicode code point + 0x01000000
-                    let keysym = if ch.is_ascii() {
-                        u32::from(ch as u8)
-                    } else {
-                        // Unicode keysym encoding
-                        0x0100_0000 | u32::from(ch)
-                    };
-
-                    // Press key
-                    let _ = vnc
-                        .input(X11Event::KeyEvent(ClientKeyEvent {
-                            keycode: keysym,
-                            down: true,
-                        }))
-                        .await;
-                    // Release key
-                    let _ = vnc
-                        .input(X11Event::KeyEvent(ClientKeyEvent {
-                            keycode: keysym,
-                            down: false,
-                        }))
-                        .await;
-                }
-                eprintln!("[VNC] Typed {} characters", text.len());
-            }
-            Ok(VncClientCommand::Authenticate(_)) | Err(std::sync::mpsc::TryRecvError::Empty) => {
-                // Authentication is handled during connection, Empty means no command
-            }
-        }
-
-        // Poll for VNC events
-        match vnc.poll_event().await {
-            Ok(Some(event)) => {
-                let client_event = convert_vnc_event(event);
-                if event_tx.send(client_event).is_err() {
-                    break;
-                }
-            }
-            Ok(None) => {}
-            Err(e) => {
-                let _ = event_tx.send(VncClientEvent::Error(e.to_string()));
-                break;
-            }
-        }
-
-        // Request refresh periodically
-        if last_refresh.elapsed() >= refresh_interval {
+        // Calculate time until next refresh
+        let now = std::time::Instant::now();
+        let time_since_refresh = now.duration_since(last_refresh);
+        let sleep_duration = if time_since_refresh >= refresh_interval {
+            // Time to refresh
             let _ = vnc.input(X11Event::Refresh).await;
-            last_refresh = std::time::Instant::now();
-        }
+            last_refresh = now;
+            refresh_interval
+        } else {
+            refresh_interval.checked_sub(time_since_refresh).unwrap()
+        };
 
-        // Small yield to prevent busy loop
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        tokio::select! {
+            cmd = command_rx.recv() => {
+                match cmd {
+                    Some(VncClientCommand::Disconnect) | None => break,
+                    Some(cmd) => {
+                        match cmd {
+                            VncClientCommand::KeyEvent { keysym, pressed } => {
+                                let event = X11Event::KeyEvent(ClientKeyEvent {
+                                    keycode: keysym,
+                                    down: pressed,
+                                });
+                                let _ = vnc.input(event).await;
+                            }
+                            VncClientCommand::PointerEvent { x, y, buttons } => {
+                                let event = X11Event::PointerEvent(ClientMouseEvent {
+                                    position_x: x,
+                                    position_y: y,
+                                    bottons: buttons, // Note: typo in vnc-rs library
+                                });
+                                let _ = vnc.input(event).await;
+                            }
+                            VncClientCommand::ClipboardText(text) => {
+                                let event = X11Event::CopyText(text);
+                                let _ = vnc.input(event).await;
+                            }
+                            VncClientCommand::RefreshScreen => {
+                                let _ = vnc.input(X11Event::Refresh).await;
+                            }
+                            VncClientCommand::SetDesktopSize { width, height } => {
+                                tracing::debug!(
+                                    "[VNC] SetDesktopSize requested: {width}x{height} (server support required)"
+                                );
+                                let _ = vnc.input(X11Event::Refresh).await;
+                            }
+                            VncClientCommand::SendCtrlAltDel => {
+                                const CTRL_L: u32 = 0xffe3;
+                                const ALT_L: u32 = 0xffe9;
+                                const DELETE: u32 = 0xffff;
+                                let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: CTRL_L, down: true })).await;
+                                let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: ALT_L, down: true })).await;
+                                let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: DELETE, down: true })).await;
+                                let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: DELETE, down: false })).await;
+                                let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: ALT_L, down: false })).await;
+                                let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: CTRL_L, down: false })).await;
+                                tracing::debug!("[VNC] Sent Ctrl+Alt+Del");
+                            }
+                            VncClientCommand::TypeText(text) => {
+                                for ch in text.chars() {
+                                    let keysym = if ch.is_ascii() {
+                                        u32::from(ch as u8)
+                                    } else {
+                                        0x0100_0000 | u32::from(ch)
+                                    };
+                                    let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: keysym, down: true })).await;
+                                    let _ = vnc.input(X11Event::KeyEvent(ClientKeyEvent { keycode: keysym, down: false })).await;
+                                }
+                                tracing::debug!("[VNC] Typed {} characters", text.len());
+                            }
+                            VncClientCommand::Authenticate(_) | VncClientCommand::Disconnect => {}
+                        }
+                    }
+                }
+            }
+            event = vnc.poll_event() => {
+                match event {
+                    Ok(Some(event)) => {
+                        let client_event = convert_vnc_event(event);
+                        if event_tx.send(client_event).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => {
+                        // No event, sleep briefly to prevent busy loop
+                        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    }
+                    Err(e) => {
+                        let _ = event_tx.send(VncClientEvent::Error(e.to_string()));
+                        break;
+                    }
+                }
+            }
+            () = tokio::time::sleep(sleep_duration) => {
+                // Just wake up to check refresh logic at top of loop
+            }
+        }
     }
 
     let _ = vnc.close().await;
@@ -456,7 +406,7 @@ impl Drop for VncClient {
     fn drop(&mut self) {
         // Signal disconnect on drop
         if let Some(tx) = &self.command_tx {
-            let _ = tx.send(VncClientCommand::Disconnect);
+            let _ = tx.try_send(VncClientCommand::Disconnect);
         }
     }
 }

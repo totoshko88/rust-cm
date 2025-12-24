@@ -29,6 +29,9 @@ dirs = { workspace = true }
 ksni = { version = "0.3", features = ["blocking"], optional = true }
 # SVG rendering for tray icon (renders SVG to ARGB32 pixmap)
 resvg = { version = "0.45", optional = true }
+# Tracing for structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
 default = ["tray", "vnc-embedded", "rdp-embedded"]

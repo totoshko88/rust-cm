@@ -1,3 +1,13 @@
+rustconn (0.4.0-1) unstable; urgency=medium
+
+  * New upstream release
+    - Zero Trust: Improved UI by hiding irrelevant fields
+    - Upgraded ironrdp to 0.13
+    - Refactored rustconn-core
+    - Made spice-embedded mandatory
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Tue, 24 Dec 2025 12:00:00 +0200
+
 rustconn (0.3.1-1) unstable; urgency=medium
 
   * New upstream release

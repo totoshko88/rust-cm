@@ -2230,7 +2230,7 @@ impl MainWindow {
                             &conn_name,
                         )
                     {
-                        eprintln!("DEBUG VNC: loaded password ({} chars)", password.len());
+                        eprintln!("DEBUG VNC: loaded password");
                         dialog.set_password(&password);
                     }
                 }
@@ -2497,11 +2497,11 @@ impl MainWindow {
                 let password: Option<String> =
                     state_ref.get_cached_credentials(connection_id).map(|c| {
                         use secrecy::ExposeSecret;
-                        eprintln!("[VNC] Found cached credentials for connection");
+                        tracing::debug!("[VNC] Found cached credentials for connection");
                         c.password.expose_secret().to_string()
                     });
 
-                eprintln!(
+                tracing::debug!(
                     "[VNC] Password available: {}",
                     if password.is_some() { "yes" } else { "no" }
                 );
@@ -6780,29 +6780,26 @@ impl MainWindow {
         let parent_clone = parent.clone();
         dialog.run(move |result| {
             if let Some(cluster) = result {
-                if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
-                    match state_mut.create_cluster(cluster) {
-                        Ok(_) => {
-                            // Refresh the cluster list in the parent dialog
-                            on_created();
-                        }
-                        Err(e) => {
-                            // Show error dialog
-                            let alert = gtk4::AlertDialog::builder()
-                                .message("Error Creating Cluster")
-                                .detail(&format!("Failed to save cluster: {e}"))
-                                .modal(true)
-                                .build();
-                            alert.show(Some(&parent_clone));
-                        }
-                    }
+                let create_result = if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
+                    state_mut.create_cluster(cluster)
                 } else {
-                    let alert = gtk4::AlertDialog::builder()
-                        .message("Error")
-                        .detail("Could not access application state")
-                        .modal(true)
-                        .build();
-                    alert.show(Some(&parent_clone));
+                    Err("Could not access application state".to_string())
+                };
+
+                match create_result {
+                    Ok(_) => {
+                        // Refresh the cluster list in the parent dialog
+                        on_created();
+                    }
+                    Err(e) => {
+                        // Show error dialog
+                        let alert = gtk4::AlertDialog::builder()
+                            .message("Error Creating Cluster")
+                            .detail(&format!("Failed to save cluster: {e}"))
+                            .modal(true)
+                            .build();
+                        alert.show(Some(&parent_clone));
+                    }
                 }
             }
         });

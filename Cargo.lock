@@ -3630,7 +3630,7 @@ dependencies = [
 
 [[package]]
 name = "rustconn"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -3644,13 +3644,15 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
  "vte4",
 ]
 
 [[package]]
 name = "rustconn-cli"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -3665,7 +3667,7 @@ dependencies = [
 
 [[package]]
 name = "rustconn-core"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "argon2",
  "async-trait",

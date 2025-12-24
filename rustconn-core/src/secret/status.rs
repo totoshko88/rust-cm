@@ -352,7 +352,7 @@ impl KeePassStatus {
             }
 
             // Entry password (prompted by -p flag)
-            eprintln!("DEBUG: Sending entry password ({} chars)", password.len());
+            tracing::debug!("DEBUG: Sending entry password");
             stdin
                 .write_all(password.as_bytes())
                 .map_err(|e| format!("Failed to send entry password: {e}"))?;
@@ -608,7 +608,7 @@ impl KeePassStatus {
         // Try both direct entry name and RustConn group path
         let entry_paths = [entry_name.to_string(), format!("RustConn/{entry_name}")];
 
-        eprintln!(
+        tracing::debug!(
             "DEBUG get_password: entry_name='{}', has_password={}, has_key_file={}",
             entry_name,
             db_password.is_some(),
@@ -636,7 +636,7 @@ impl KeePassStatus {
             args.push(kdbx_path.display().to_string());
             args.push(entry_path.clone());
 
-            eprintln!("DEBUG get_password: trying path '{entry_path}', args={args:?}");
+            tracing::debug!("DEBUG get_password: trying path '{entry_path}', args={args:?}");
 
             let mut child = Command::new(&cli_path)
                 .args(&args)
@@ -662,7 +662,7 @@ impl KeePassStatus {
                 .wait_with_output()
                 .map_err(|e| format!("Failed to wait for keepassxc-cli: {e}"))?;
 
-            eprintln!(
+            tracing::debug!(
                 "DEBUG get_password: exit={:?}, stdout='[REDACTED]', stderr='{}'",
                 output.status.code(),
                 String::from_utf8_lossy(&output.stderr)
@@ -671,16 +671,13 @@ impl KeePassStatus {
             if output.status.success() {
                 let password = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !password.is_empty() {
-                    eprintln!(
-                        "DEBUG get_password: found password ({} chars)",
-                        password.len()
-                    );
+                    tracing::debug!("DEBUG get_password: found password");
                     return Ok(Some(password));
                 }
             }
         }
 
-        eprintln!("DEBUG get_password: password not found");
+        tracing::debug!("DEBUG get_password: password not found");
         Ok(None)
     }
 

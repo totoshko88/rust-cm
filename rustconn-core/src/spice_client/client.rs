@@ -7,7 +7,7 @@
 //!
 //! The SPICE client follows the same pattern as the VNC and RDP clients:
 //! - Runs in a background thread with its own Tokio runtime
-//! - Communicates via std::sync::mpsc channels for cross-runtime compatibility
+//! - Communicates via `std::sync::mpsc` channels for cross-runtime compatibility
 //! - Produces events for framebuffer updates, resolution changes, etc.
 //! - Accepts commands for keyboard/mouse input, disconnect, etc.
 //!
@@ -75,7 +75,7 @@ pub enum SpiceClientState {
 /// This struct provides the interface for connecting to SPICE servers
 /// and receiving framebuffer updates. It runs the SPICE protocol in
 /// a background thread with its own Tokio runtime and communicates
-/// via std::sync::mpsc channels for cross-runtime compatibility.
+/// via `std::sync::mpsc` channels for cross-runtime compatibility.
 ///
 /// # Native vs Fallback Mode
 ///
@@ -119,9 +119,9 @@ pub enum SpiceClientState {
 /// }
 /// ```
 pub struct SpiceClient {
-    /// Channel for sending commands to the SPICE task (std::sync for cross-runtime)
+    /// Channel for sending commands to the SPICE task (`std::sync` for cross-runtime)
     command_tx: Option<std::sync::mpsc::Sender<SpiceClientCommand>>,
-    /// Channel for receiving events from the SPICE task (std::sync for cross-runtime)
+    /// Channel for receiving events from the SPICE task (`std::sync` for cross-runtime)
     event_rx: Option<std::sync::mpsc::Receiver<SpiceClientEvent>>,
     /// Connection state (atomic for cross-thread access)
     connected: Arc<AtomicBool>,
@@ -202,7 +202,7 @@ impl SpiceClient {
     /// Attempts native SPICE protocol connection
     ///
     /// This method spawns a background thread with its own Tokio runtime to
-    /// handle the SPICE protocol. Communication happens via std::sync::mpsc
+    /// handle the SPICE protocol. Communication happens via `std::sync::mpsc`
     /// channels which work across different async runtimes.
     ///
     /// # Requirements Coverage
@@ -322,7 +322,7 @@ impl SpiceClient {
 
     /// Tries to receive the next event from the SPICE client (non-blocking)
     ///
-    /// This method is safe to call from any thread or async runtime (including GLib).
+    /// This method is safe to call from any thread or async runtime (including `GLib`).
     /// Returns `None` if no event is available or the channel is closed.
     #[must_use]
     pub fn try_recv_event(&self) -> Option<SpiceClientEvent> {
@@ -493,7 +493,7 @@ impl SpiceClient {
     ///
     /// This allows the caller to set up their own event polling mechanism.
     #[must_use]
-    pub fn event_receiver(&self) -> Option<&std::sync::mpsc::Receiver<SpiceClientEvent>> {
+    pub const fn event_receiver(&self) -> Option<&std::sync::mpsc::Receiver<SpiceClientEvent>> {
         self.event_rx.as_ref()
     }
 
@@ -502,7 +502,9 @@ impl SpiceClient {
     /// This allows the caller to move the receiver to another thread.
     /// After calling this, `event_receiver()` will return `None`.
     #[must_use]
-    pub fn take_event_receiver(&mut self) -> Option<std::sync::mpsc::Receiver<SpiceClientEvent>> {
+    pub const fn take_event_receiver(
+        &mut self,
+    ) -> Option<std::sync::mpsc::Receiver<SpiceClientEvent>> {
         self.event_rx.take()
     }
 
@@ -535,6 +537,7 @@ struct SpiceConnectionContext {
     /// Whether USB redirection is enabled
     usb_redirection: bool,
     /// Whether clipboard is enabled
+    #[allow(dead_code)]
     clipboard_enabled: bool,
 }
 
@@ -552,7 +555,7 @@ impl SpiceConnectionContext {
     }
 
     /// Cleans up all resources held by this context
-    fn cleanup(&mut self) {
+    const fn cleanup(&mut self) {
         // In a real SPICE implementation, this would:
         // - Close the SPICE session gracefully
         // - Release graphics resources
@@ -588,6 +591,10 @@ async fn run_spice_client(
     use tokio::net::TcpStream;
     use tokio::time::{timeout, Duration};
 
+    // Wrap command_rx in Mutex to make it Sync, so references to it are Send
+    // This is required because we pass references to async functions that might be moved
+    let command_rx = std::sync::Mutex::new(command_rx);
+
     // Create connection context for resource management
     let mut ctx = SpiceConnectionContext::from_config(&config);
 
@@ -614,16 +621,13 @@ async fn run_spice_client(
 
         // Wait for authentication credentials
         let auth_result = wait_for_authentication(&command_rx, &shutdown_signal).await;
-        match auth_result {
-            Some(_password) => {
-                // Store password for connection
-                // In real SPICE, this would be passed to the connector
-            }
-            None => {
-                // Shutdown requested or channel closed during auth wait
-                ctx.cleanup();
-                return Ok(());
-            }
+        if let Some(_password) = auth_result {
+            // Store password for connection
+            // In real SPICE, this would be passed to the connector
+        } else {
+            // Shutdown requested or channel closed during auth wait
+            ctx.cleanup();
+            return Ok(());
         }
     }
 
@@ -654,7 +658,7 @@ async fn run_spice_client(
 
 /// Waits for authentication credentials from the GUI
 async fn wait_for_authentication(
-    command_rx: &std::sync::mpsc::Receiver<SpiceClientCommand>,
+    command_rx: &std::sync::Mutex<std::sync::mpsc::Receiver<SpiceClientCommand>>,
     shutdown_signal: &Arc<AtomicBool>,
 ) -> Option<String> {
     loop {
@@ -664,21 +668,26 @@ async fn wait_for_authentication(
         }
 
         // Check for authentication command
-        match command_rx.try_recv() {
+        // We need to lock the mutex to access the receiver
+        let cmd_result = {
+            if let Ok(rx) = command_rx.lock() {
+                rx.try_recv()
+            } else {
+                // Mutex poisoned
+                return None;
+            }
+        };
+
+        match cmd_result {
             Ok(SpiceClientCommand::Authenticate { password }) => {
                 return Some(password);
             }
-            Ok(SpiceClientCommand::Disconnect) => {
+            Ok(SpiceClientCommand::Disconnect)
+            | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 return None;
             }
-            Ok(_) => {
-                // Ignore other commands while waiting for auth
-            }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                return None;
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {
-                // No command available, wait a bit
+            Ok(_) | Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Ignore other commands while waiting for auth or no command available
             }
         }
 
@@ -700,7 +709,7 @@ async fn wait_for_authentication(
 async fn run_event_loop(
     ctx: &SpiceConnectionContext,
     event_tx: &std::sync::mpsc::Sender<SpiceClientEvent>,
-    command_rx: &std::sync::mpsc::Receiver<SpiceClientCommand>,
+    command_rx: &std::sync::Mutex<std::sync::mpsc::Receiver<SpiceClientCommand>>,
     shutdown_signal: &Arc<AtomicBool>,
 ) -> Result<(), SpiceClientError> {
     // Frame counter for simulated updates (placeholder)
@@ -717,15 +726,22 @@ async fn run_event_loop(
         }
 
         // Process commands from GUI (non-blocking)
-        match command_rx.try_recv() {
-            Ok(SpiceClientCommand::Disconnect) => {
+        let cmd_result = {
+            if let Ok(rx) = command_rx.lock() {
+                rx.try_recv()
+            } else {
+                // Mutex poisoned
+                break;
+            }
+        };
+
+        match cmd_result {
+            Ok(SpiceClientCommand::Disconnect)
+            | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 break;
             }
             Ok(cmd) => {
                 handle_command(&cmd, ctx, &mut input_state);
-            }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                break;
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {
                 // No command available
@@ -768,13 +784,13 @@ struct InputState {
 
 impl InputState {
     /// Updates mouse position
-    fn update_mouse_position(&mut self, x: u16, y: u16) {
+    const fn update_mouse_position(&mut self, x: u16, y: u16) {
         self.mouse_x = x;
         self.mouse_y = y;
     }
 
     /// Updates mouse button state
-    fn update_mouse_buttons(&mut self, buttons: u8) {
+    const fn update_mouse_buttons(&mut self, buttons: u8) {
         self.mouse_buttons = buttons;
     }
 
@@ -792,6 +808,7 @@ impl InputState {
     ///
     /// Utility method for input state queries. Currently used internally
     /// and available for future input handling enhancements.
+    #[allow(dead_code)]
     fn is_key_pressed(&self, scancode: u32) -> bool {
         self.pressed_keys.contains(&scancode)
     }

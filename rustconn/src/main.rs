@@ -57,5 +57,10 @@ pub mod wayland_surface;
 mod window;
 
 fn main() -> gtk4::glib::ExitCode {
+    // Initialize logging with environment filter (RUST_LOG)
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     app::run()
 }

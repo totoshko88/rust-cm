@@ -254,6 +254,11 @@ impl DropIndicator {
         self.clear_current_widget();
     }
 
+    /// Returns the current widget
+    pub fn current_widget(&self) -> Option<Widget> {
+        self.current_widget.borrow().clone()
+    }
+
     /// Returns the current drop position
     #[must_use]
     pub fn position(&self) -> Option<DropPosition> {
@@ -663,8 +668,68 @@ impl ConnectionSidebar {
             list_view_for_leave.remove_css_class("drop-into-group");
         });
 
-        // The actual drop is handled by per-item drop targets, so we reject here
-        list_view_drop_target.connect_drop(|_target, _value, _x, _y| false);
+        // Handle drop on the list view
+        let drop_indicator_drop = drop_indicator.clone();
+        list_view_drop_target.connect_drop(move |target, value, _x, _y| {
+            // Parse drag data
+            let drag_data = match value.get::<String>() {
+                Ok(data) => data,
+                Err(_) => return false,
+            };
+
+            let parts: Vec<&str> = drag_data.split(':').collect();
+            if parts.len() != 2 {
+                return false;
+            }
+
+            let item_type = parts[0];
+            let item_id = parts[1];
+
+            // Get target info from indicator state
+            let position = match drop_indicator_drop.position() {
+                Some(p) => p,
+                None => return false,
+            };
+
+            let target_widget = match drop_indicator_drop.current_widget() {
+                Some(w) => w,
+                None => return false,
+            };
+
+            let target_item = match Self::get_item_from_widget(&target_widget) {
+                Some(item) => item,
+                None => return false,
+            };
+
+            let target_id = target_item.id();
+            let target_is_group = target_item.is_group();
+
+            // Don't allow dropping on self
+            if item_id == target_id {
+                return false;
+            }
+
+            // Determine effective target type based on drop position
+            // If dropping INTO a group, target is the group
+            // If dropping BEFORE/AFTER, target is a sibling (so treat as non-group for placement)
+            let effective_is_group = match position {
+                DropPosition::Into => target_is_group,
+                _ => false,
+            };
+
+            // Activate the drag-drop action with the data
+            // Format: "item_type:item_id:target_id:target_is_group"
+            let action_data = format!("{item_type}:{item_id}:{target_id}:{effective_is_group}");
+
+            if let Some(widget) = target.widget() {
+                // Hide drop indicator before processing the drop
+                let _ = widget.activate_action("win.hide-drop-indicator", None);
+                let _ =
+                    widget.activate_action("win.drag-drop-item", Some(&action_data.to_variant()));
+            }
+
+            true
+        });
 
         list_view.add_controller(list_view_drop_target);
 
@@ -903,8 +968,9 @@ impl ConnectionSidebar {
             // Encode item type and ID in drag data: "type:id"
             let item_type = if item.is_group() { "group" } else { "conn" };
             let drag_data = format!("{}:{}", item_type, item.id());
+            let bytes = glib::Bytes::from(drag_data.as_bytes());
 
-            Some(gdk::ContentProvider::for_value(&drag_data.to_value()))
+            Some(gdk::ContentProvider::for_bytes("text/plain", &bytes))
         });
 
         // Clean up drop indicator when drag ends
@@ -920,70 +986,6 @@ impl ConnectionSidebar {
         });
 
         expander.add_controller(drag_source);
-
-        // Set up drop target
-        let drop_target = DropTarget::new(glib::Type::STRING, gdk::DragAction::MOVE);
-        // Disable the default prelight (frame) effect - we use our own indicator
-        drop_target.set_preload(false);
-
-        // Store list_item reference for drop target
-        let list_item_weak_drop = list_item.downgrade();
-        drop_target.connect_drop(move |target, value, _x, _y| {
-            // Parse drag data
-            let drag_data = match value.get::<String>() {
-                Ok(data) => data,
-                Err(_) => return false,
-            };
-
-            let parts: Vec<&str> = drag_data.split(':').collect();
-            if parts.len() != 2 {
-                return false;
-            }
-
-            let item_type = parts[0];
-            let item_id = parts[1];
-
-            // Get target item info
-            let list_item = match list_item_weak_drop.upgrade() {
-                Some(li) => li,
-                None => return false,
-            };
-
-            let row = match list_item
-                .item()
-                .and_then(|i| i.downcast::<TreeListRow>().ok())
-            {
-                Some(r) => r,
-                None => return false,
-            };
-
-            let target_item = match row.item().and_then(|i| i.downcast::<ConnectionItem>().ok()) {
-                Some(item) => item,
-                None => return false,
-            };
-
-            let target_id = target_item.id();
-            let target_is_group = target_item.is_group();
-
-            // Don't allow dropping on self
-            if item_id == target_id {
-                return false;
-            }
-
-            // Activate the drag-drop action with the data
-            // Format: "item_type:item_id:target_id:target_is_group"
-            let action_data = format!("{item_type}:{item_id}:{target_id}:{target_is_group}");
-
-            if let Some(widget) = target.widget() {
-                // Hide drop indicator before processing the drop
-                let _ = widget.activate_action("win.hide-drop-indicator", None);
-                let _ =
-                    widget.activate_action("win.drag-drop-item", Some(&action_data.to_variant()));
-            }
-
-            true
-        });
-        expander.add_controller(drop_target);
 
         // Set up right-click context menu
         // Note: is_group will be determined at bind time via list_item data
@@ -1797,18 +1799,25 @@ impl ConnectionSidebar {
 
     /// Checks if a row widget represents a group or document
     fn is_row_widget_group_or_document(_list_view: &ListView, row_widget: &Widget) -> bool {
-        // Try to find the item by checking the widget's data or walking the model
-        // For now, check if the widget has a folder icon
-        if let Some(content_box) = row_widget.first_child() {
-            if let Some(first_child) = content_box.first_child() {
-                if let Some(image) = first_child.downcast_ref::<gtk4::Image>() {
-                    if let Some(icon_name) = image.icon_name() {
-                        return icon_name.contains("folder") || icon_name.contains("document");
-                    }
-                }
-            }
+        if let Some(item) = Self::get_item_from_widget(row_widget) {
+            return item.is_group();
         }
         false
+    }
+
+    /// Helper to get ConnectionItem from a widget in the list view
+    fn get_item_from_widget(widget: &Widget) -> Option<ConnectionItem> {
+        // Walk up to find TreeExpander
+        let mut current = Some(widget.clone());
+        while let Some(w) = current {
+            if let Some(expander) = w.downcast_ref::<TreeExpander>() {
+                if let Some(row) = expander.list_row() {
+                    return row.item().and_then(|i| i.downcast::<ConnectionItem>().ok());
+                }
+            }
+            current = w.parent();
+        }
+        None
     }
 
     /// Highlights a group row to indicate drop-into action

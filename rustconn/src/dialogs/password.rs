@@ -48,7 +48,6 @@ pub struct PasswordDialog {
 impl PasswordDialog {
     /// Creates a new password dialog
     #[must_use]
-    #[allow(clippy::too_many_lines)]
     pub fn new(parent: Option<&impl IsA<gtk4::Window>>) -> Self {
         let window = Window::builder()
             .title("Authentication Required")
@@ -106,6 +105,45 @@ impl PasswordDialog {
         let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
         content.append(&grid);
 
+        let (domain_entry, username_entry, password_entry, save_check, migrate_button) =
+            Self::build_form_fields(&grid);
+
+        window.set_child(Some(&content));
+
+        let result: Rc<RefCell<Option<PasswordDialogResult>>> = Rc::new(RefCell::new(None));
+        let migrate_requested: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
+
+        Self::connect_signals(
+            &window,
+            &cancel_btn,
+            &connect_btn,
+            &migrate_button,
+            &username_entry,
+            &password_entry,
+            &domain_entry,
+            &save_check,
+            &result,
+            &migrate_requested,
+        );
+
+        Self {
+            window,
+            username_entry,
+            password_entry,
+            domain_entry,
+            save_check,
+            migrate_button,
+            connect_button: connect_btn,
+            spinner,
+            spinner_label,
+            spinner_box,
+            result,
+            migrate_requested,
+            cancel_token: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    fn build_form_fields(grid: &Grid) -> (Entry, Entry, Entry, CheckButton, Button) {
         let mut row = 0;
 
         // Domain
@@ -162,11 +200,28 @@ impl PasswordDialog {
             .build();
         grid.attach(&migrate_button, 1, row, 1, 1);
 
-        window.set_child(Some(&content));
+        (
+            domain_entry,
+            username_entry,
+            password_entry,
+            save_check,
+            migrate_button,
+        )
+    }
 
-        let result: Rc<RefCell<Option<PasswordDialogResult>>> = Rc::new(RefCell::new(None));
-        let migrate_requested: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
-
+    #[allow(clippy::too_many_arguments)]
+    fn connect_signals(
+        window: &Window,
+        cancel_btn: &Button,
+        connect_btn: &Button,
+        migrate_button: &Button,
+        username_entry: &Entry,
+        password_entry: &Entry,
+        domain_entry: &Entry,
+        save_check: &CheckButton,
+        result: &Rc<RefCell<Option<PasswordDialogResult>>>,
+        migrate_requested: &Rc<RefCell<bool>>,
+    ) {
         // Connect cancel
         let window_clone = window.clone();
         cancel_btn.connect_clicked(move |_| {
@@ -204,22 +259,6 @@ impl PasswordDialog {
         password_entry.connect_activate(move |_| {
             connect_btn_for_enter.emit_clicked();
         });
-
-        Self {
-            window,
-            username_entry,
-            password_entry,
-            domain_entry,
-            save_check,
-            migrate_button,
-            connect_button: connect_btn,
-            spinner,
-            spinner_label,
-            spinner_box,
-            result,
-            migrate_requested,
-            cancel_token: Rc::new(RefCell::new(None)),
-        }
     }
 
     /// Sets the initial username

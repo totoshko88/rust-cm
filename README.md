@@ -39,7 +39,7 @@ RustConn includes several performance optimizations for handling large connectio
 
 ```bash
 # Install from Flatpak bundle (after release)
-flatpak install RustConn-0.3.1.flatpak
+flatpak install RustConn-0.4.0.flatpak
 
 # Run
 flatpak run org.rustconn.RustConn
@@ -48,14 +48,14 @@ flatpak run org.rustconn.RustConn
 ### AppImage
 
 ```bash
-chmod +x RustConn-0.3.1-x86_64.AppImage
-./RustConn-0.3.1-x86_64.AppImage
+chmod +x RustConn-0.4.0-x86_64.AppImage
+./RustConn-0.4.0-x86_64.AppImage
 ```
 
 ### Debian/Ubuntu
 
 ```bash
-sudo dpkg -i rustconn_0.3.1-1_amd64.deb
+sudo dpkg -i rustconn_0.4.0-1_amd64.deb
 sudo apt-get install -f  # Install dependencies if needed
 ```
 
@@ -93,7 +93,7 @@ cargo build --release
 - VTE4 (for terminal emulation)
 - FreeRDP (xfreerdp/xfreerdp3) for RDP connections
 - TigerVNC or TightVNC for VNC connections
-- remote-viewer (for SPICE connections without `spice-embedded` feature)
+- remote-viewer (fallback for SPICE connections)
 
 ### Rust Dependencies
 
@@ -106,17 +106,11 @@ Key crates used by RustConn:
 | `tokio`               | 1.48    | Async runtime                     |
 | `tracing`             | 0.1     | Structured logging and diagnostics|
 | `tracing-subscriber`  | 0.3     | Log formatting and filtering      |
-| `spice-client`        | 0.2.0   | Native SPICE protocol (optional)  |
+| `spice-client`        | 0.2.0   | Native SPICE protocol             |
+| `ironrdp`             | 0.13    | Native RDP protocol               |
+| `vnc-rs`              | 0.5     | Native VNC protocol               |
 | `serde`               | 1.x     | Serialization/deserialization     |
 | `secrecy`             | 0.8     | Secure credential handling        |
-
-### Optional Features
-
-| Feature          | Crate                 | Description                       |
-|------------------|-----------------------|-----------------------------------|
-| `spice-embedded` | `spice-client` 0.2.0  | Native SPICE protocol embedding   |
-| `rdp-embedded`   | `ironrdp` 0.11        | Native RDP with clipboard & shared folders |
-| `vnc-embedded`   | `vnc-rs` 0.5          | Native VNC protocol               |
 
 ### Embedded RDP Features (IronRDP)
 
