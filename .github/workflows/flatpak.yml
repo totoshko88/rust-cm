@@ -21,10 +21,12 @@ jobs:
       - name: Install flatpak-cargo-generator
         run: |
           pip install aiohttp toml
+          wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+          chmod +x flatpak-cargo-generator.py
 
       - name: Generate cargo sources
         run: |
-          python3 /usr/bin/flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+          python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
 
       - name: Build Flatpak
         uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
