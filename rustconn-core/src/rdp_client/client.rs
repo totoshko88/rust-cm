@@ -242,7 +242,7 @@ use ironrdp::pdu::rdp::capability_sets::{
     BitmapCodecs, CaptureFlags, Codec, CodecProperty, EntropyBits, MajorPlatformType,
     RemoteFxContainer, RfxCaps, RfxCapset, RfxClientCapsContainer, RfxICap, RfxICapFlags,
 };
-use ironrdp::pdu::rdp::client_info::PerformanceFlags;
+use ironrdp::pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
 use ironrdp::pdu::WriteBuf;
 use ironrdp::session::image::DecodedImage;
 use ironrdp::session::{fast_path, ActiveStage, ActiveStageOutput};
@@ -439,10 +439,11 @@ fn build_connector_config(config: &RdpClientConfig) -> Config {
         hardware_id: None,
         request_data: None,
         autologon: false,
-        no_audio_playback: !config.audio_enabled,
+        enable_audio_playback: config.audio_enabled,
         performance_flags: PerformanceFlags::default(),
         license_cache: None,
-        no_server_pointer: false,
+        timezone_info: TimezoneInfo::default(),
+        enable_server_pointer: true,
         // Use hardware pointer - server sends cursor bitmap separately
         // This avoids cursor artifacts in the framebuffer
         pointer_software_rendering: false,
@@ -789,7 +790,7 @@ async fn run_active_session(
                                             io_channel_id,
                                             user_channel_id,
                                             desktop_size,
-                                            no_server_pointer,
+                                            enable_server_pointer,
                                             pointer_software_rendering,
                                         } = connection_activation.state
                                         {
@@ -811,12 +812,12 @@ async fn run_active_session(
                                                 fast_path::ProcessorBuilder {
                                                     io_channel_id,
                                                     user_channel_id,
-                                                    no_server_pointer,
+                                                    enable_server_pointer,
                                                     pointer_software_rendering,
                                                 }
                                                 .build(),
                                             );
-                                            active_stage.set_no_server_pointer(no_server_pointer);
+                                            active_stage.set_enable_server_pointer(enable_server_pointer);
 
                                             // Notify GUI about resolution change
                                             let _ =
