@@ -47,7 +47,6 @@ modules:
     sources:
       - type: git
         url: https://github.com/totoshko88/rust-cm.git
-        tag: v0.3.1
-        commit: d2a5aca739cca8b09223edce61d3ea3804187737
+        commit: e92301ecf900d670e4725d2932d81d65205697e0
       # Generated with flatpak-cargo-generator Cargo.lock -o cargo-sources.json
       - cargo-sources.json
