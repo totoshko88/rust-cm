@@ -477,21 +477,12 @@ RustConn includes several performance optimizations designed to handle large con
 **Purpose:** View SPICE remote sessions directly in the application window.
 
 **Requirements:**
-- Build with `--features spice-embedded` flag
-- Requires `spice-client` crate (version 0.2.0)
-
-**How to enable:**
-```bash
-cargo build --release --features spice-embedded
-```
+- Requires `spice-client` crate (version 0.2.0) - included by default.
 
 **Behavior:**
 - SPICE connections open in embedded tabs (like SSH)
 - Keyboard and mouse events are forwarded to the SPICE server
 - If native connection fails, falls back to external `remote-viewer`
-
-**Without the feature:**
-- SPICE connections open in external `remote-viewer` window
 
 ---
 

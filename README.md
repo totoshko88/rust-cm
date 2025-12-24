@@ -114,7 +114,7 @@ Key crates used by RustConn:
 
 ### Embedded RDP Features (IronRDP)
 
-When using `rdp-embedded` feature, the following capabilities are available:
+The following capabilities are available:
 - Bidirectional clipboard (copy/paste between local and remote)
 - Shared folders (access local directories from Windows)
 - RemoteFX codec for better image quality
@@ -151,9 +151,6 @@ cargo build
 
 # Release build
 cargo build --release
-
-# Build with native SPICE embedding
-cargo build --release --features spice-embedded
 
 # Run tests
 cargo test
