@@ -1,12 +1,14 @@
 # RustConn
 
-![RustConn Screenshot](rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg)
-
 A modern connection manager for Linux, designed to manage SSH, RDP, and VNC remote connections through a GTK4-based GUI with Wayland-native support.
 
 ## Demo
 
 [![RustConn Demo](https://img.youtube.com/vi/2Z-cX56RSC0/maxresdefault.jpg)](https://youtu.be/2Z-cX56RSC0)
+
+*Click the image above to watch the demo video*
+
+![RustConn Logo](rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg)
 
 ## Features
 
