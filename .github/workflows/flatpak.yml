@@ -20,7 +20,7 @@ jobs:
 
       - name: Install flatpak-cargo-generator
         run: |
-          pip install aiohttp toml
+          pip install aiohttp toml tomlkit
 
       - name: Generate cargo sources
         run: |
