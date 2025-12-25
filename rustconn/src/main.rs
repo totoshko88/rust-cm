@@ -39,6 +39,8 @@
 
 pub mod adaptive_tabs;
 mod app;
+#[cfg(feature = "rdp-audio")]
+pub mod audio;
 pub mod dashboard;
 pub mod dialogs;
 pub mod embedded;

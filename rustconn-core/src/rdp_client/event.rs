@@ -381,6 +381,15 @@ pub enum RdpClientEvent {
     /// Server requests clipboard data from client
     ClipboardDataRequest(ClipboardFormatInfo),
 
+    /// Clipboard data is ready to send to server (internal event)
+    /// This is emitted when pending data is available for a format request
+    ClipboardDataReady {
+        /// Format ID
+        format_id: u32,
+        /// Data bytes
+        data: Vec<u8>,
+    },
+
     /// Request to fetch clipboard data from server (internal, triggers `initiate_paste`)
     ClipboardPasteRequest(ClipboardFormatInfo),
 
@@ -392,6 +401,31 @@ pub enum RdpClientEvent {
 
     /// Server sent a warning/info message
     ServerMessage(String),
+
+    // ========== Audio Events ==========
+    /// Audio format changed (server selected a format)
+    AudioFormatChanged(super::audio::AudioFormatInfo),
+
+    /// Audio data received from server
+    AudioData {
+        /// Format index (into supported formats list)
+        format_index: usize,
+        /// Timestamp for synchronization
+        timestamp: u32,
+        /// PCM audio data
+        data: Vec<u8>,
+    },
+
+    /// Audio volume changed
+    AudioVolume {
+        /// Left channel volume (0-65535)
+        left: u16,
+        /// Right channel volume (0-65535)
+        right: u16,
+    },
+
+    /// Audio channel closed
+    AudioClose,
 }
 
 /// Commands sent from GUI to RDP client

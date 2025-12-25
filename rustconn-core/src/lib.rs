@@ -147,7 +147,7 @@ pub use rdp_client::{
     RdpSecurityProtocol,
 };
 #[cfg(feature = "rdp-embedded")]
-pub use rdp_client::{RdpClient, RdpCommandSender, RdpEventReceiver};
+pub use rdp_client::{AudioFormatInfo, RdpClient, RdpCommandSender, RdpEventReceiver};
 pub use search::{
     benchmark, cache::SearchCache, ConnectionSearchResult, DebouncedSearchEngine, MatchHighlight,
     SearchEngine, SearchError, SearchFilter, SearchQuery, SearchResult,

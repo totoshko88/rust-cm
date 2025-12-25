@@ -42,6 +42,8 @@
 #![allow(clippy::missing_panics_doc)]
 
 #[cfg(feature = "rdp-embedded")]
+pub mod audio;
+#[cfg(feature = "rdp-embedded")]
 mod client;
 #[cfg(feature = "rdp-embedded")]
 pub mod clipboard;
@@ -52,6 +54,8 @@ pub mod input;
 #[cfg(feature = "rdp-embedded")]
 pub mod rdpdr;
 
+#[cfg(feature = "rdp-embedded")]
+pub use audio::AudioFormatInfo;
 #[cfg(feature = "rdp-embedded")]
 pub use client::{RdpClient, RdpClientState, RdpCommandSender, RdpEventReceiver};
 pub use config::{RdpClientConfig, RdpSecurityProtocol, SharedFolder};

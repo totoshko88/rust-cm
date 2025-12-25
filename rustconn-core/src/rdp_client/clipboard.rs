@@ -2,6 +2,19 @@
 //!
 //! This module implements the `CliprdrBackend` trait from `IronRDP`
 //! to handle clipboard operations between client and server.
+//!
+//! # Bidirectional Clipboard Support
+//!
+//! The clipboard supports both directions:
+//! - Server → Client: `on_remote_copy` → `on_format_data_response` → `ClipboardText` event
+//! - Client → Server: `ClipboardCopy` command → `on_format_data_request` → `ClipboardData` command
+//!
+//! # Supported Formats
+//!
+//! - `CF_UNICODETEXT` (13): Unicode text (UTF-16LE)
+//! - `CF_TEXT` (1): ANSI text
+//! - `CF_DIB` (8): Device-independent bitmap (future)
+//! - `CF_HDROP` (15): File list (future)
 
 use super::{ClipboardFormatInfo, RdpClientEvent};
 use ironrdp::cliprdr::backend::{ClipboardMessage, ClipboardMessageProxy, CliprdrBackend};
@@ -10,6 +23,7 @@ use ironrdp::cliprdr::pdu::{
     FileContentsResponse, FormatDataRequest, FormatDataResponse, LockDataId,
 };
 use ironrdp::core::impl_as_any;
+use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use tracing::{debug, trace, warn};
 
@@ -73,6 +87,10 @@ pub struct RustConnClipboardBackend {
     proxy: RustConnClipboardProxy,
     ready: bool,
     pending_paste_format: Option<ClipboardFormatId>,
+    /// Pending data to send to server (`format_id` -> data)
+    pending_copy_data: HashMap<u32, Vec<u8>>,
+    /// Server's negotiated capabilities
+    server_capabilities: ClipboardGeneralCapabilityFlags,
 }
 
 impl_as_any!(RustConnClipboardBackend);
@@ -80,11 +98,13 @@ impl_as_any!(RustConnClipboardBackend);
 impl RustConnClipboardBackend {
     /// Creates a new clipboard backend
     #[must_use]
-    pub const fn new(event_tx: Sender<RdpClientEvent>) -> Self {
+    pub fn new(event_tx: Sender<RdpClientEvent>) -> Self {
         Self {
             proxy: RustConnClipboardProxy::new(event_tx),
             ready: false,
             pending_paste_format: None,
+            pending_copy_data: HashMap::new(),
+            server_capabilities: ClipboardGeneralCapabilityFlags::empty(),
         }
     }
 
@@ -92,6 +112,37 @@ impl RustConnClipboardBackend {
     #[must_use]
     pub const fn is_ready(&self) -> bool {
         self.ready
+    }
+
+    /// Sets pending copy data for a format
+    ///
+    /// This should be called when the GUI has clipboard data ready to send.
+    /// The data will be sent when the server requests it via `on_format_data_request`.
+    pub fn set_pending_copy_data(&mut self, format_id: u32, data: Vec<u8>) {
+        debug!(
+            "Setting pending copy data for format {}: {} bytes",
+            format_id,
+            data.len()
+        );
+        self.pending_copy_data.insert(format_id, data);
+    }
+
+    /// Clears all pending copy data
+    pub fn clear_pending_copy_data(&mut self) {
+        self.pending_copy_data.clear();
+    }
+
+    /// Returns the server's negotiated capabilities
+    #[must_use]
+    pub const fn server_capabilities(&self) -> ClipboardGeneralCapabilityFlags {
+        self.server_capabilities
+    }
+
+    /// Returns true if the server supports file clipboard
+    #[must_use]
+    pub const fn supports_file_clipboard(&self) -> bool {
+        self.server_capabilities
+            .contains(ClipboardGeneralCapabilityFlags::USE_LONG_FORMAT_NAMES)
     }
 }
 
@@ -122,6 +173,24 @@ impl CliprdrBackend for RustConnClipboardBackend {
         capabilities: ClipboardGeneralCapabilityFlags,
     ) {
         trace!(?capabilities, "Negotiated clipboard capabilities");
+        self.server_capabilities = capabilities;
+
+        // Log useful capability info
+        if capabilities.contains(ClipboardGeneralCapabilityFlags::USE_LONG_FORMAT_NAMES) {
+            debug!("Server supports long format names (file clipboard possible)");
+        }
+        if capabilities.contains(ClipboardGeneralCapabilityFlags::STREAM_FILECLIP_ENABLED) {
+            debug!("Server supports file stream clipboard");
+        }
+        if capabilities.contains(ClipboardGeneralCapabilityFlags::FILECLIP_NO_FILE_PATHS) {
+            debug!("Server prefers file clipboard without paths");
+        }
+        if capabilities.contains(ClipboardGeneralCapabilityFlags::CAN_LOCK_CLIPDATA) {
+            debug!("Server supports clipboard data locking");
+        }
+        if capabilities.contains(ClipboardGeneralCapabilityFlags::HUGE_FILE_SUPPORT_ENABLED) {
+            debug!("Server supports huge file transfers");
+        }
     }
 
     fn on_remote_copy(&mut self, available_formats: &[ClipboardFormat]) {
@@ -171,9 +240,37 @@ impl CliprdrBackend for RustConnClipboardBackend {
     }
 
     fn on_format_data_request(&mut self, request: FormatDataRequest) {
-        trace!(?request, "Format data request from server");
-        self.proxy
-            .send_clipboard_message(ClipboardMessage::SendInitiatePaste(request.format));
+        let format_id = request.format.value();
+        debug!("Server requested clipboard data for format {}", format_id);
+
+        // Check if we have pending data for this format
+        if let Some(data) = self.pending_copy_data.get(&format_id) {
+            debug!(
+                "Sending {} bytes of pending data for format {}",
+                data.len(),
+                format_id
+            );
+            // Data is ready, send it via the proxy
+            // The actual sending happens through the command channel
+            let _ = self
+                .proxy
+                .event_tx
+                .send(RdpClientEvent::ClipboardDataReady {
+                    format_id,
+                    data: data.clone(),
+                });
+        } else {
+            // Request data from GUI
+            debug!(
+                "No pending data for format {}, requesting from GUI",
+                format_id
+            );
+            let format_info = ClipboardFormatInfo::new(format_id, None);
+            let _ = self
+                .proxy
+                .event_tx
+                .send(RdpClientEvent::ClipboardDataRequest(format_info));
+        }
     }
 
     fn on_format_data_response(&mut self, response: FormatDataResponse<'_>) {

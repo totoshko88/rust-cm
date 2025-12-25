@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = ["RustConn Contributors"]
 license = "MIT"
@@ -44,7 +44,7 @@ argon2 = "0.5"
 
 # Testing
 proptest = "1.4"
-tempfile = "3.10"
+tempfile = "3.24"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

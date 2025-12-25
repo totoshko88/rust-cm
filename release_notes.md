@@ -1,10 +1,9 @@
-## [0.4.0] - 2025-12-24
+## [0.4.1] - 2025-12-25
 
 ### Added
-- Zero Trust: Improved UI by hiding irrelevant fields (Host, Port, Username, Password, Tags) when Zero Trust protocol is selected.
+- IronRDP audio backend (RDPSND) with PCM format support (48kHz, 44.1kHz, 22.05kHz)
+- Optional `rdp-audio` feature for audio playback via cpal (requires libasound2-dev)
+- Bidirectional clipboard improvements for embedded RDP sessions
 
 ### Changed
-- Upgraded `ironrdp` to version 0.13 (async API support).
-- Refactored `rustconn-core` to improve code organization and maintainability.
-- Made `spice-embedded` feature mandatory for better integration.
-
+- Updated dependencies: tempfile 3.24, criterion 0.8, cpal 0.17

@@ -1159,6 +1159,9 @@ pub struct EmbeddedRdpWidget {
     remote_clipboard_text: Rc<RefCell<Option<String>>>,
     /// Available clipboard formats from server
     remote_clipboard_formats: Rc<RefCell<Vec<rustconn_core::ClipboardFormatInfo>>>,
+    /// Audio player for RDP audio redirection
+    #[cfg(feature = "rdp-audio")]
+    audio_player: Rc<RefCell<Option<crate::audio::RdpAudioPlayer>>>,
 }
 
 impl EmbeddedRdpWidget {
@@ -1275,6 +1278,8 @@ impl EmbeddedRdpWidget {
             reconnect_timer: Rc::new(RefCell::new(None)),
             remote_clipboard_text: Rc::new(RefCell::new(None)),
             remote_clipboard_formats: Rc::new(RefCell::new(Vec::new())),
+            #[cfg(feature = "rdp-audio")]
+            audio_player: Rc::new(RefCell::new(None)),
         };
 
         widget.setup_drawing();
@@ -2828,6 +2833,8 @@ impl EmbeddedRdpWidget {
         let remote_clipboard_text = self.remote_clipboard_text.clone();
         let remote_clipboard_formats = self.remote_clipboard_formats.clone();
         let copy_button = self.copy_button.clone();
+        #[cfg(feature = "rdp-audio")]
+        let audio_player = self.audio_player.clone();
 
         // Store client in a shared reference for the polling closure
         let client = std::rc::Rc::new(std::cell::RefCell::new(Some(client)));
@@ -3042,6 +3049,72 @@ impl EmbeddedRdpWidget {
                         }
                         RdpClientEvent::ServerMessage(msg) => {
                             tracing::debug!("[IronRDP] Server message: {}", msg);
+                        }
+                        #[cfg(feature = "rdp-audio")]
+                        RdpClientEvent::AudioFormatChanged(format) => {
+                            // Audio format negotiated - configure audio player
+                            tracing::debug!(
+                                "[Audio] Format changed: {} Hz, {} ch",
+                                format.samples_per_sec,
+                                format.channels
+                            );
+                            if let Ok(mut player_opt) = audio_player.try_borrow_mut() {
+                                if player_opt.is_none() {
+                                    *player_opt = Some(crate::audio::RdpAudioPlayer::new());
+                                }
+                                if let Some(ref mut player) = *player_opt {
+                                    if let Err(e) = player.configure(format) {
+                                        tracing::warn!("[Audio] Failed to configure: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        #[cfg(feature = "rdp-audio")]
+                        RdpClientEvent::AudioData { data, .. } => {
+                            // Queue audio data for playback
+                            if let Ok(player_opt) = audio_player.try_borrow() {
+                                if let Some(ref player) = *player_opt {
+                                    player.queue_data(&data);
+                                }
+                            }
+                        }
+                        #[cfg(feature = "rdp-audio")]
+                        RdpClientEvent::AudioVolume { left, right } => {
+                            // Update audio volume
+                            if let Ok(player_opt) = audio_player.try_borrow() {
+                                if let Some(ref player) = *player_opt {
+                                    player.set_volume(left, right);
+                                }
+                            }
+                        }
+                        #[cfg(feature = "rdp-audio")]
+                        RdpClientEvent::AudioClose => {
+                            // Stop audio playback
+                            tracing::debug!("[Audio] Channel closed");
+                            if let Ok(mut player_opt) = audio_player.try_borrow_mut() {
+                                if let Some(ref mut player) = *player_opt {
+                                    player.stop();
+                                }
+                            }
+                        }
+                        #[cfg(not(feature = "rdp-audio"))]
+                        RdpClientEvent::AudioFormatChanged(_)
+                        | RdpClientEvent::AudioData { .. }
+                        | RdpClientEvent::AudioVolume { .. }
+                        | RdpClientEvent::AudioClose => {
+                            // Audio not enabled - ignore
+                        }
+                        RdpClientEvent::ClipboardDataReady { format_id, data } => {
+                            // Clipboard data ready to send to server
+                            tracing::debug!(
+                                "[Clipboard] Data ready for format {}: {} bytes",
+                                format_id,
+                                data.len()
+                            );
+                            if let Some(ref sender) = *ironrdp_tx.borrow() {
+                                let _ = sender
+                                    .send(RdpClientCommand::ClipboardData { format_id, data });
+                            }
                         }
                     }
                 }

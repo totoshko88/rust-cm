@@ -1,3 +1,4 @@
+use super::super::audio::RustConnAudioBackend;
 use super::super::clipboard::RustConnClipboardBackend;
 use super::super::rdpdr::RustConnRdpdrBackend;
 use super::super::{RdpClientConfig, RdpClientError, RdpClientEvent};
@@ -12,7 +13,7 @@ use ironrdp::pdu::rdp::capability_sets::{
 };
 use ironrdp::pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
 use ironrdp::rdpdr::Rdpdr;
-use ironrdp::rdpsnd::client::{NoopRdpsndBackend, Rdpsnd};
+use ironrdp::rdpsnd::client::Rdpsnd;
 use ironrdp_tokio::TokioFramed;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
@@ -67,7 +68,14 @@ pub async fn establish_connection(
     // Note: RDPDR requires RDPSND channel to be present per MS-RDPEFS spec
     if !config.shared_folders.is_empty() {
         // Add RDPSND channel first (required for RDPDR)
-        let rdpsnd = Rdpsnd::new(Box::new(NoopRdpsndBackend));
+        // Use real audio backend if audio is enabled, otherwise noop
+        let rdpsnd = if config.audio_enabled {
+            let audio_backend = RustConnAudioBackend::new(event_tx.clone());
+            Rdpsnd::new(Box::new(audio_backend))
+        } else {
+            let audio_backend = RustConnAudioBackend::disabled(event_tx.clone());
+            Rdpsnd::new(Box::new(audio_backend))
+        };
         connector.static_channels.insert(rdpsnd);
 
         // Get computer name for display in Windows Explorer
@@ -102,6 +110,12 @@ pub async fn establish_connection(
                 .with_drives(Some(initial_drives));
             connector.static_channels.insert(rdpdr);
         }
+    } else if config.audio_enabled {
+        // No shared folders but audio is enabled - add RDPSND channel
+        let audio_backend = RustConnAudioBackend::new(event_tx.clone());
+        let rdpsnd = Rdpsnd::new(Box::new(audio_backend));
+        connector.static_channels.insert(rdpsnd);
+        tracing::debug!("Audio channel enabled (without RDPDR)");
     }
 
     // Phase 3: Perform RDP connection sequence
