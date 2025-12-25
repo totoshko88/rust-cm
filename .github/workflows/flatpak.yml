@@ -27,19 +27,27 @@ jobs:
       - name: Generate cargo sources
         run: |
           python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+          cp packaging/flatpak/cargo-sources.json packaging/flathub/cargo-sources.json
 
       - name: Build Flatpak
         uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
         with:
-          manifest-path: packaging/flatpak/org.rustconn.RustConn.yml
+          manifest-path: packaging/flatpak/io.github.totoshko88.RustConn.yml
           bundle: RustConn.flatpak
           cache-key: flatpak-builder-${{ github.sha }}
+          build-bundle: true
 
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v4
         with:
           name: flatpak
           path: RustConn.flatpak
+
+      - name: Upload cargo-sources for Flathub
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-sources
+          path: packaging/flathub/cargo-sources.json
 
   release-flatpak:
     name: Add Flatpak to Release

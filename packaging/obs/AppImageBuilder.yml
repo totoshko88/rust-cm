@@ -5,10 +5,10 @@ script:
 AppDir:
   path: ./AppDir
   app_info:
-    id: org.rustconn.RustConn
+    id: io.github.totoshko88.RustConn
     name: RustConn
     icon: rustconn
-    version: 0.1.0
+    version: 0.4.0
     exec: usr/bin/rustconn
     exec_args: $@
 

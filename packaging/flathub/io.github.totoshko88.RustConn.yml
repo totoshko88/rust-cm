@@ -1,10 +1,10 @@
-app-id: org.rustconn.RustConn
+app-id: io.github.totoshko88.RustConn
 runtime: org.gnome.Platform
-runtime-version: '47'
+runtime-version: '49'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.llvm18
+  - org.freedesktop.Sdk.Extension.llvm19
 command: rustconn
 
 finish-args:
@@ -14,19 +14,16 @@ finish-args:
   - --share=ipc
   # Network access for SSH/RDP/VNC/SPICE connections
   - --share=network
-  # Home directory access for SSH keys
+  # Home directory access for SSH keys (requires linter exception)
   - --filesystem=home/.ssh:ro
-  # Config and data directories
-  - --filesystem=xdg-config/rustconn:create
-  - --filesystem=xdg-data/rustconn:create
   # D-Bus access for libsecret (credential storage)
   - --talk-name=org.freedesktop.secrets
-  # SSH agent socket
+  # SSH agent socket (requires linter exception)
   - --socket=ssh-auth
 
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
-  prepend-ld-library-path: /usr/lib/sdk/llvm18/lib
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm19/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm19/lib
   env:
     CARGO_HOME: /run/build/rustconn/cargo
     RUST_BACKTRACE: '1'
@@ -41,12 +38,12 @@ modules:
       - cargo build --release -p rustconn -p rustconn-cli
       - install -Dm755 target/release/rustconn /app/bin/rustconn
       - install -Dm755 target/release/rustconn-cli /app/bin/rustconn-cli
-      - install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop /app/share/applications/org.rustconn.RustConn.desktop
-      - install -Dm644 rustconn/assets/org.rustconn.RustConn.metainfo.xml /app/share/metainfo/org.rustconn.RustConn.metainfo.xml
-      - install -Dm644 rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg /app/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg
+      - install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.desktop /app/share/applications/io.github.totoshko88.RustConn.desktop
+      - install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml /app/share/metainfo/io.github.totoshko88.RustConn.metainfo.xml
+      - install -Dm644 rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg /app/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg
     sources:
       - type: git
         url: https://github.com/totoshko88/rust-cm.git
-        commit: e032cae2d99a8ad435cb52fdfd3e80d9c2137c5e
-      # Generated with flatpak-cargo-generator Cargo.lock -o cargo-sources.json
+        tag: v0.4.0
+      # Generated with: flatpak-cargo-generator Cargo.lock -o cargo-sources.json
       - cargo-sources.json

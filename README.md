@@ -8,7 +8,7 @@ A modern connection manager for Linux, designed to manage SSH, RDP, and VNC remo
 
 *Click the image above to watch the demo video*
 
-![RustConn Logo](rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg)
+![RustConn Logo](rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg)
 
 ## Features
 
@@ -42,7 +42,7 @@ RustConn includes several performance optimizations for handling large connectio
 flatpak install RustConn-0.4.0.flatpak
 
 # Run
-flatpak run org.rustconn.RustConn
+flatpak run io.github.totoshko88.RustConn
 ```
 
 ### AppImage

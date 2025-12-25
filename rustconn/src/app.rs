@@ -14,7 +14,7 @@ use crate::tray::{TrayManager, TrayMessage};
 use crate::window::MainWindow;
 
 /// Application ID for `RustConn`
-pub const APP_ID: &str = "org.rustconn.RustConn";
+pub const APP_ID: &str = "io.github.totoshko88.RustConn";
 
 /// Shared tray manager type
 type SharedTrayManager = Rc<RefCell<Option<TrayManager>>>;
@@ -450,13 +450,13 @@ fn show_about_dialog(parent: &gtk4::ApplicationWindow) {
     // Try multiple locations: system paths first, then development path
     let icon_paths = [
         // System installation paths
-        "/usr/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg",
-        "/usr/local/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg",
-        "/app/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg", // Flatpak
+        "/usr/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg",
+        "/usr/local/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg",
+        "/app/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg", // Flatpak
         // Development path (cargo run)
         concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg"
+            "/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg"
         ),
     ];
 

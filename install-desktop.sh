@@ -9,12 +9,12 @@ PREFIX="${PREFIX:-$HOME/.local}"
 # Install icon
 ICON_DIR="$PREFIX/share/icons/hicolor/scalable/apps"
 mkdir -p "$ICON_DIR"
-cp rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg "$ICON_DIR/"
+cp rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg "$ICON_DIR/"
 
 # Install desktop file
 DESKTOP_DIR="$PREFIX/share/applications"
 mkdir -p "$DESKTOP_DIR"
-cp rustconn/assets/org.rustconn.RustConn.desktop "$DESKTOP_DIR/"
+cp rustconn/assets/io.github.totoshko88.RustConn.desktop "$DESKTOP_DIR/"
 
 # Update icon cache
 if command -v gtk-update-icon-cache &> /dev/null; then

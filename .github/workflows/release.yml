@@ -57,14 +57,14 @@ jobs:
           cp target/release/rustconn-cli "${PKG_DIR}/usr/bin/"
           
           # Desktop file and metadata
-          cp rustconn/assets/org.rustconn.RustConn.desktop "${PKG_DIR}/usr/share/applications/"
-          cp rustconn/assets/org.rustconn.RustConn.metainfo.xml "${PKG_DIR}/usr/share/metainfo/"
+          cp rustconn/assets/io.github.totoshko88.RustConn.desktop "${PKG_DIR}/usr/share/applications/"
+          cp rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml "${PKG_DIR}/usr/share/metainfo/"
           
           # Icons
-          cp rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg \
+          cp rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg \
              "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps/" || true
           for size in 256 128 64 48; do
-            cp "rustconn/assets/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png" \
+            cp "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
                "${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/apps/" 2>/dev/null || true
           done
           
@@ -142,14 +142,14 @@ jobs:
           
           cp target/release/rustconn AppDir/usr/bin/
           cp target/release/rustconn-cli AppDir/usr/bin/
-          cp rustconn/assets/org.rustconn.RustConn.desktop AppDir/usr/share/applications/
-          cp rustconn/assets/org.rustconn.RustConn.metainfo.xml AppDir/usr/share/metainfo/
+          cp rustconn/assets/io.github.totoshko88.RustConn.desktop AppDir/usr/share/applications/
+          cp rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml AppDir/usr/share/metainfo/
           
           # Copy icons
-          cp rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg \
+          cp rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg \
              AppDir/usr/share/icons/hicolor/scalable/apps/ || true
           for size in 256 128 64 48; do
-            cp "rustconn/assets/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png" \
+            cp "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
                "AppDir/usr/share/icons/hicolor/${size}x${size}/apps/" 2>/dev/null || true
           done
 

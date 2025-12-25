@@ -760,7 +760,7 @@ impl SplitTerminalView {
     fn load_embedded_logo(size: u32) -> Option<gtk4::gdk_pixbuf::Pixbuf> {
         // Embedded SVG icon data
         const ICON_SVG: &[u8] =
-            include_bytes!("../assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg");
+            include_bytes!("../assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg");
 
         // Parse SVG using resvg
         let tree = resvg::usvg::Tree::from_data(ICON_SVG, &resvg::usvg::Options::default()).ok()?;

@@ -85,22 +85,22 @@ cargo build --release -p rustconn -p rustconn-cli
 %install
 install -Dm755 target/release/rustconn %{buildroot}%{_bindir}/rustconn
 install -Dm755 target/release/rustconn-cli %{buildroot}%{_bindir}/rustconn-cli
-install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop \
-    %{buildroot}%{_datadir}/applications/org.rustconn.RustConn.desktop
-install -Dm644 rustconn/assets/org.rustconn.RustConn.metainfo.xml \
-    %{buildroot}%{_datadir}/metainfo/org.rustconn.RustConn.metainfo.xml
+install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.desktop \
+    %{buildroot}%{_datadir}/applications/io.github.totoshko88.RustConn.desktop
+install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml \
+    %{buildroot}%{_datadir}/metainfo/io.github.totoshko88.RustConn.metainfo.xml
 
 # Install icons
 for size in 48 64 128 256; do
-    if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png" ]; then
-        install -Dm644 "rustconn/assets/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png" \
-            "%{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/org.rustconn.RustConn.png"
+    if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" ]; then
+        install -Dm644 "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
+            "%{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png"
     fi
 done
 
-if [ -f "rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg" ]; then
-    install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg" \
-        "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg"
+if [ -f "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" ]; then
+    install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" \
+        "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg"
 fi
 
 %files
@@ -108,8 +108,8 @@ fi
 %doc README.md CHANGELOG.md docs/
 %{_bindir}/rustconn
 %{_bindir}/rustconn-cli
-%{_datadir}/applications/org.rustconn.RustConn.desktop
-%{_datadir}/metainfo/org.rustconn.RustConn.metainfo.xml
-%{_datadir}/icons/hicolor/*/apps/org.rustconn.RustConn.*
+%{_datadir}/applications/io.github.totoshko88.RustConn.desktop
+%{_datadir}/metainfo/io.github.totoshko88.RustConn.metainfo.xml
+%{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
 
 %changelog

@@ -1,10 +1,10 @@
-app-id: org.rustconn.RustConn
+app-id: io.github.totoshko88.RustConn
 runtime: org.gnome.Platform
-runtime-version: '47'
+runtime-version: '49'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.llvm18
+  - org.freedesktop.Sdk.Extension.llvm19
 command: rustconn
 
 finish-args:
@@ -16,16 +16,14 @@ finish-args:
   - --share=network
   # Home directory access for SSH keys and config
   - --filesystem=home/.ssh:ro
-  - --filesystem=home/.config/rustconn:create
-  - --filesystem=xdg-data/rustconn:create
   # D-Bus access for libsecret
   - --talk-name=org.freedesktop.secrets
   # SSH agent
   - --socket=ssh-auth
 
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
-  prepend-ld-library-path: /usr/lib/sdk/llvm18/lib
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm19/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm19/lib
   env:
     CARGO_HOME: /run/build/rustconn/cargo
     RUST_BACKTRACE: '1'
@@ -37,12 +35,12 @@ modules:
       env:
         CARGO_NET_OFFLINE: 'true'
     build-commands:
-      - cargo build --release
+      - cargo build --release -p rustconn -p rustconn-cli
       - install -Dm755 target/release/rustconn /app/bin/rustconn
       - install -Dm755 target/release/rustconn-cli /app/bin/rustconn-cli
-      - install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop /app/share/applications/org.rustconn.RustConn.desktop
-      - install -Dm644 rustconn/assets/org.rustconn.RustConn.metainfo.xml /app/share/metainfo/org.rustconn.RustConn.metainfo.xml
-      - install -Dm644 rustconn/assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg /app/share/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg
+      - install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.desktop /app/share/applications/io.github.totoshko88.RustConn.desktop
+      - install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml /app/share/metainfo/io.github.totoshko88.RustConn.metainfo.xml
+      - install -Dm644 rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg /app/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg
     sources:
       - type: dir
         path: ../..

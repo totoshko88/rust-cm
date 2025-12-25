@@ -1,0 +1,84 @@
+name: Update Flathub
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.4.0)'
+        required: true
+
+jobs:
+  update-flathub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_NUM=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          pip install aiohttp toml
+
+      - name: Download flatpak-cargo-generator
+        run: |
+          wget -q https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+          chmod +x flatpak-cargo-generator.py
+
+      - name: Generate cargo-sources.json
+        run: |
+          python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+
+      - name: Get commit SHA for tag
+        id: commit
+        run: |
+          COMMIT=$(git rev-list -n 1 ${{ steps.version.outputs.VERSION }})
+          echo "SHA=$COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Clone Flathub repo
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+        run: |
+          git clone https://x-access-token:${GH_TOKEN}@github.com/flathub/io.github.totoshko88.RustConn.git flathub-repo || \
+          echo "Flathub repo not yet created - manual submission required"
+
+      - name: Update Flathub manifest
+        if: ${{ hashFiles('flathub-repo/io.github.totoshko88.RustConn.yml') != '' }}
+        run: |
+          cd flathub-repo
+          
+          # Update tag in manifest
+          sed -i "s/tag: v[0-9.]*/tag: ${{ steps.version.outputs.VERSION }}/" io.github.totoshko88.RustConn.yml
+          
+          # Copy new cargo-sources.json
+          cp ../cargo-sources.json .
+          
+          # Configure git
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          # Commit and push
+          git add -A
+          git commit -m "Update to ${{ steps.version.outputs.VERSION }}" || echo "No changes to commit"
+          git push origin master
+
+      - name: Upload cargo-sources.json artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flathub-files
+          path: |
+            cargo-sources.json
+            packaging/flathub/io.github.totoshko88.RustConn.yml

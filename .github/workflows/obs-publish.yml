@@ -17,6 +17,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate OBS credentials
+        run: |
+          if [ -z "${{ vars.OBS_USERNAME }}" ]; then
+            echo "::error::OBS_USERNAME variable is not set"
+            echo "Go to Settings → Secrets and variables → Actions → Variables"
+            exit 1
+          fi
+          if [ -z "${{ secrets.OBS_PASSWORD }}" ]; then
+            echo "::error::OBS_PASSWORD secret is not set"
+            echo "Go to Settings → Secrets and variables → Actions → Secrets"
+            exit 1
+          fi
+
       - name: Install osc
         run: |
           sudo apt-get update

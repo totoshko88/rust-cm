@@ -1,48 +1,44 @@
 # Publishing RustConn to Flathub
 
-## Prerequisites
+## Automated Updates
+
+After the initial submission is accepted, updates are automated via GitHub Actions:
+
+1. Create a new release/tag (e.g., `v0.5.0`)
+2. The `flathub-update.yml` workflow automatically:
+   - Generates new `cargo-sources.json`
+   - Updates the Flathub repo manifest
+   - Pushes changes to trigger a new build
+
+### Required Setup
+
+1. Create a GitHub Personal Access Token with `repo` scope
+2. Add it as `FLATHUB_TOKEN` secret in repository settings
+
+## Manual Submission (First Time)
+
+### Prerequisites
 
 1. GitHub account
 2. Flathub account (sign in at https://flathub.org with GitHub)
 
-## Steps to Submit
+### Steps to Submit
 
-### 1. Fork the Flathub repository
+1. Fork https://github.com/flathub/flathub
+2. Create branch `io.github.totoshko88.RustConn`
+3. Add these files:
+   - `io.github.totoshko88.RustConn.yml` - Main manifest
+   - `flathub.json` - Linter exceptions
+   - `cargo-sources.json` - Cargo dependencies (from workflow artifact)
+4. Create PR to `flathub/flathub`
 
-Go to https://github.com/flathub/flathub and fork it.
+### Generate cargo-sources.json locally
 
-### 2. Create a new repository for your app
-
-Create a new repository named `org.rustconn.RustConn` in your fork.
-
-### 3. Add the manifest files
-
-Copy these files to your new repository:
-- `org.rustconn.RustConn.yml` - Main manifest
-- `cargo-sources.json` - Cargo dependencies
-
-### 4. Create a Pull Request
-
-Create a PR from your `org.rustconn.RustConn` repository to `flathub/org.rustconn.RustConn`.
-
-### 5. Wait for Review
-
-Flathub maintainers will review your submission. Common requirements:
-- Valid AppStream metadata (`org.rustconn.RustConn.metainfo.xml`)
-- Proper desktop file
-- Icons in correct sizes
-- No network access during build (offline build)
-
-## Updating the Package
-
-When releasing a new version:
-
-1. Update `tag` and `commit` in `org.rustconn.RustConn.yml`
-2. Regenerate `cargo-sources.json`:
-   ```bash
-   flatpak-cargo-generator Cargo.lock -o cargo-sources.json
-   ```
-3. Create a PR to your Flathub repository
+```bash
+pip install aiohttp toml
+wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+```
 
 ## Testing Locally
 
@@ -56,14 +52,14 @@ flatpak install flathub org.freedesktop.Sdk.Extension.rust-stable//24.08
 flatpak install flathub org.freedesktop.Sdk.Extension.llvm18//24.08
 
 # Build
-flatpak-builder --force-clean build-dir org.rustconn.RustConn.yml
+flatpak-builder --force-clean build-dir io.github.totoshko88.RustConn.yml
 
 # Test run
-flatpak-builder --run build-dir org.rustconn.RustConn.yml rustconn
+flatpak-builder --run build-dir io.github.totoshko88.RustConn.yml rustconn
 
 # Create bundle for testing
-flatpak-builder --repo=repo --force-clean build-dir org.rustconn.RustConn.yml
-flatpak build-bundle repo RustConn.flatpak org.rustconn.RustConn
+flatpak-builder --repo=repo --force-clean build-dir io.github.totoshko88.RustConn.yml
+flatpak build-bundle repo RustConn.flatpak io.github.totoshko88.RustConn
 ```
 
 ## Links

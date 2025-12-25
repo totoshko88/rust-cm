@@ -1,0 +1,9 @@
+{
+  "flathub-json-version": 1,
+  "linter-exceptions": {
+    "finish-args": {
+      "--filesystem=home/.ssh:ro": "SSH connection manager requires read access to SSH keys for authentication",
+      "--socket=ssh-auth": "SSH connection manager requires SSH agent access for key-based authentication"
+    }
+  }
+}

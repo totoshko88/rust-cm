@@ -80,7 +80,7 @@ mod tray_impl {
 
     /// Embedded SVG icon data
     const ICON_SVG: &[u8] =
-        include_bytes!("../assets/icons/hicolor/scalable/apps/org.rustconn.RustConn.svg");
+        include_bytes!("../assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg");
 
     /// Render SVG to ARGB32 pixmap for tray icon
     /// Returns Vec<Icon> with rendered icon at specified size
@@ -164,7 +164,7 @@ mod tray_impl {
         }
 
         fn id(&self) -> String {
-            "org.rustconn.RustConn".to_string()
+            "io.github.totoshko88.RustConn".to_string()
         }
 
         fn menu(&self) -> Vec<MenuItem<Self>> {

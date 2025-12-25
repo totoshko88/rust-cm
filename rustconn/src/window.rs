@@ -90,7 +90,7 @@ impl MainWindow {
             .title("RustConn")
             .default_width(1200)
             .default_height(800)
-            .icon_name("org.rustconn.RustConn")
+            .icon_name("io.github.totoshko88.RustConn")
             .build();
 
         // Apply saved window geometry if available

@@ -12,18 +12,18 @@ override_dh_auto_build:
 override_dh_auto_install:
 	install -Dm755 target/release/rustconn debian/rustconn/usr/bin/rustconn
 	install -Dm755 target/release/rustconn-cli debian/rustconn/usr/bin/rustconn-cli
-	install -Dm644 rustconn/assets/org.rustconn.RustConn.desktop \
-		debian/rustconn/usr/share/applications/org.rustconn.RustConn.desktop
+	install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.desktop \
+		debian/rustconn/usr/share/applications/io.github.totoshko88.RustConn.desktop
 	# Install icons if they exist
 	for size in 16 24 32 48 64 128 256 512; do \
-		if [ -f "rustconn/assets/icons/hicolor/$${size}x$${size}/apps/rustconn.png" ]; then \
-			install -Dm644 "rustconn/assets/icons/hicolor/$${size}x$${size}/apps/rustconn.png" \
-				"debian/rustconn/usr/share/icons/hicolor/$${size}x$${size}/apps/rustconn.png"; \
+		if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" ]; then \
+			install -Dm644 "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
+				"debian/rustconn/usr/share/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png"; \
 		fi; \
 	done
-	if [ -f "rustconn/assets/icons/hicolor/scalable/apps/rustconn.svg" ]; then \
-		install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/rustconn.svg" \
-			"debian/rustconn/usr/share/icons/hicolor/scalable/apps/rustconn.svg"; \
+	if [ -f "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" ]; then \
+		install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" \
+			"debian/rustconn/usr/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg"; \
 	fi
 
 override_dh_auto_test:
