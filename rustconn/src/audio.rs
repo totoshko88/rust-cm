@@ -11,10 +11,8 @@
 //! 3. `RdpClientEvent::AudioVolume` - adjusts playback volume
 //! 4. `RdpClientEvent::AudioClose` - stops playback
 
-#![cfg(feature = "rdp-audio")]
-
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, Stream, StreamConfig};
+use cpal::{Stream, StreamConfig};
 use rustconn_core::AudioFormatInfo;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -144,7 +142,7 @@ impl RdpAudioPlayer {
         // Configure stream
         let config = StreamConfig {
             channels: format.channels,
-            sample_rate: cpal::SampleRate(format.samples_per_sec),
+            sample_rate: format.samples_per_sec,
             buffer_size: cpal::BufferSize::Default,
         };
 
@@ -183,8 +181,6 @@ impl RdpAudioPlayer {
         buffer: Arc<Mutex<AudioBuffer>>,
         volume: Arc<Mutex<f32>>,
     ) -> Result<Stream, AudioError> {
-        let channels = config.channels as usize;
-
         let stream = device
             .build_output_stream(
                 config,
@@ -265,7 +261,7 @@ impl RdpAudioPlayer {
     /// * `right` - Right channel volume (0-65535)
     pub fn set_volume(&self, left: u16, right: u16) {
         // Average left and right, normalize to 0.0-1.0
-        let avg = (u32::from(left) + u32::from(right)) / 2;
+        let avg = u32::midpoint(u32::from(left), u32::from(right));
         let normalized = avg as f32 / 65535.0;
 
         if let Ok(mut vol) = self.volume.lock() {
