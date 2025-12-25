@@ -21,12 +21,43 @@ jobs:
       - name: Install flatpak-cargo-generator
         run: |
           pip install aiohttp toml
-          wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
-          chmod +x flatpak-cargo-generator.py
 
       - name: Generate cargo sources
         run: |
-          python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+          # Download the latest version of flatpak-cargo-generator
+          wget -q https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+          chmod +x flatpak-cargo-generator.py
+          # Generate cargo sources with error handling
+          python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json || {
+            echo "Failed to generate cargo sources, trying alternative method..."
+            # Fallback: use cargo vendor approach
+            pip install tomli
+            python3 -c "
+import json
+import tomli
+
+with open('Cargo.lock', 'rb') as f:
+    lock = tomli.load(f)
+
+sources = []
+for pkg in lock.get('package', []):
+    if 'source' in pkg and pkg['source'].startswith('registry+'):
+        name = pkg['name']
+        version = pkg['version']
+        checksum = pkg.get('checksum', '')
+        if checksum:
+            sources.append({
+                'type': 'file',
+                'url': f'https://crates.io/api/v1/crates/{name}/{version}/download',
+                'sha256': checksum,
+                'dest': 'cargo/vendor',
+                'dest-filename': f'{name}-{version}.crate'
+            })
+
+with open('packaging/flatpak/cargo-sources.json', 'w') as f:
+    json.dump(sources, f, indent=2)
+"
+          }
           cp packaging/flatpak/cargo-sources.json packaging/flathub/cargo-sources.json
 
       - name: Build Flatpak
