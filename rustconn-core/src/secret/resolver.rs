@@ -805,7 +805,7 @@ mod tests {
             local_variables: std::collections::HashMap::new(),
             log_config: None,
             key_sequence: None,
-            expect_rules: Vec::new(),
+            automation: crate::models::AutomationConfig::default(),
             window_mode: crate::models::WindowMode::default(),
             remember_window_position: false,
             window_geometry: None,

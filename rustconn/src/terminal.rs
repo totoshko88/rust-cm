@@ -805,11 +805,11 @@ impl TerminalNotebook {
             let mask = gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK;
             if state.contains(mask) {
                 match key.name().as_deref() {
-                    Some("C") | Some("c") => {
+                    Some("C" | "c") => {
                         term.copy_clipboard_format(vte4::Format::Text);
                         return glib::Propagation::Stop;
                     }
-                    Some("V") | Some("v") => {
+                    Some("V" | "v") => {
                         term.paste_clipboard();
                         return glib::Propagation::Stop;
                     }
@@ -833,10 +833,10 @@ impl TerminalNotebook {
             let popover = PopoverMenu::from_model(Some(&menu));
             popover.set_parent(&term_menu);
             popover.set_has_arrow(false);
-            
+
             // Create action group for the menu
             let action_group = gio::SimpleActionGroup::new();
-            
+
             let term_copy = term_menu.clone();
             let action_copy = gio::SimpleAction::new("copy", None);
             action_copy.connect_activate(move |_, _| {
@@ -859,7 +859,7 @@ impl TerminalNotebook {
             action_group.add_action(&action_select);
 
             term_menu.insert_action_group("terminal", Some(&action_group));
-            
+
             let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
             popover.set_pointing_to(Some(&rect));
             popover.popup();
