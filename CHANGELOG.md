@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `thiserror` from 1.0 to 2.0 (backwards compatible, no API changes required)
 - Note: `picky` remains pinned at `=7.0.0-rc.17` due to sspi 0.16.0 incompatibility with newer versions
 
+### Fixed
+- System tray menu intermittently not appearing (reduced lock contention and debounced D-Bus updates)
+
 ## [0.4.2] - 2025-12-25
 
 ### Fixed
