@@ -30,9 +30,7 @@ use vte4::prelude::*;
 use vte4::{PtyFlags, Terminal};
 
 use crate::automation::{AutomationSession, Trigger};
-use crate::session::{
-    RdpSessionWidget, SessionState, SessionWidget, SpiceSessionWidget, VncSessionWidget,
-};
+use crate::session::{SessionState, SessionWidget, VncSessionWidget};
 use regex::Regex;
 use rustconn_core::models::AutomationConfig;
 
@@ -72,10 +70,6 @@ use crate::embedded_spice::EmbeddedSpiceWidget;
 enum SessionWidgetStorage {
     /// VNC session widget
     Vnc(Rc<VncSessionWidget>),
-    /// RDP session widget
-    Rdp(Rc<RdpSessionWidget>),
-    /// SPICE session widget (legacy)
-    Spice(Rc<SpiceSessionWidget>),
     /// Embedded RDP widget (with dynamic resolution)
     EmbeddedRdp(Rc<EmbeddedRdpWidget>),
     /// Embedded SPICE widget (native spice-client)
@@ -508,90 +502,6 @@ impl TerminalNotebook {
         session_id
     }
 
-    /// Creates a new RDP session tab
-    ///
-    /// This creates an RDP session widget and prepares it for connection.
-    /// Returns the session UUID for tracking.
-    ///
-    /// # Requirements Coverage
-    ///
-    /// - Requirement 3.1: Native RDP embedding as GTK widget
-    pub fn create_rdp_session_tab(&self, connection_id: Uuid, title: &str) -> Uuid {
-        self.create_rdp_session_tab_with_host(connection_id, title, "")
-    }
-
-    /// Creates a new RDP session tab with host information
-    ///
-    /// Extended version that includes host for tooltip display.
-    pub fn create_rdp_session_tab_with_host(
-        &self,
-        connection_id: Uuid,
-        title: &str,
-        host: &str,
-    ) -> Uuid {
-        let session_id = Uuid::new_v4();
-        let is_first_session = self.sessions.borrow().is_empty();
-
-        // Remove Welcome tab if this is the first session
-        if is_first_session && self.notebook.n_pages() > 0 {
-            self.notebook.remove_page(Some(0));
-        }
-
-        // Create RDP session widget
-        let rdp_widget = Rc::new(RdpSessionWidget::new());
-
-        // Create empty placeholder for notebook page (RDP widget shown in split view)
-        let placeholder = GtkBox::new(Orientation::Vertical, 0);
-        let spacer = gtk4::DrawingArea::new();
-        spacer.set_content_width(1);
-        spacer.set_content_height(1);
-        placeholder.append(&spacer);
-
-        // Create tab label with protocol icon
-        let tab_label = Self::create_tab_label_with_protocol(
-            title,
-            session_id,
-            &self.notebook,
-            &self.sessions,
-            "rdp",
-            host,
-            &self.tab_labels,
-            &self.overflow_box,
-        );
-
-        // Add the page with empty placeholder
-        let page_num = self.notebook.append_page(&placeholder, Some(&tab_label));
-
-        // Store session mapping
-        self.sessions.borrow_mut().insert(session_id, page_num);
-
-        // Store RDP widget
-        self.session_widgets
-            .borrow_mut()
-            .insert(session_id, SessionWidgetStorage::Rdp(rdp_widget));
-
-        // Store session info
-        self.session_info.borrow_mut().insert(
-            session_id,
-            TerminalSession {
-                id: session_id,
-                connection_id,
-                name: title.to_string(),
-                protocol: "rdp".to_string(),
-                is_embedded: true,
-                log_file: None,
-            },
-        );
-
-        // Make the tab reorderable
-        self.notebook.set_tab_reorderable(&placeholder, true);
-
-        // Switch to the new tab
-        self.notebook.set_current_page(Some(page_num));
-
-        session_id
-    }
-
     /// Creates a new SPICE session tab
     ///
     /// This creates a SPICE session widget and prepares it for connection.
@@ -686,55 +596,34 @@ impl TerminalNotebook {
         }
     }
 
-    /// Gets the RDP session widget for a session
-    #[must_use]
-    pub fn get_rdp_widget(&self, session_id: Uuid) -> Option<Rc<RdpSessionWidget>> {
-        let widgets = self.session_widgets.borrow();
-        match widgets.get(&session_id) {
-            Some(SessionWidgetStorage::Rdp(widget)) => Some(widget.clone()),
-            _ => None,
-        }
-    }
-
     /// Gets the SPICE session widget for a session
     #[must_use]
     pub fn get_spice_widget(&self, session_id: Uuid) -> Option<Rc<EmbeddedSpiceWidget>> {
         let widgets = self.session_widgets.borrow();
         match widgets.get(&session_id) {
             Some(SessionWidgetStorage::EmbeddedSpice(widget)) => Some(widget.clone()),
-            Some(SessionWidgetStorage::Spice(_)) => None, // Legacy widget, not supported
             _ => None,
         }
     }
 
-    /// Gets the session widget (VNC/RDP/SPICE) for a session
+    /// Gets the session widget (VNC) for a session
+    ///
+    /// Note: RDP uses `EmbeddedRdpWidget` via `add_embedded_rdp_tab`,
+    /// SPICE uses `EmbeddedSpiceWidget` via `create_spice_session_tab`
     #[must_use]
     pub fn get_session_widget(&self, session_id: Uuid) -> Option<SessionWidget> {
         let widgets = self.session_widgets.borrow();
-        match widgets.get(&session_id) {
-            Some(SessionWidgetStorage::Vnc(_)) => {
-                // Return a new VncSessionWidget wrapper
-                // Note: The actual widget is stored separately and accessed via get_vnc_widget
-                Some(SessionWidget::Vnc(VncSessionWidget::new()))
-            }
-            Some(SessionWidgetStorage::Rdp(_)) => {
-                // Return a new RdpSessionWidget wrapper
-                // Note: The actual widget is stored separately and accessed via get_rdp_widget
-                Some(SessionWidget::Rdp(RdpSessionWidget::new()))
-            }
-            Some(SessionWidgetStorage::Spice(_)) => {
-                // Return a new SpiceSessionWidget wrapper
-                // Note: The actual widget is stored separately and accessed via get_spice_widget
-                Some(SessionWidget::Spice(SpiceSessionWidget::new()))
-            }
-            _ => {
-                drop(widgets);
-                // Check if it's an SSH terminal
-                if let Some(terminal) = self.terminals.borrow().get(&session_id) {
-                    Some(SessionWidget::Ssh(terminal.clone()))
-                } else {
-                    None
-                }
+        if let Some(SessionWidgetStorage::Vnc(_)) = widgets.get(&session_id) {
+            // Return a new VncSessionWidget wrapper
+            // Note: The actual widget is stored separately and accessed via get_vnc_widget
+            Some(SessionWidget::Vnc(VncSessionWidget::new()))
+        } else {
+            drop(widgets);
+            // Check if it's an SSH terminal
+            if let Some(terminal) = self.terminals.borrow().get(&session_id) {
+                Some(SessionWidget::Ssh(terminal.clone()))
+            } else {
+                None
             }
         }
     }
@@ -744,8 +633,8 @@ impl TerminalNotebook {
     /// Returns the appropriate widget based on session type:
     /// - SSH: VTE Terminal widget
     /// - VNC: VncSessionWidget overlay
-    /// - RDP: RdpSessionWidget overlay
-    /// - SPICE: SpiceSessionWidget overlay or EmbeddedSpiceWidget
+    /// - RDP: EmbeddedRdpWidget
+    /// - SPICE: EmbeddedSpiceWidget
     #[must_use]
     pub fn get_session_display_widget(&self, session_id: Uuid) -> Option<Widget> {
         // Check for VNC/RDP/SPICE session widgets first
@@ -753,8 +642,6 @@ impl TerminalNotebook {
         if let Some(storage) = widgets.get(&session_id) {
             return match storage {
                 SessionWidgetStorage::Vnc(widget) => Some(widget.widget().clone()),
-                SessionWidgetStorage::Rdp(widget) => Some(widget.widget().clone()),
-                SessionWidgetStorage::Spice(widget) => Some(widget.widget().clone()),
                 SessionWidgetStorage::EmbeddedRdp(widget) => Some(widget.widget().clone().upcast()),
                 SessionWidgetStorage::EmbeddedSpice(widget) => {
                     Some(widget.widget().clone().upcast())
@@ -770,14 +657,12 @@ impl TerminalNotebook {
             .map(|t| t.clone().upcast())
     }
 
-    /// Gets the session state for a VNC/RDP/SPICE session
+    /// Gets the session state for a VNC session
     #[must_use]
     pub fn get_session_state(&self, session_id: Uuid) -> Option<SessionState> {
         let widgets = self.session_widgets.borrow();
         match widgets.get(&session_id) {
             Some(SessionWidgetStorage::Vnc(widget)) => Some(widget.state()),
-            Some(SessionWidgetStorage::Rdp(widget)) => Some(widget.state()),
-            Some(SessionWidgetStorage::Spice(widget)) => Some(widget.state()),
             _ => None,
         }
     }

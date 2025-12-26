@@ -45,6 +45,19 @@ pub struct TreeState {
     pub selected_id: Option<Uuid>,
 }
 
+/// Session status information for a connection
+///
+/// Tracks the current status and number of active sessions for a connection.
+/// This allows proper status management when multiple sessions are opened
+/// for the same connection.
+#[derive(Debug, Clone, Default)]
+struct SessionStatusInfo {
+    /// Current status (connected, connecting, failed, disconnected)
+    status: String,
+    /// Number of active sessions for this connection
+    active_count: usize,
+}
+
 /// Drop position relative to a target item
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropPosition {
@@ -447,9 +460,9 @@ pub struct ConnectionSidebar {
     drop_indicator: Rc<DropIndicator>,
     /// Scrolled window containing the list view
     scrolled_window: ScrolledWindow,
-    /// Map of connection IDs to their current status
-    /// Used to preserve status across tree refreshes
-    connection_statuses: Rc<RefCell<std::collections::HashMap<String, String>>>,
+    /// Map of connection IDs to their session status info
+    /// Tracks status and active session count for proper multi-session handling
+    connection_statuses: Rc<RefCell<std::collections::HashMap<String, SessionStatusInfo>>>,
     /// Lazy group loader for on-demand loading of connection groups
     lazy_loader: Rc<RefCell<LazyGroupLoader>>,
     /// Virtual scroller for efficient rendering of large lists
@@ -1616,7 +1629,7 @@ impl ConnectionSidebar {
                     .connection_statuses
                     .borrow()
                     .get(&conn_id.to_string())
-                    .cloned()
+                    .map(|info| info.status.clone())
                     .unwrap_or_else(|| "disconnected".to_string());
 
                 let conn_item = ConnectionItem::new_connection_with_status(
@@ -1660,42 +1673,113 @@ impl ConnectionSidebar {
     }
 
     /// Updates the status of a connection item
+    ///
+    /// This method updates the visual status in the sidebar tree.
+    /// For proper session counting, use `increment_session_count` when opening
+    /// a session and `decrement_session_count` when closing.
     pub fn update_connection_status(&self, id: &str, status: &str) {
-        // Update the status map
+        // Update the status in the map
+        {
+            let mut statuses = self.connection_statuses.borrow_mut();
+            if let Some(info) = statuses.get_mut(id) {
+                info.status = status.to_string();
+            } else {
+                statuses.insert(
+                    id.to_string(),
+                    SessionStatusInfo {
+                        status: status.to_string(),
+                        active_count: 0,
+                    },
+                );
+            }
+        }
+
+        // Update the visual status in the tree
+        Self::update_item_status_recursive(self.store.upcast_ref::<gio::ListModel>(), id, status);
+    }
+
+    /// Increments the session count for a connection and sets status to connected
+    ///
+    /// Call this when opening a new session for a connection.
+    pub fn increment_session_count(&self, id: &str) {
+        let status = {
+            let mut statuses = self.connection_statuses.borrow_mut();
+            let info = statuses.entry(id.to_string()).or_default();
+            info.active_count += 1;
+            info.status = "connected".to_string();
+            info.status.clone()
+        };
+
+        Self::update_item_status_recursive(self.store.upcast_ref::<gio::ListModel>(), id, &status);
+    }
+
+    /// Decrements the session count for a connection
+    ///
+    /// Call this when closing a session. Status changes to disconnected only
+    /// when the last session is closed (active_count reaches 0).
+    ///
+    /// Returns the new status after decrement.
+    pub fn decrement_session_count(&self, id: &str, failed: bool) -> String {
+        let status = {
+            let mut statuses = self.connection_statuses.borrow_mut();
+            if let Some(info) = statuses.get_mut(id) {
+                info.active_count = info.active_count.saturating_sub(1);
+                if info.active_count == 0 {
+                    info.status = if failed {
+                        "failed".to_string()
+                    } else {
+                        "disconnected".to_string()
+                    };
+                }
+                // If still has active sessions, keep "connected" status
+                info.status.clone()
+            } else {
+                "disconnected".to_string()
+            }
+        };
+
+        Self::update_item_status_recursive(self.store.upcast_ref::<gio::ListModel>(), id, &status);
+        status
+    }
+
+    /// Gets the active session count for a connection
+    #[must_use]
+    pub fn get_session_count(&self, id: &str) -> usize {
         self.connection_statuses
-            .borrow_mut()
-            .insert(id.to_string(), status.to_string());
+            .borrow()
+            .get(id)
+            .map_or(0, |info| info.active_count)
+    }
 
-        // Helper to recursively find and update item
-        fn update_item_recursive(model: &gio::ListModel, id: &str, status: &str) -> bool {
-            let n_items = model.n_items();
-            for i in 0..n_items {
-                if let Some(item) = model.item(i).and_downcast::<ConnectionItem>() {
-                    if item.id() == id {
-                        item.set_status(status);
-                        return true;
-                    }
+    /// Helper to recursively find and update item status in the tree
+    fn update_item_status_recursive(model: &gio::ListModel, id: &str, status: &str) -> bool {
+        let n_items = model.n_items();
+        for i in 0..n_items {
+            if let Some(item) = model.item(i).and_downcast::<ConnectionItem>() {
+                if item.id() == id {
+                    item.set_status(status);
+                    return true;
+                }
 
-                    // Check children if it's a group or document
-                    if item.is_group() || item.is_document() {
-                        if let Some(children) = item.children() {
-                            if update_item_recursive(&children, id, status) {
-                                return true;
-                            }
+                // Check children if it's a group or document
+                if item.is_group() || item.is_document() {
+                    if let Some(children) = item.children() {
+                        if Self::update_item_status_recursive(&children, id, status) {
+                            return true;
                         }
                     }
                 }
             }
-            false
         }
-
-        let model = self.store.upcast_ref::<gio::ListModel>();
-        update_item_recursive(model, id, status);
+        false
     }
 
     /// Gets the status of a connection item
     pub fn get_connection_status(&self, id: &str) -> Option<String> {
-        self.connection_statuses.borrow().get(id).cloned()
+        self.connection_statuses
+            .borrow()
+            .get(id)
+            .map(|info| info.status.clone())
     }
 
     /// Gets the document ID for a selected item

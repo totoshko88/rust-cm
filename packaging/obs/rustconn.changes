@@ -1,4 +1,16 @@
 -------------------------------------------------------------------
+Thu Dec 26 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.0
+
+- Update to version 0.5.0
+  * Native SPICE protocol embedding using spice-client crate 0.2.0
+  * Real-time connection status indicators in sidebar
+  * Custom cursors in RDP sessions
+  * Full Expect automation engine integration
+  * Terminal context menu and keyboard shortcuts
+  * Fixed system tray menu intermittent issues
+  * Updated thiserror from 1.0 to 2.0
+
+-------------------------------------------------------------------
 Thu Dec 25 2025 Anton Isaiev <totoshko88@gmail.com> - 0.4.2
 
 - Update to version 0.4.2

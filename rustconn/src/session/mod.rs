@@ -1,6 +1,6 @@
 //! Session widget module for native protocol embedding
 //!
-//! This module provides session widgets for different protocols (SSH, VNC, RDP, SPICE)
+//! This module provides session widgets for different protocols (SSH, VNC)
 //! that can be embedded as native GTK4 widgets within the application.
 //!
 //! # Architecture
@@ -11,19 +11,19 @@
 //! - Floating overlay controls
 //! - State tracking and error handling
 //!
+//! # Note
+//!
+//! RDP and SPICE protocols use native Rust implementations directly:
+//! - RDP: `rustconn/src/embedded_rdp.rs` with `ironrdp` crate
+//! - SPICE: `rustconn/src/embedded_spice.rs` with `spice-client` crate
+//!
 //! # Requirements Coverage
 //!
 //! - Requirement 2.1: Native VNC embedding as GTK widget
 //! - Requirement 2.5: Connection state management and error handling
-//! - Requirement 3.1: Native RDP embedding
-//! - Requirement 4.2: Native SPICE embedding
 
-pub mod rdp;
-pub mod spice;
 pub mod vnc;
 
-pub use rdp::RdpSessionWidget;
-pub use spice::SpiceSessionWidget;
 pub use vnc::VncSessionWidget;
 
 use gtk4::prelude::*;
@@ -32,18 +32,16 @@ use thiserror::Error;
 
 /// Session widget enum that wraps protocol-specific display widgets
 ///
-/// This enum provides a unified interface for all session types,
-/// allowing the terminal notebook to handle different protocols uniformly.
+/// This enum provides a unified interface for session types that use
+/// the session widget pattern. RDP and SPICE use embedded widgets directly.
+///
+/// Note: RDP uses `EmbeddedRdpWidget`, SPICE uses `EmbeddedSpiceWidget`
 #[derive(Debug)]
 pub enum SessionWidget {
     /// SSH session using VTE4 terminal
     Ssh(vte4::Terminal),
     /// VNC session using gtk-vnc
     Vnc(VncSessionWidget),
-    /// RDP session using gtk-frdp
-    Rdp(RdpSessionWidget),
-    /// SPICE session using spice-gtk
-    Spice(SpiceSessionWidget),
 }
 
 impl SessionWidget {
@@ -53,8 +51,6 @@ impl SessionWidget {
         match self {
             Self::Ssh(terminal) => terminal.clone().upcast(),
             Self::Vnc(vnc_widget) => vnc_widget.widget().clone(),
-            Self::Rdp(rdp_widget) => rdp_widget.widget().clone(),
-            Self::Spice(spice_widget) => spice_widget.widget().clone(),
         }
     }
 
@@ -68,8 +64,6 @@ impl SessionWidget {
                 SessionState::Connected
             }
             Self::Vnc(vnc_widget) => vnc_widget.state(),
-            Self::Rdp(rdp_widget) => rdp_widget.state(),
-            Self::Spice(spice_widget) => spice_widget.state(),
         }
     }
 
@@ -83,18 +77,6 @@ impl SessionWidget {
     #[must_use]
     pub const fn is_vnc(&self) -> bool {
         matches!(self, Self::Vnc(_))
-    }
-
-    /// Returns whether this is an RDP session
-    #[must_use]
-    pub const fn is_rdp(&self) -> bool {
-        matches!(self, Self::Rdp(_))
-    }
-
-    /// Returns whether this is a SPICE session
-    #[must_use]
-    pub const fn is_spice(&self) -> bool {
-        matches!(self, Self::Spice(_))
     }
 }
 

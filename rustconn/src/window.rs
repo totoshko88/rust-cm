@@ -1375,10 +1375,9 @@ impl MainWindow {
                     if let Some(session_id) = notebook_for_close.get_active_session_id() {
                         // Get connection ID to update sidebar
                         if let Some(info) = notebook_for_close.get_session_info(session_id) {
-                            sidebar_for_close.update_connection_status(
-                                &info.connection_id.to_string(),
-                                "disconnected",
-                            );
+                            // Decrement session count - status changes only if no other sessions
+                            sidebar_for_close
+                                .decrement_session_count(&info.connection_id.to_string(), false);
                         }
 
                         // First clear from split view panes
@@ -2115,22 +2114,16 @@ impl MainWindow {
                 embedded_widget.connect_state_changed(move |state| match state {
                     crate::embedded_rdp::RdpConnectionState::Disconnected => {
                         notebook_for_state.mark_tab_disconnected(session_id);
-                        // If tab is still open, mark as failed (red) instead of disconnected (gray)
-                        // This indicates an unexpected disconnection
-                        if notebook_for_state.get_session_info(session_id).is_some() {
-                            sidebar_for_state
-                                .update_connection_status(&connection_id.to_string(), "failed");
-                        } else {
-                            sidebar_for_state.update_connection_status(
-                                &connection_id.to_string(),
-                                "disconnected",
-                            );
-                        }
+                        // Decrement session count - status changes only if no other sessions active
+                        sidebar_for_state.decrement_session_count(
+                            &connection_id.to_string(),
+                            // If tab is still open, it's an unexpected disconnection (failure)
+                            notebook_for_state.get_session_info(session_id).is_some(),
+                        );
                     }
                     crate::embedded_rdp::RdpConnectionState::Connected => {
                         notebook_for_state.mark_tab_connected(session_id);
-                        sidebar_for_state
-                            .update_connection_status(&connection_id.to_string(), "connected");
+                        sidebar_for_state.increment_session_count(&connection_id.to_string());
                     }
                     _ => {}
                 });
@@ -2216,7 +2209,8 @@ impl MainWindow {
                 eprintln!("Failed to start RDP session '{}': {}", conn_name, e);
                 sidebar.update_connection_status(&connection_id.to_string(), "failed");
             } else {
-                sidebar.update_connection_status(&connection_id.to_string(), "connected");
+                // External RDP window started - increment session count
+                sidebar.increment_session_count(&connection_id.to_string());
             }
 
             // Add tab widget to notebook
@@ -2387,11 +2381,10 @@ impl MainWindow {
                     if vnc_state == crate::session::SessionState::Disconnected {
                         notebook_for_state.mark_tab_disconnected(session_id);
                         sidebar_for_state
-                            .update_connection_status(&connection_id.to_string(), "disconnected");
+                            .decrement_session_count(&connection_id.to_string(), false);
                     } else if vnc_state == crate::session::SessionState::Connected {
                         notebook_for_state.mark_tab_connected(session_id);
-                        sidebar_for_state
-                            .update_connection_status(&connection_id.to_string(), "connected");
+                        sidebar_for_state.increment_session_count(&connection_id.to_string());
                     }
                 });
 
@@ -2466,8 +2459,13 @@ impl MainWindow {
 
             // For SSH and Zero Trust, we assume connected for now
             if info.protocol == "ssh" || info.protocol.starts_with("zerotrust") {
-                // Set status to connecting initially
-                sidebar.update_connection_status(&connection_id.to_string(), "connecting");
+                // Set status to connecting initially (only if not already connected)
+                if sidebar
+                    .get_connection_status(&connection_id.to_string())
+                    .is_none()
+                {
+                    sidebar.update_connection_status(&connection_id.to_string(), "connecting");
+                }
 
                 // Monitor terminal content changes to detect successful connection
                 // If content changes (e.g. prompt appears), mark as connected
@@ -2475,17 +2473,19 @@ impl MainWindow {
                 let notebook_clone = notebook.clone();
                 let connection_id_str = connection_id.to_string();
 
+                // Track whether this specific session has been marked as connected
+                let session_connected = std::rc::Rc::new(std::cell::Cell::new(false));
+                let session_connected_clone = session_connected.clone();
+
                 notebook.connect_contents_changed(session_id, move || {
-                    // Only update if currently "connecting"
-                    if sidebar_clone.get_connection_status(&connection_id_str)
-                        == Some("connecting".to_string())
-                    {
+                    // Only increment once per session
+                    if !session_connected_clone.get() {
                         // Check if content indicates actual output from the process
                         // The initial header is 2 lines. If we have more, it means the process produced output.
                         if let Some(row) = notebook_clone.get_terminal_cursor_row(session_id) {
                             if row > 2 {
-                                sidebar_clone
-                                    .update_connection_status(&connection_id_str, "connected");
+                                sidebar_clone.increment_session_count(&connection_id_str);
+                                session_connected_clone.set(true);
                             }
                         }
                     }
@@ -2674,14 +2674,11 @@ impl MainWindow {
                     vnc_widget.connect_state_changed(move |vnc_state| {
                         if vnc_state == crate::session::SessionState::Disconnected {
                             notebook_for_state.mark_tab_disconnected(session_id);
-                            sidebar_for_state.update_connection_status(
-                                &connection_id.to_string(),
-                                "disconnected",
-                            );
+                            sidebar_for_state
+                                .decrement_session_count(&connection_id.to_string(), false);
                         } else if vnc_state == crate::session::SessionState::Connected {
                             notebook_for_state.mark_tab_connected(session_id);
-                            sidebar_for_state
-                                .update_connection_status(&connection_id.to_string(), "connected");
+                            sidebar_for_state.increment_session_count(&connection_id.to_string());
                         }
                     });
 
@@ -2771,12 +2768,20 @@ impl MainWindow {
 
                     // Connect state change callback to mark tab as disconnected
                     let notebook_for_state = notebook.clone();
+                    let sidebar_for_state = sidebar.clone();
                     spice_widget.connect_state_changed(move |spice_state| {
                         use crate::embedded_spice::SpiceConnectionState;
                         if spice_state == SpiceConnectionState::Disconnected
                             || spice_state == SpiceConnectionState::Error
                         {
                             notebook_for_state.mark_tab_disconnected(session_id);
+                            sidebar_for_state.decrement_session_count(
+                                &connection_id.to_string(),
+                                spice_state == SpiceConnectionState::Error,
+                            );
+                        } else if spice_state == SpiceConnectionState::Connected {
+                            notebook_for_state.mark_tab_connected(session_id);
+                            sidebar_for_state.increment_session_count(&connection_id.to_string());
                         }
                     });
 
@@ -3008,9 +3013,10 @@ impl MainWindow {
             }
 
             // Check if session still exists in notebook
-            // If it doesn't, the tab was closed by user, so we should clear the status
+            // If it doesn't, the tab was closed by user
             if notebook_clone.get_session_info(session_id).is_none() {
-                sidebar_clone.update_connection_status(&connection_id_str, "disconnected");
+                // Decrement session count - status changes only if no other sessions active
+                sidebar_clone.decrement_session_count(&connection_id_str, false);
                 return;
             }
 
@@ -3035,10 +3041,10 @@ impl MainWindow {
 
             if is_failure {
                 eprintln!("Session {session_id} exited with status: {exit_status} (Signal: {term_sig}, Code: {exit_code})");
-                sidebar_clone.update_connection_status(&connection_id_str, "failed");
-            } else {
-                sidebar_clone.update_connection_status(&connection_id_str, "disconnected");
             }
+
+            // Decrement session count - status changes only if no other sessions active
+            sidebar_clone.decrement_session_count(&connection_id_str, is_failure);
         });
     }
 
@@ -6115,11 +6121,11 @@ impl MainWindow {
                                         let _ = state_mut.terminate_session(id);
                                     }
 
-                                    // Update sidebar status
+                                    // Decrement session count - status changes only if no other sessions
                                     if let Some(info) = notebook_inner.get_session_info(id) {
-                                        sidebar_inner.update_connection_status(
+                                        sidebar_inner.decrement_session_count(
                                             &info.connection_id.to_string(),
-                                            "disconnected",
+                                            false,
                                         );
                                     }
 

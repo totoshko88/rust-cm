@@ -6,7 +6,7 @@ inclusion: always
 
 Linux connection manager for SSH, RDP, VNC, and SPICE protocols. GTK4/libadwaita GUI targeting Wayland-first environments.
 
-## Protocol Implementation
+## Protocol Overview
 
 | Protocol | Backend | Session Type |
 |----------|---------|--------------|
@@ -17,54 +17,55 @@ Linux connection manager for SSH, RDP, VNC, and SPICE protocols. GTK4/libadwaita
 
 ## Core Features
 
-- Connection organization via groups and tags
+- Connection organization: groups and tags
 - Import/export: Remmina, Asbru-CM, SSH config, Ansible inventory
 - Credential backends: libsecret, KeePassXC
 - Session logging, command snippets, cluster commands, Wake-on-LAN
 
-## Design Rules
+## Mandatory Constraints
 
-When implementing or modifying code, enforce these constraints:
+Apply these rules to ALL code changes:
 
-| Rule | Requirement |
-|------|-------------|
-| Credentials | Wrap in `secrecy::SecretString`; persist via `SecretBackend` trait only |
-| Display server | Wayland-first; avoid X11-specific APIs |
-| Crate separation | `rustconn-core` must not import `gtk4`, `vte4`, or `adw` |
+| Constraint | Requirement |
+|------------|-------------|
+| Credentials | MUST wrap in `secrecy::SecretString`; persist via `SecretBackend` trait only |
+| Display server | Wayland-first; AVOID X11-specific APIs |
+| Crate boundary | `rustconn-core` MUST NOT import `gtk4`, `vte4`, or `adw` |
 | Extensibility | New protocols → `Protocol` trait; formats → `ImportSource`/`ExportTarget`; secrets → `SecretBackend` |
-| Resilience | Optional features (KeePassXC, tray) must not break core when unavailable |
+| Graceful degradation | Optional features (KeePassXC, tray) MUST NOT break core when unavailable |
 
-## UI Patterns
+## UI Implementation Rules
 
-- Prefer `adw::` widgets over `gtk::` equivalents
-- Transient messages: `adw::ToastOverlay`
-- Modal dialogs: `adw::Dialog` or `gtk::Window` with `set_modal(true)`
-- Layout: sidebar `gtk::TreeView` + `gtk::Notebook` session tabs
-- Spacing: 12px margins, 6px between related elements (GNOME HIG)
+When writing GUI code in `rustconn/`:
 
-## Error Handling
+- PREFER `adw::` widgets over `gtk::` equivalents
+- Transient messages → `adw::ToastOverlay`
+- Modal dialogs → `adw::Dialog` or `gtk::Window` with `set_modal(true)`
+- Layout → sidebar `gtk::TreeView` + `gtk::Notebook` session tabs
+- Spacing → 12px margins, 6px between related elements (GNOME HIG)
+
+## Error Handling Pattern
+
+Define errors in `rustconn-core` using `thiserror`:
 
 ```rust
-// In rustconn_core::error
 #[derive(Debug, thiserror::Error)]
 pub enum FeatureError {
     #[error("description: {0}")]
     Variant(String),
 }
-
-pub fn fallible_op() -> Result<T, FeatureError> { ... }
 ```
 
-- GUI layer: display user-friendly toast or dialog
-- Logging: `tracing` macros for technical details
-- No panics in library code; `unwrap()`/`expect()` only for impossible states
+Error handling by layer:
+- Library (`rustconn-core`): Return `Result<T, E>`; NO panics; `unwrap()`/`expect()` only for impossible states
+- GUI (`rustconn`): Display user-friendly toast or dialog; log technical details via `tracing`
 
-## Implementation Checklist
+## Pre-Implementation Checklist
 
 Before writing code, verify:
 
-1. Crate placement: business logic → `rustconn-core`; UI → `rustconn`
-2. Secrets use `SecretString` and `SecretBackend`
-3. Feature degrades gracefully when dependencies are missing
-4. All fallible functions return `Result<T, E>`
-5. UI follows libadwaita patterns and GNOME HIG
+1. Crate placement correct? Business logic → `rustconn-core`; UI → `rustconn`
+2. Secrets wrapped in `SecretString` and persisted via `SecretBackend`?
+3. Feature degrades gracefully when dependencies missing?
+4. All fallible functions return `Result<T, E>`?
+5. UI follows libadwaita patterns and GNOME HIG?
