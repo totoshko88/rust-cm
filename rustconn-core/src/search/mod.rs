@@ -305,60 +305,75 @@ impl SearchEngine {
             return 0.0;
         }
 
-        let (query_normalized, target_normalized) = if self.case_sensitive {
-            (query.to_string(), target.to_string())
+        // Use optimized path to avoid allocations
+        if self.case_sensitive {
+            self.fuzzy_score_case_sensitive(query, target)
         } else {
-            (query.to_lowercase(), target.to_lowercase())
-        };
+            self.fuzzy_score_case_insensitive(query, target)
+        }
+    }
 
+    /// Case-sensitive fuzzy score (no allocations)
+    #[allow(clippy::cast_precision_loss)]
+    fn fuzzy_score_case_sensitive(&self, query: &str, target: &str) -> f32 {
         // Exact match
-        if query_normalized == target_normalized {
+        if query == target {
             return 1.0;
         }
 
         // Contains match (substring)
-        if target_normalized.contains(&query_normalized) {
-            // Score based on how much of the target is matched
-            let ratio = query_normalized.len() as f32 / target_normalized.len() as f32;
-            // Bonus for prefix match
-            let prefix_bonus = if target_normalized.starts_with(&query_normalized) {
-                0.1
-            } else {
-                0.0
-            };
+        if target.contains(query) {
+            let ratio = query.len() as f32 / target.len() as f32;
+            let prefix_bonus = if target.starts_with(query) { 0.1 } else { 0.0 };
             return ratio.mul_add(0.4, 0.5 + prefix_bonus).min(0.99);
         }
 
         // Fuzzy character matching
-        let mut query_chars = query_normalized.chars().peekable();
-        let mut matched = 0;
-        let mut consecutive = 0;
-        let mut max_consecutive = 0;
+        self.fuzzy_score_chars(query.chars(), target.chars(), query.len())
+    }
 
-        for target_char in target_normalized.chars() {
-            if let Some(&query_char) = query_chars.peek() {
-                if target_char == query_char {
-                    matched += 1;
-                    consecutive += 1;
-                    max_consecutive = max_consecutive.max(consecutive);
-                    query_chars.next();
-                } else {
-                    consecutive = 0;
-                }
-            }
+    /// Case-insensitive fuzzy score (minimized allocations)
+    #[allow(clippy::cast_precision_loss)]
+    fn fuzzy_score_case_insensitive(&self, query: &str, target: &str) -> f32 {
+        // Exact match (case-insensitive)
+        if query.eq_ignore_ascii_case(target) {
+            return 1.0;
         }
 
-        if matched == 0 {
-            return 0.0;
+        // Prefix match optimization (very common in search)
+        let query_len = query.len();
+        let target_len = target.len();
+        if target_len >= query_len && target[..query_len].eq_ignore_ascii_case(query) {
+            let ratio = query_len as f32 / target_len as f32;
+            return ratio.mul_add(0.4, 0.6).min(0.99);
         }
 
-        // Calculate score based on:
-        // - Percentage of query characters matched
-        // - Consecutive character bonus
-        let match_ratio = matched as f32 / query_normalized.len() as f32;
-        let consecutive_bonus = max_consecutive as f32 / query_normalized.len() as f32 * 0.2;
+        // Contains match - use iterator-based case-insensitive search
+        if let Some(pos) = self.find_case_insensitive(query, target) {
+            let ratio = query_len as f32 / target_len as f32;
+            let prefix_bonus = if pos == 0 { 0.1 } else { 0.0 };
+            return ratio.mul_add(0.4, 0.5 + prefix_bonus).min(0.99);
+        }
 
-        match_ratio.mul_add(0.4, consecutive_bonus).min(0.49)
+        // Fuzzy character matching using iterators (no allocation)
+        self.fuzzy_score_chars(
+            query.chars().flat_map(char::to_lowercase),
+            target.chars().flat_map(char::to_lowercase),
+            query.chars().count(),
+        )
+    }
+
+    /// Finds substring position using case-insensitive comparison without allocation
+    fn find_case_insensitive(&self, needle: &str, haystack: &str) -> Option<usize> {
+        let needle_len = needle.len();
+        let haystack_len = haystack.len();
+
+        if needle_len > haystack_len {
+            return None;
+        }
+
+        (0..=(haystack_len - needle_len))
+            .find(|&i| haystack[i..i + needle_len].eq_ignore_ascii_case(needle))
     }
 
     /// Searches connections and returns ranked results
@@ -586,15 +601,12 @@ impl SearchEngine {
 
     /// Finds the highlight position for a match
     fn find_highlight(&self, query: &str, target: &str) -> Option<(usize, usize)> {
-        let (query_normalized, target_normalized) = if self.case_sensitive {
-            (query.to_string(), target.to_string())
+        if self.case_sensitive {
+            target.find(query).map(|start| (start, start + query.len()))
         } else {
-            (query.to_lowercase(), target.to_lowercase())
-        };
-
-        target_normalized
-            .find(&query_normalized)
-            .map(|start| (start, start + query.len()))
+            self.find_case_insensitive(query, target)
+                .map(|start| (start, start + query.len()))
+        }
     }
 
     /// Optimized fuzzy match score using early termination

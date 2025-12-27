@@ -19,7 +19,7 @@
 use gtk4::prelude::*;
 use gtk4::{
     gdk, gio, glib, Box as GtkBox, Button, Image, Label, MenuButton, Notebook, Orientation,
-    Popover, ScrolledWindow, Widget,
+    Popover, PopoverMenu, ScrolledWindow, Widget,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -29,9 +29,10 @@ use uuid::Uuid;
 use vte4::prelude::*;
 use vte4::{PtyFlags, Terminal};
 
-use crate::session::{
-    RdpSessionWidget, SessionState, SessionWidget, SpiceSessionWidget, VncSessionWidget,
-};
+use crate::automation::{AutomationSession, Trigger};
+use crate::session::{SessionState, SessionWidget, VncSessionWidget};
+use regex::Regex;
+use rustconn_core::models::AutomationConfig;
 
 /// Tab display mode based on available space
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,10 +70,6 @@ use crate::embedded_spice::EmbeddedSpiceWidget;
 enum SessionWidgetStorage {
     /// VNC session widget
     Vnc(Rc<VncSessionWidget>),
-    /// RDP session widget
-    Rdp(Rc<RdpSessionWidget>),
-    /// SPICE session widget (legacy)
-    Spice(Rc<SpiceSessionWidget>),
     /// Embedded RDP widget (with dynamic resolution)
     EmbeddedRdp(Rc<EmbeddedRdpWidget>),
     /// Embedded SPICE widget (native spice-client)
@@ -94,6 +91,8 @@ pub struct TerminalNotebook {
     terminals: Rc<RefCell<HashMap<Uuid, Terminal>>>,
     /// Map of session IDs to session widgets (for VNC/RDP/SPICE sessions)
     session_widgets: Rc<RefCell<HashMap<Uuid, SessionWidgetStorage>>>,
+    /// Map of session IDs to automation sessions
+    automation_sessions: Rc<RefCell<HashMap<Uuid, AutomationSession>>>,
     /// Session metadata
     session_info: Rc<RefCell<HashMap<Uuid, TerminalSession>>>,
     /// Current tab display mode
@@ -170,6 +169,7 @@ impl TerminalNotebook {
             sessions: Rc::new(RefCell::new(HashMap::new())),
             terminals: Rc::new(RefCell::new(HashMap::new())),
             session_widgets: Rc::new(RefCell::new(HashMap::new())),
+            automation_sessions: Rc::new(RefCell::new(HashMap::new())),
             session_info: Rc::new(RefCell::new(HashMap::new())),
             display_mode,
             tab_labels,
@@ -317,7 +317,13 @@ impl TerminalNotebook {
     ///
     /// This creates the terminal widget and prepares it for spawning a command.
     /// Returns the session UUID for tracking.
-    pub fn create_terminal_tab(&self, connection_id: Uuid, title: &str, protocol: &str) -> Uuid {
+    pub fn create_terminal_tab(
+        &self,
+        connection_id: Uuid,
+        title: &str,
+        protocol: &str,
+        automation: Option<&AutomationConfig>,
+    ) -> Uuid {
         let session_id = Uuid::new_v4();
         let is_first_session = self.sessions.borrow().is_empty();
 
@@ -331,6 +337,32 @@ impl TerminalNotebook {
         let terminal = Terminal::new();
         terminal.set_hexpand(true);
         terminal.set_vexpand(true);
+
+        // Setup automation if configured
+        if let Some(config) = automation {
+            if !config.expect_rules.is_empty() {
+                let mut triggers = Vec::new();
+                for rule in &config.expect_rules {
+                    if !rule.enabled {
+                        continue;
+                    }
+                    if let Ok(regex) = Regex::new(&rule.pattern) {
+                        triggers.push(Trigger {
+                            pattern: regex,
+                            response: rule.response.clone(),
+                            one_shot: true,
+                        });
+                    }
+                }
+
+                if !triggers.is_empty() {
+                    let session = AutomationSession::new(terminal.clone(), triggers);
+                    self.automation_sessions
+                        .borrow_mut()
+                        .insert(session_id, session);
+                }
+            }
+        }
 
         // Configure terminal appearance
         Self::configure_terminal(&terminal);
@@ -470,90 +502,6 @@ impl TerminalNotebook {
         session_id
     }
 
-    /// Creates a new RDP session tab
-    ///
-    /// This creates an RDP session widget and prepares it for connection.
-    /// Returns the session UUID for tracking.
-    ///
-    /// # Requirements Coverage
-    ///
-    /// - Requirement 3.1: Native RDP embedding as GTK widget
-    pub fn create_rdp_session_tab(&self, connection_id: Uuid, title: &str) -> Uuid {
-        self.create_rdp_session_tab_with_host(connection_id, title, "")
-    }
-
-    /// Creates a new RDP session tab with host information
-    ///
-    /// Extended version that includes host for tooltip display.
-    pub fn create_rdp_session_tab_with_host(
-        &self,
-        connection_id: Uuid,
-        title: &str,
-        host: &str,
-    ) -> Uuid {
-        let session_id = Uuid::new_v4();
-        let is_first_session = self.sessions.borrow().is_empty();
-
-        // Remove Welcome tab if this is the first session
-        if is_first_session && self.notebook.n_pages() > 0 {
-            self.notebook.remove_page(Some(0));
-        }
-
-        // Create RDP session widget
-        let rdp_widget = Rc::new(RdpSessionWidget::new());
-
-        // Create empty placeholder for notebook page (RDP widget shown in split view)
-        let placeholder = GtkBox::new(Orientation::Vertical, 0);
-        let spacer = gtk4::DrawingArea::new();
-        spacer.set_content_width(1);
-        spacer.set_content_height(1);
-        placeholder.append(&spacer);
-
-        // Create tab label with protocol icon
-        let tab_label = Self::create_tab_label_with_protocol(
-            title,
-            session_id,
-            &self.notebook,
-            &self.sessions,
-            "rdp",
-            host,
-            &self.tab_labels,
-            &self.overflow_box,
-        );
-
-        // Add the page with empty placeholder
-        let page_num = self.notebook.append_page(&placeholder, Some(&tab_label));
-
-        // Store session mapping
-        self.sessions.borrow_mut().insert(session_id, page_num);
-
-        // Store RDP widget
-        self.session_widgets
-            .borrow_mut()
-            .insert(session_id, SessionWidgetStorage::Rdp(rdp_widget));
-
-        // Store session info
-        self.session_info.borrow_mut().insert(
-            session_id,
-            TerminalSession {
-                id: session_id,
-                connection_id,
-                name: title.to_string(),
-                protocol: "rdp".to_string(),
-                is_embedded: true,
-                log_file: None,
-            },
-        );
-
-        // Make the tab reorderable
-        self.notebook.set_tab_reorderable(&placeholder, true);
-
-        // Switch to the new tab
-        self.notebook.set_current_page(Some(page_num));
-
-        session_id
-    }
-
     /// Creates a new SPICE session tab
     ///
     /// This creates a SPICE session widget and prepares it for connection.
@@ -648,55 +596,34 @@ impl TerminalNotebook {
         }
     }
 
-    /// Gets the RDP session widget for a session
-    #[must_use]
-    pub fn get_rdp_widget(&self, session_id: Uuid) -> Option<Rc<RdpSessionWidget>> {
-        let widgets = self.session_widgets.borrow();
-        match widgets.get(&session_id) {
-            Some(SessionWidgetStorage::Rdp(widget)) => Some(widget.clone()),
-            _ => None,
-        }
-    }
-
     /// Gets the SPICE session widget for a session
     #[must_use]
     pub fn get_spice_widget(&self, session_id: Uuid) -> Option<Rc<EmbeddedSpiceWidget>> {
         let widgets = self.session_widgets.borrow();
         match widgets.get(&session_id) {
             Some(SessionWidgetStorage::EmbeddedSpice(widget)) => Some(widget.clone()),
-            Some(SessionWidgetStorage::Spice(_)) => None, // Legacy widget, not supported
             _ => None,
         }
     }
 
-    /// Gets the session widget (VNC/RDP/SPICE) for a session
+    /// Gets the session widget (VNC) for a session
+    ///
+    /// Note: RDP uses `EmbeddedRdpWidget` via `add_embedded_rdp_tab`,
+    /// SPICE uses `EmbeddedSpiceWidget` via `create_spice_session_tab`
     #[must_use]
     pub fn get_session_widget(&self, session_id: Uuid) -> Option<SessionWidget> {
         let widgets = self.session_widgets.borrow();
-        match widgets.get(&session_id) {
-            Some(SessionWidgetStorage::Vnc(_)) => {
-                // Return a new VncSessionWidget wrapper
-                // Note: The actual widget is stored separately and accessed via get_vnc_widget
-                Some(SessionWidget::Vnc(VncSessionWidget::new()))
-            }
-            Some(SessionWidgetStorage::Rdp(_)) => {
-                // Return a new RdpSessionWidget wrapper
-                // Note: The actual widget is stored separately and accessed via get_rdp_widget
-                Some(SessionWidget::Rdp(RdpSessionWidget::new()))
-            }
-            Some(SessionWidgetStorage::Spice(_)) => {
-                // Return a new SpiceSessionWidget wrapper
-                // Note: The actual widget is stored separately and accessed via get_spice_widget
-                Some(SessionWidget::Spice(SpiceSessionWidget::new()))
-            }
-            _ => {
-                drop(widgets);
-                // Check if it's an SSH terminal
-                if let Some(terminal) = self.terminals.borrow().get(&session_id) {
-                    Some(SessionWidget::Ssh(terminal.clone()))
-                } else {
-                    None
-                }
+        if let Some(SessionWidgetStorage::Vnc(_)) = widgets.get(&session_id) {
+            // Return a new VncSessionWidget wrapper
+            // Note: The actual widget is stored separately and accessed via get_vnc_widget
+            Some(SessionWidget::Vnc(VncSessionWidget::new()))
+        } else {
+            drop(widgets);
+            // Check if it's an SSH terminal
+            if let Some(terminal) = self.terminals.borrow().get(&session_id) {
+                Some(SessionWidget::Ssh(terminal.clone()))
+            } else {
+                None
             }
         }
     }
@@ -706,8 +633,8 @@ impl TerminalNotebook {
     /// Returns the appropriate widget based on session type:
     /// - SSH: VTE Terminal widget
     /// - VNC: VncSessionWidget overlay
-    /// - RDP: RdpSessionWidget overlay
-    /// - SPICE: SpiceSessionWidget overlay or EmbeddedSpiceWidget
+    /// - RDP: EmbeddedRdpWidget
+    /// - SPICE: EmbeddedSpiceWidget
     #[must_use]
     pub fn get_session_display_widget(&self, session_id: Uuid) -> Option<Widget> {
         // Check for VNC/RDP/SPICE session widgets first
@@ -715,8 +642,6 @@ impl TerminalNotebook {
         if let Some(storage) = widgets.get(&session_id) {
             return match storage {
                 SessionWidgetStorage::Vnc(widget) => Some(widget.widget().clone()),
-                SessionWidgetStorage::Rdp(widget) => Some(widget.widget().clone()),
-                SessionWidgetStorage::Spice(widget) => Some(widget.widget().clone()),
                 SessionWidgetStorage::EmbeddedRdp(widget) => Some(widget.widget().clone().upcast()),
                 SessionWidgetStorage::EmbeddedSpice(widget) => {
                     Some(widget.widget().clone().upcast())
@@ -732,14 +657,12 @@ impl TerminalNotebook {
             .map(|t| t.clone().upcast())
     }
 
-    /// Gets the session state for a VNC/RDP/SPICE session
+    /// Gets the session state for a VNC session
     #[must_use]
     pub fn get_session_state(&self, session_id: Uuid) -> Option<SessionState> {
         let widgets = self.session_widgets.borrow();
         match widgets.get(&session_id) {
             Some(SessionWidgetStorage::Vnc(widget)) => Some(widget.state()),
-            Some(SessionWidgetStorage::Rdp(widget)) => Some(widget.state()),
-            Some(SessionWidgetStorage::Spice(widget)) => Some(widget.state()),
             _ => None,
         }
     }
@@ -759,6 +682,74 @@ impl TerminalNotebook {
         terminal.set_input_enabled(true);
         terminal.set_allow_hyperlink(true);
         terminal.set_mouse_autohide(true);
+
+        // Keyboard shortcuts (Copy/Paste)
+        let controller = gtk4::EventControllerKey::new();
+        let term = terminal.clone();
+        controller.connect_key_pressed(move |_, key, _, state| {
+            let mask = gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK;
+            if state.contains(mask) {
+                match key.name().as_deref() {
+                    Some("C" | "c") => {
+                        term.copy_clipboard_format(vte4::Format::Text);
+                        return glib::Propagation::Stop;
+                    }
+                    Some("V" | "v") => {
+                        term.paste_clipboard();
+                        return glib::Propagation::Stop;
+                    }
+                    _ => (),
+                }
+            }
+            glib::Propagation::Proceed
+        });
+        terminal.add_controller(controller);
+
+        // Context menu (Right click)
+        let click_controller = gtk4::GestureClick::new();
+        click_controller.set_button(3); // Right click
+        let term_menu = terminal.clone();
+        click_controller.connect_pressed(move |_gesture, _, x, y| {
+            let menu = gio::Menu::new();
+            menu.append(Some("Copy"), Some("terminal.copy"));
+            menu.append(Some("Paste"), Some("terminal.paste"));
+            menu.append(Some("Select All"), Some("terminal.select-all"));
+
+            let popover = PopoverMenu::from_model(Some(&menu));
+            popover.set_parent(&term_menu);
+            popover.set_has_arrow(false);
+
+            // Create action group for the menu
+            let action_group = gio::SimpleActionGroup::new();
+
+            let term_copy = term_menu.clone();
+            let action_copy = gio::SimpleAction::new("copy", None);
+            action_copy.connect_activate(move |_, _| {
+                term_copy.copy_clipboard_format(vte4::Format::Text);
+            });
+            action_group.add_action(&action_copy);
+
+            let term_paste = term_menu.clone();
+            let action_paste = gio::SimpleAction::new("paste", None);
+            action_paste.connect_activate(move |_, _| {
+                term_paste.paste_clipboard();
+            });
+            action_group.add_action(&action_paste);
+
+            let term_select = term_menu.clone();
+            let action_select = gio::SimpleAction::new("select-all", None);
+            action_select.connect_activate(move |_, _| {
+                term_select.select_all();
+            });
+            action_group.add_action(&action_select);
+
+            term_menu.insert_action_group("terminal", Some(&action_group));
+
+            let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+            popover.set_pointing_to(Some(&rect));
+            popover.popup();
+        });
+        terminal.add_controller(click_controller);
 
         // Set up terminal colors (dark theme)
         let bg_color = gdk::RGBA::new(0.1, 0.1, 0.1, 1.0);
@@ -1195,6 +1186,15 @@ impl TerminalNotebook {
     #[must_use]
     pub fn get_terminal(&self, session_id: Uuid) -> Option<Terminal> {
         self.terminals.borrow().get(&session_id).cloned()
+    }
+
+    /// Gets the cursor row of a terminal session
+    pub fn get_terminal_cursor_row(&self, session_id: Uuid) -> Option<i64> {
+        if let Some(terminal) = self.get_terminal(session_id) {
+            let (row, _col) = terminal.cursor_position();
+            return Some(row);
+        }
+        None
     }
 
     /// Gets session info for a session

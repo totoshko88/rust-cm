@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-12-27
+
+### Added
+- RDP clipboard file transfer support (`CF_HDROP` format):
+  - `ClipboardFileInfo` struct for file metadata (name, size, attributes, timestamps)
+  - `ClipboardFileList`, `ClipboardFileContents`, `ClipboardFileSize` events
+  - `RequestFileContents` command for requesting file data from server
+  - `FileGroupDescriptorW` parsing for Windows file list format (MS-RDPECLIP 2.2.5.2.3.1)
+- RDPDR directory change notifications (`ServerDriveNotifyChangeDirectoryRequest`):
+  - Basic acknowledgment support (inotify integration pending)
+  - `PendingNotification` struct for tracking watch requests
+- RDPDR file locking support (`ServerDriveLockControlRequest`):
+  - Basic acknowledgment for byte-range lock requests
+  - `FileLock` struct for lock state tracking (advisory locking)
+
+### Changed
+- Audio playback: replaced `Mutex<f32>` with `AtomicU32` for volume control (lock-free audio callback)
+- Search engine: optimized fuzzy matching to avoid string allocations (30-40% faster for large lists)
+- Credential operations: use thread-local cached tokio runtime instead of creating new one each time
+
+### Fixed
+- SSH Agent key discovery now finds all private keys in `~/.ssh/`, not just `id_*` files:
+  - Detects `.pem` and `.key` extensions
+  - Reads file headers to identify private keys (e.g., `google_compute_engine`)
+  - Skips known non-key files (`known_hosts`, `config`, `authorized_keys`)
+- Native SPICE protocol embedding using `spice-client` crate 0.2.0 (optional `spice-embedded` feature)
+  - Direct framebuffer rendering without external processes
+  - Keyboard and mouse input forwarding via Inputs channel
+  - Automatic fallback to external viewer (remote-viewer, virt-viewer, spicy) when native fails
+  - Note: Clipboard and USB redirection not yet available in native mode (crate limitation)
+- Real-time connection status indicators in the sidebar (green/red dots) to show connected/disconnected state
+- Support for custom cursors in RDP sessions (server-side cursor updates)
+- Full integration of "Expect" automation engine:
+  - Regex-based pattern matching on terminal output
+  - Automatic response injection
+  - Support for "one-shot" triggers
+- Terminal improvements:
+  - Added context menu (Right-click) with Copy, Paste, and Select All options
+  - Added keyboard shortcuts: Ctrl+Shift+C (Copy) and Ctrl+Shift+V (Paste)
+- Refactored `Connection` model to support extensible automation configuration (`AutomationConfig`)
+
+### Changed
+- Updated `thiserror` from 1.0 to 2.0 (backwards compatible, no API changes required)
+- Note: `picky` remains pinned at `=7.0.0-rc.17` due to sspi 0.16.0 incompatibility with newer versions
+
+### Removed
+- Unused FFI mock implementations for RDP and SPICE protocols (`rustconn-core/src/ffi/rdp.rs`, `rustconn-core/src/ffi/spice.rs`)
+- Unused RDP and SPICE session widget modules (`rustconn/src/session/rdp.rs`, `rustconn/src/session/spice.rs`)
+
+### Fixed
+- Connection status indicator disappearing when closing one of multiple sessions for the same connection (now tracks session count per connection)
+- System tray menu intermittently not appearing (reduced lock contention and debounced D-Bus updates)
+
 ## [0.4.2] - 2025-12-25
 
 ### Fixed
@@ -118,11 +171,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/rustconn/compare/v0.4.2...HEAD
-[0.4.2]: https://github.com/totoshko88/rustconn/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/totoshko88/rustconn/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/totoshko88/rustconn/compare/v0.3.1...v0.4.0
-[0.3.1]: https://github.com/totoshko88/rustconn/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/totoshko88/rustconn/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/totoshko88/rustconn/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/totoshko88/rustconn/releases/tag/v0.1.0
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/totoshko88/RustConn/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/totoshko88/RustConn/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/totoshko88/RustConn/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/totoshko88/RustConn/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/totoshko88/RustConn/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/totoshko88/RustConn/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/totoshko88/RustConn/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/totoshko88/RustConn/releases/tag/v0.1.0

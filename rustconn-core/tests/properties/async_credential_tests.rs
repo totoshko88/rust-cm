@@ -7,6 +7,7 @@
 //! **Validates: Requirements 9.1, 9.4**
 
 use proptest::prelude::*;
+use rustconn_core::models::AutomationConfig;
 use rustconn_core::{
     AsyncCredentialResolver, AsyncCredentialResult, CancellationToken, SecretManager,
 };
@@ -74,7 +75,7 @@ fn create_test_connection(
         local_variables: HashMap::new(),
         log_config: None,
         key_sequence: None,
-        expect_rules: Vec::new(),
+        automation: AutomationConfig::default(),
         window_mode: WindowMode::default(),
         remember_window_position: false,
         window_geometry: None,

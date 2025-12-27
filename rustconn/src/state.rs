@@ -20,6 +20,29 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+// Thread-local tokio runtime for blocking async operations
+// This avoids creating a new runtime for each credential operation
+thread_local! {
+    static TOKIO_RUNTIME: RefCell<Option<tokio::runtime::Runtime>> = const { RefCell::new(None) };
+}
+
+/// Gets or creates the thread-local tokio runtime
+fn with_runtime<F, R>(f: F) -> Result<R, String>
+where
+    F: FnOnce(&tokio::runtime::Runtime) -> R,
+{
+    TOKIO_RUNTIME.with(|rt| {
+        let mut rt_ref = rt.borrow_mut();
+        if rt_ref.is_none() {
+            *rt_ref = Some(
+                tokio::runtime::Runtime::new()
+                    .map_err(|e| format!("Failed to create runtime: {e}"))?,
+            );
+        }
+        Ok(f(rt_ref.as_ref().expect("runtime should be initialized")))
+    })
+}
+
 /// Internal clipboard for connection copy/paste operations
 ///
 /// Stores a copied connection and its source group for paste operations.
@@ -718,63 +741,69 @@ impl AppState {
 
     /// Stores credentials for a connection (blocking wrapper for async operation)
     ///
-    /// Note: This uses tokio's `block_on` to run the async operation synchronously.
+    /// Note: This uses a cached tokio runtime to avoid creating a new one each time.
     /// For better performance in async contexts, use `secret_manager()` directly.
     pub fn store_credentials(
         &self,
         connection_id: Uuid,
         credentials: &Credentials,
     ) -> Result<(), String> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {e}"))?;
+        let secret_manager = self.secret_manager.clone();
+        let id_str = connection_id.to_string();
+        let creds = credentials.clone();
 
-        rt.block_on(async {
-            self.secret_manager
-                .store(&connection_id.to_string(), credentials)
-                .await
-                .map_err(|e| format!("Failed to store credentials: {e}"))
-        })
+        with_runtime(|rt| {
+            rt.block_on(async {
+                secret_manager
+                    .store(&id_str, &creds)
+                    .await
+                    .map_err(|e| format!("Failed to store credentials: {e}"))
+            })
+        })?
     }
 
     /// Retrieves credentials for a connection (blocking wrapper for async operation)
     ///
-    /// Note: This uses tokio's `block_on` to run the async operation synchronously.
+    /// Note: This uses a cached tokio runtime to avoid creating a new one each time.
     /// For better performance in async contexts, use `secret_manager()` directly.
     pub fn retrieve_credentials(&self, connection_id: Uuid) -> Result<Option<Credentials>, String> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {e}"))?;
+        let secret_manager = self.secret_manager.clone();
+        let id_str = connection_id.to_string();
 
-        rt.block_on(async {
-            self.secret_manager
-                .retrieve(&connection_id.to_string())
-                .await
-                .map_err(|e| format!("Failed to retrieve credentials: {e}"))
-        })
+        with_runtime(|rt| {
+            rt.block_on(async {
+                secret_manager
+                    .retrieve(&id_str)
+                    .await
+                    .map_err(|e| format!("Failed to retrieve credentials: {e}"))
+            })
+        })?
     }
 
     /// Deletes credentials for a connection (blocking wrapper for async operation)
     ///
-    /// Note: This uses tokio's `block_on` to run the async operation synchronously.
+    /// Note: This uses a cached tokio runtime to avoid creating a new one each time.
     /// For better performance in async contexts, use `secret_manager()` directly.
     pub fn delete_credentials(&self, connection_id: Uuid) -> Result<(), String> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {e}"))?;
+        let secret_manager = self.secret_manager.clone();
+        let id_str = connection_id.to_string();
 
-        rt.block_on(async {
-            self.secret_manager
-                .delete(&connection_id.to_string())
-                .await
-                .map_err(|e| format!("Failed to delete credentials: {e}"))
-        })
+        with_runtime(|rt| {
+            rt.block_on(async {
+                secret_manager
+                    .delete(&id_str)
+                    .await
+                    .map_err(|e| format!("Failed to delete credentials: {e}"))
+            })
+        })?
     }
 
     /// Checks if any secret backend is available (blocking wrapper)
     pub fn has_secret_backend(&self) -> bool {
-        let Ok(rt) = tokio::runtime::Runtime::new() else {
-            return false;
-        };
+        let secret_manager = self.secret_manager.clone();
 
-        rt.block_on(async { self.secret_manager.is_available().await })
+        with_runtime(|rt| rt.block_on(async { secret_manager.is_available().await }))
+            .unwrap_or(false)
     }
 
     /// Resolves credentials for a connection using the credential resolution chain
@@ -861,20 +890,19 @@ impl AppState {
         }
 
         // Fall back to the standard resolver for other password sources
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {e}"))?;
-
-        // Clone the secret manager to use in async context
         let secret_manager = self.secret_manager.clone();
         let resolver =
             CredentialResolver::new(Arc::new(secret_manager), self.settings.secrets.clone());
+        let connection = connection.clone();
 
-        rt.block_on(async {
-            resolver
-                .resolve(connection)
-                .await
-                .map_err(|e| format!("Failed to resolve credentials: {e}"))
-        })
+        with_runtime(|rt| {
+            rt.block_on(async {
+                resolver
+                    .resolve(&connection)
+                    .await
+                    .map_err(|e| format!("Failed to resolve credentials: {e}"))
+            })
+        })?
     }
 
     /// Resolves credentials for a connection by ID

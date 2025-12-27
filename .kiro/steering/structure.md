@@ -4,9 +4,9 @@ inclusion: always
 
 # RustConn Project Structure
 
-## Workspace Architecture
+## Workspace Layout
 
-Three-crate Cargo workspace with strict separation:
+Three-crate Cargo workspace:
 
 | Crate | Type | Purpose |
 |-------|------|---------|
@@ -14,47 +14,45 @@ Three-crate Cargo workspace with strict separation:
 | `rustconn-core/` | Library | Business logic, models, protocols (GUI-free) |
 | `rustconn-cli/` | Binary | CLI for headless operations |
 
-## Critical Crate Boundaries
-
-**NEVER violate these rules:**
+## Crate Boundaries (STRICT)
 
 - `rustconn-core` MUST NOT import `gtk4`, `vte4`, `adw`, or any GUI crate
-- All business logic, data models, and protocol implementations → `rustconn-core`
-- GUI-specific code (widgets, dialogs, rendering) → `rustconn`
-- Both `rustconn` and `rustconn-cli` depend on `rustconn-core`
+- Business logic, data models, protocol implementations → `rustconn-core`
+- GUI code (widgets, dialogs, rendering) → `rustconn`
+- Both binaries depend on `rustconn-core`
 
-## Directory Map
+## Key Directories
 
-### rustconn/ (GUI Binary)
+### rustconn/ (GUI)
 
-| Path | Responsibility |
-|------|----------------|
-| `src/app.rs` | GTK Application, actions, keyboard shortcuts |
-| `src/window.rs` | Main window layout, header bar |
+| Path | Purpose |
+|------|---------|
+| `src/app.rs` | GTK Application, actions, shortcuts |
+| `src/window.rs` | Main window, header bar |
 | `src/sidebar.rs` | Connection tree view |
-| `src/terminal.rs` | VTE terminal notebook for SSH |
+| `src/terminal.rs` | VTE terminal notebook (SSH) |
 | `src/state.rs` | `SharedAppState` = `Rc<RefCell<AppState>>` |
-| `src/dialogs/` | Modal dialogs (connection, import, export, settings) |
-| `src/session/` | Protocol session widgets (rdp.rs, vnc.rs, spice.rs) |
+| `src/dialogs/` | Modal dialogs |
+| `src/session/` | Protocol session widgets |
 
-### rustconn-core/src/ (Library)
+### rustconn-core/src/
 
-| Path | Responsibility |
-|------|----------------|
+| Path | Purpose |
+|------|---------|
 | `lib.rs` | Public API exports |
-| `error.rs` | Error types via `thiserror` |
+| `error.rs` | Error types (`thiserror`) |
 | `models/` | Connection, Group, Protocol, Snippet, Template |
 | `config/` | Settings persistence |
-| `connection/` | Connection CRUD operations |
+| `connection/` | Connection CRUD |
 | `protocol/` | Protocol trait + implementations |
-| `import/` | Import: ssh_config, remmina, asbru, ansible |
-| `export/` | Export: ssh_config, remmina, asbru, ansible |
-| `secret/` | Credential backends: libsecret, keepassxc, kdbx |
+| `import/` | Import formats |
+| `export/` | Export formats |
+| `secret/` | Credential backends |
 | `session/` | Session state, logging |
-| `automation/` | Expect scripts, key sequences, tasks |
-| `cluster/` | Multi-host command execution |
-| `variables/` | Variable substitution engine |
-| `search/` | Connection search/filtering |
+| `automation/` | Expect scripts, key sequences |
+| `cluster/` | Multi-host commands |
+| `variables/` | Variable substitution |
+| `search/` | Connection filtering |
 | `wol/` | Wake-on-LAN |
 
 ### rustconn-core/tests/
@@ -65,9 +63,7 @@ Three-crate Cargo workspace with strict separation:
 | `integration/` | Integration tests |
 | `fixtures/` | Test data files |
 
-## Extension Points
-
-When adding new functionality, implement these traits:
+## Extension Traits
 
 | Feature | Trait | Location |
 |---------|-------|----------|
@@ -78,19 +74,19 @@ When adding new functionality, implement these traits:
 
 ## State Management
 
-- GUI state: `SharedAppState` = `Rc<RefCell<AppState>>` (interior mutability pattern)
-- Persistence: Manager structs (`ConfigManager`, `ConnectionManager`) own data and handle I/O
+- GUI: `SharedAppState` = `Rc<RefCell<AppState>>` (interior mutability)
+- Persistence: Manager structs own data and handle I/O
 
 ## Module Conventions
 
-- Feature directories contain `mod.rs` for module organization
+- Feature directories use `mod.rs` for organization
 - Public types re-exported through `lib.rs`
-- Test modules mirror source structure in `tests/properties/`
+- Test modules mirror source structure
 
-## File Placement Decision Tree
+## File Placement
 
-| Adding... | Location | Required Steps |
-|-----------|----------|----------------|
+| Adding | Location | Steps |
+|--------|----------|-------|
 | Data model | `rustconn-core/src/models/` | Re-export in `models.rs` |
 | Protocol | `rustconn-core/src/protocol/` | Implement `Protocol` trait |
 | Import format | `rustconn-core/src/import/` | Implement `ImportSource` trait |

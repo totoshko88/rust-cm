@@ -33,22 +33,48 @@
   <screenshots>
     <screenshot type="default">
       <caption>Main window with connection sidebar</caption>
-      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/totoshko88/rust-cm/main/rustconn/assets/screenshots/main.png</image>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/totoshko88/RustConn/main/rustconn/assets/screenshots/main.png</image>
     </screenshot>
     <screenshot>
       <caption>Split terminal view</caption>
-      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/totoshko88/rust-cm/main/rustconn/assets/screenshots/split.png</image>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/totoshko88/RustConn/main/rustconn/assets/screenshots/split.png</image>
     </screenshot>
     <screenshot>
       <caption>RDP session</caption>
-      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/totoshko88/rust-cm/main/rustconn/assets/screenshots/rdp.png</image>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/totoshko88/RustConn/main/rustconn/assets/screenshots/rdp.png</image>
     </screenshot>
   </screenshots>
-  <url type="homepage">https://github.com/totoshko88/rust-cm</url>
-  <url type="bugtracker">https://github.com/totoshko88/rust-cm/issues</url>
+  <url type="homepage">https://github.com/totoshko88/RustConn</url>
+  <url type="bugtracker">https://github.com/totoshko88/RustConn/issues</url>
   <url type="donation">https://ko-fi.com/totoshko88</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.0" date="2025-12-27">
+      <description>
+        <p>Version 0.5.0:</p>
+        <ul>
+          <li>RDP clipboard file transfer support (CF_HDROP format)</li>
+          <li>RDPDR directory change notifications and file locking</li>
+          <li>Native SPICE protocol embedding using spice-client crate</li>
+          <li>Real-time connection status indicators in sidebar</li>
+          <li>Custom cursors in RDP sessions</li>
+          <li>Full Expect automation engine integration</li>
+          <li>Terminal context menu and keyboard shortcuts</li>
+          <li>Performance: lock-free audio, optimized search, cached tokio runtime</li>
+          <li>Fixed SSH Agent key discovery for all private key formats</li>
+          <li>Fixed system tray menu intermittent issues</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.4.2" date="2025-12-25">
+      <description>
+        <p>Version 0.4.2:</p>
+        <ul>
+          <li>Fixed Asbru-CM import for installed configuration</li>
+          <li>Fixed application icon resolution</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.1" date="2025-12-25">
       <description>
         <p>Version 0.4.1:</p>

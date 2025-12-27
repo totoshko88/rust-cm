@@ -61,8 +61,8 @@ pub use client::{RdpClient, RdpClientState, RdpCommandSender, RdpEventReceiver};
 pub use config::{RdpClientConfig, RdpSecurityProtocol, SharedFolder};
 pub use error::RdpClientError;
 pub use event::{
-    convert_to_bgra, create_frame_update, create_frame_update_with_conversion, ClipboardFormatInfo,
-    PixelFormat, RdpClientCommand, RdpClientEvent, RdpRect,
+    convert_to_bgra, create_frame_update, create_frame_update_with_conversion, ClipboardFileInfo,
+    ClipboardFormatInfo, PixelFormat, RdpClientCommand, RdpClientEvent, RdpRect,
 };
 
 /// Check if embedded RDP support is available

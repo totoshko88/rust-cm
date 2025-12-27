@@ -300,8 +300,8 @@ impl MainWindow {
         self.setup_terminal_actions(window, &terminal_notebook, &sidebar);
         self.setup_navigation_actions(window, &terminal_notebook, &sidebar);
         self.setup_group_operations_actions(window, &state, &sidebar);
-        self.setup_snippet_actions(window, &state, &terminal_notebook);
-        self.setup_cluster_actions(window, &state, &terminal_notebook);
+        self.setup_snippet_actions(window, &state, &terminal_notebook, &sidebar);
+        self.setup_cluster_actions(window, &state, &terminal_notebook, &sidebar);
         self.setup_template_actions(window, &state, &sidebar);
         self.setup_split_view_actions(window);
         self.setup_document_actions(window, &state, &sidebar);
@@ -701,6 +701,7 @@ impl MainWindow {
         window: &ApplicationWindow,
         state: &SharedAppState,
         terminal_notebook: &SharedNotebook,
+        sidebar: &SharedSidebar,
     ) {
         // New snippet action
         let new_snippet_action = gio::SimpleAction::new("new-snippet", None);
@@ -742,9 +743,15 @@ impl MainWindow {
         let window_weak = window.downgrade();
         let state_clone = state.clone();
         let notebook_clone = terminal_notebook.clone();
+        let sidebar_clone = sidebar.clone();
         show_sessions_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_sessions_manager(&win, state_clone.clone(), notebook_clone.clone());
+                Self::show_sessions_manager(
+                    &win,
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&show_sessions_action);
@@ -756,6 +763,7 @@ impl MainWindow {
         window: &ApplicationWindow,
         state: &SharedAppState,
         terminal_notebook: &SharedNotebook,
+        sidebar: &SharedSidebar,
     ) {
         // New cluster action
         let new_cluster_action = gio::SimpleAction::new("new-cluster", None);
@@ -774,9 +782,15 @@ impl MainWindow {
         let window_weak = window.downgrade();
         let state_clone = state.clone();
         let notebook_clone = terminal_notebook.clone();
+        let sidebar_clone = sidebar.clone();
         manage_clusters_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_clusters_manager(&win, state_clone.clone(), notebook_clone.clone());
+                Self::show_clusters_manager(
+                    &win,
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&manage_clusters_action);
@@ -1354,14 +1368,33 @@ impl MainWindow {
         // Connect close-tab action with split_view cleanup
         let notebook_for_close = terminal_notebook;
         let split_view_for_close = split_view;
+        let sidebar_for_close = sidebar.clone();
         if let Some(action) = window.lookup_action("close-tab") {
             if let Some(simple_action) = action.downcast_ref::<gio::SimpleAction>() {
                 simple_action.connect_activate(move |_, _| {
                     if let Some(session_id) = notebook_for_close.get_active_session_id() {
+                        // Get connection ID to update sidebar
+                        if let Some(info) = notebook_for_close.get_session_info(session_id) {
+                            // Decrement session count - status changes only if no other sessions
+                            sidebar_for_close
+                                .decrement_session_count(&info.connection_id.to_string(), false);
+                        }
+
                         // First clear from split view panes
                         split_view_for_close.clear_session_from_panes(session_id);
                         // Then close the tab
                         notebook_for_close.close_tab(session_id);
+
+                        // After closing, if there's an active session, ensure it's shown in split view
+                        if let Some(new_session_id) = notebook_for_close.get_active_session_id() {
+                            if let Some(info) = notebook_for_close.get_session_info(new_session_id)
+                            {
+                                if info.protocol == "ssh" || info.protocol.starts_with("zerotrust")
+                                {
+                                    let _ = split_view_for_close.show_session(new_session_id);
+                                }
+                            }
+                        }
                     }
                 });
             }
@@ -1422,11 +1455,16 @@ impl MainWindow {
         // Add ungrouped connections
         for conn in state.get_ungrouped_connections() {
             let protocol = get_protocol_string(&conn.protocol_config);
-            let item = ConnectionItem::new_connection(
+            let status = self
+                .sidebar
+                .get_connection_status(&conn.id.to_string())
+                .unwrap_or_else(|| "disconnected".to_string());
+            let item = ConnectionItem::new_connection_with_status(
                 &conn.id.to_string(),
                 &conn.name,
                 &protocol,
                 &conn.host,
+                &status,
             );
             store.append(&item);
         }
@@ -1456,11 +1494,16 @@ impl MainWindow {
         // Add connections in this group
         for conn in state.get_connections_by_group(group_id) {
             let protocol = get_protocol_string(&conn.protocol_config);
-            let item = ConnectionItem::new_connection(
+            let status = self
+                .sidebar
+                .get_connection_status(&conn.id.to_string())
+                .unwrap_or_else(|| "disconnected".to_string());
+            let item = ConnectionItem::new_connection_with_status(
                 &conn.id.to_string(),
                 &conn.name,
                 &protocol,
                 &conn.host,
+                &status,
             );
             parent_item.add_child(&item);
         }
@@ -1553,7 +1596,7 @@ impl MainWindow {
 
         let id_str = conn_item.id();
         if let Ok(conn_id) = Uuid::parse_str(&id_str) {
-            Self::start_connection(state, notebook, conn_id);
+            Self::start_connection(state, notebook, sidebar, conn_id);
         }
     }
 
@@ -1580,6 +1623,7 @@ impl MainWindow {
                                 state.clone(),
                                 notebook.clone(),
                                 split_view.clone(),
+                                sidebar.clone(),
                                 conn_id,
                             );
                         }
@@ -1600,6 +1644,7 @@ impl MainWindow {
         state: SharedAppState,
         notebook: SharedNotebook,
         split_view: SharedSplitView,
+        sidebar: SharedSidebar,
         connection_id: Uuid,
     ) {
         // Get connection info and determine credential handling
@@ -1655,6 +1700,7 @@ impl MainWindow {
                         &state,
                         &notebook,
                         &split_view,
+                        &sidebar,
                         connection_id,
                         username,
                         password,
@@ -1670,6 +1716,7 @@ impl MainWindow {
                     &state,
                     &notebook,
                     &split_view,
+                    &sidebar,
                     connection_id,
                     &username,
                     &password,
@@ -1697,6 +1744,7 @@ impl MainWindow {
                             &state,
                             &notebook,
                             &split_view,
+                            &sidebar,
                             connection_id,
                             username,
                             password,
@@ -1714,6 +1762,7 @@ impl MainWindow {
                         state,
                         notebook,
                         split_view,
+                        sidebar,
                         connection_id,
                         app_window,
                     );
@@ -1745,6 +1794,7 @@ impl MainWindow {
                         &state,
                         &notebook,
                         &split_view,
+                        &sidebar,
                         connection_id,
                     );
                     return;
@@ -1753,7 +1803,13 @@ impl MainWindow {
 
             // Use cached credentials if available
             if cached_credentials.is_some() {
-                Self::start_connection_with_split(&state, &notebook, &split_view, connection_id);
+                Self::start_connection_with_split(
+                    &state,
+                    &notebook,
+                    &split_view,
+                    &sidebar,
+                    connection_id,
+                );
                 return;
             }
 
@@ -1778,6 +1834,7 @@ impl MainWindow {
                             &state,
                             &notebook,
                             &split_view,
+                            &sidebar,
                             connection_id,
                         );
                         return;
@@ -1792,6 +1849,7 @@ impl MainWindow {
                         state,
                         notebook,
                         split_view,
+                        sidebar,
                         connection_id,
                         app_window,
                     );
@@ -1812,7 +1870,7 @@ impl MainWindow {
         }
 
         // Start SSH connection
-        Self::start_connection_with_split(&state, &notebook, &split_view, connection_id);
+        Self::start_connection_with_split(&state, &notebook, &split_view, &sidebar, connection_id);
     }
 
     /// Starts an RDP connection with password dialog
@@ -1820,6 +1878,7 @@ impl MainWindow {
         state: SharedAppState,
         notebook: SharedNotebook,
         split_view: SharedSplitView,
+        sidebar: SharedSidebar,
         connection_id: Uuid,
         window: &ApplicationWindow,
     ) {
@@ -1840,6 +1899,7 @@ impl MainWindow {
                         &state,
                         &notebook,
                         &split_view,
+                        &sidebar,
                         connection_id,
                         username,
                         password,
@@ -1869,6 +1929,7 @@ impl MainWindow {
                 &state,
                 &notebook,
                 &split_view,
+                &sidebar,
                 connection_id,
                 &username,
                 &password,
@@ -1897,6 +1958,7 @@ impl MainWindow {
         dialog.set_username(&username);
         dialog.set_domain(&domain);
 
+        let sidebar_clone = sidebar.clone();
         dialog.show(move |result| {
             if let Some(creds) = result {
                 // Cache credentials if requested
@@ -1916,6 +1978,7 @@ impl MainWindow {
                     &state,
                     &notebook,
                     &split_view,
+                    &sidebar_clone,
                     connection_id,
                     &creds.username,
                     &creds.password,
@@ -1932,10 +1995,12 @@ impl MainWindow {
     /// Respects the `client_mode` setting in `RdpConfig`:
     /// - `Embedded`: Uses native RDP embedding with dynamic resolution (default)
     /// - `External`: Uses external xfreerdp window
+    #[allow(clippy::too_many_arguments)]
     fn start_rdp_session_with_credentials(
         state: &SharedAppState,
         notebook: &SharedNotebook,
         split_view: &SharedSplitView,
+        sidebar: &SharedSidebar,
         connection_id: Uuid,
         username: &str,
         password: &str,
@@ -2033,6 +2098,9 @@ impl MainWindow {
                 // Connect using embedded widget (will fallback to external window if needed)
                 if let Err(e) = embedded_widget.connect(&embedded_config) {
                     eprintln!("RDP connection failed for '{}': {}", conn_name, e);
+                    sidebar.update_connection_status(&connection_id.to_string(), "failed");
+                } else {
+                    sidebar.update_connection_status(&connection_id.to_string(), "connecting");
                 }
 
                 // Add embedded widget to notebook - shows connection status
@@ -2042,12 +2110,20 @@ impl MainWindow {
 
                 // Connect state change callback to mark tab as disconnected when session ends
                 let notebook_for_state = notebook.clone();
+                let sidebar_for_state = sidebar.clone();
                 embedded_widget.connect_state_changed(move |state| match state {
                     crate::embedded_rdp::RdpConnectionState::Disconnected => {
                         notebook_for_state.mark_tab_disconnected(session_id);
+                        // Decrement session count - status changes only if no other sessions active
+                        sidebar_for_state.decrement_session_count(
+                            &connection_id.to_string(),
+                            // If tab is still open, it's an unexpected disconnection (failure)
+                            notebook_for_state.get_session_info(session_id).is_some(),
+                        );
                     }
                     crate::embedded_rdp::RdpConnectionState::Connected => {
                         notebook_for_state.mark_tab_connected(session_id);
+                        sidebar_for_state.increment_session_count(&connection_id.to_string());
                     }
                     _ => {}
                 });
@@ -2131,6 +2207,10 @@ impl MainWindow {
                 &shared_folders,
             ) {
                 eprintln!("Failed to start RDP session '{}': {}", conn_name, e);
+                sidebar.update_connection_status(&connection_id.to_string(), "failed");
+            } else {
+                // External RDP window started - increment session count
+                sidebar.increment_session_count(&connection_id.to_string());
             }
 
             // Add tab widget to notebook
@@ -2156,6 +2236,7 @@ impl MainWindow {
         state: SharedAppState,
         notebook: SharedNotebook,
         split_view: SharedSplitView,
+        sidebar: SharedSidebar,
         connection_id: Uuid,
         window: &ApplicationWindow,
     ) {
@@ -2179,6 +2260,7 @@ impl MainWindow {
                         &state,
                         &notebook,
                         &split_view,
+                        &sidebar,
                         connection_id,
                     );
                     return;
@@ -2237,6 +2319,7 @@ impl MainWindow {
             }
         }
 
+        let sidebar_clone = sidebar.clone();
         dialog.show(move |result| {
             if let Some(creds) = result {
                 // Cache credentials if requested (VNC only uses password)
@@ -2252,6 +2335,7 @@ impl MainWindow {
                     &state,
                     &notebook,
                     &split_view,
+                    &sidebar_clone,
                     connection_id,
                     &creds.password,
                 );
@@ -2264,6 +2348,7 @@ impl MainWindow {
         state: &SharedAppState,
         notebook: &SharedNotebook,
         split_view: &SharedSplitView,
+        sidebar: &SharedSidebar,
         connection_id: Uuid,
         password: &str,
     ) {
@@ -2291,9 +2376,15 @@ impl MainWindow {
             if let Some(vnc_widget) = notebook.get_vnc_widget(session_id) {
                 // Connect state change callback to mark tab as disconnected when session ends
                 let notebook_for_state = notebook.clone();
+                let sidebar_for_state = sidebar.clone();
                 vnc_widget.connect_state_changed(move |vnc_state| {
                     if vnc_state == crate::session::SessionState::Disconnected {
                         notebook_for_state.mark_tab_disconnected(session_id);
+                        sidebar_for_state
+                            .decrement_session_count(&connection_id.to_string(), false);
+                    } else if vnc_state == crate::session::SessionState::Connected {
+                        notebook_for_state.mark_tab_connected(session_id);
+                        sidebar_for_state.increment_session_count(&connection_id.to_string());
                     }
                 });
 
@@ -2310,6 +2401,9 @@ impl MainWindow {
                     vnc_widget.connect_with_config(&host, port, Some(password), &vnc_config)
                 {
                     eprintln!("Failed to connect VNC session '{}': {}", conn_name, e);
+                    sidebar.update_connection_status(&connection_id.to_string(), "failed");
+                } else {
+                    sidebar.update_connection_status(&connection_id.to_string(), "connecting");
                 }
             }
 
@@ -2331,9 +2425,13 @@ impl MainWindow {
         state: &SharedAppState,
         notebook: &SharedNotebook,
         split_view: &SharedSplitView,
+        sidebar: &SharedSidebar,
         connection_id: Uuid,
     ) -> Option<Uuid> {
-        let session_id = Self::start_connection(state, notebook, connection_id)?;
+        // Update status to connecting
+        sidebar.update_connection_status(&connection_id.to_string(), "connecting");
+
+        let session_id = Self::start_connection(state, notebook, sidebar, connection_id)?;
 
         // Get session info to check protocol
         if let Some(info) = notebook.get_session_info(session_id) {
@@ -2358,6 +2456,41 @@ impl MainWindow {
             split_view.widget().set_vexpand(true);
             notebook.widget().set_vexpand(false);
             notebook.notebook().set_vexpand(false);
+
+            // For SSH and Zero Trust, we assume connected for now
+            if info.protocol == "ssh" || info.protocol.starts_with("zerotrust") {
+                // Set status to connecting initially (only if not already connected)
+                if sidebar
+                    .get_connection_status(&connection_id.to_string())
+                    .is_none()
+                {
+                    sidebar.update_connection_status(&connection_id.to_string(), "connecting");
+                }
+
+                // Monitor terminal content changes to detect successful connection
+                // If content changes (e.g. prompt appears), mark as connected
+                let sidebar_clone = sidebar.clone();
+                let notebook_clone = notebook.clone();
+                let connection_id_str = connection_id.to_string();
+
+                // Track whether this specific session has been marked as connected
+                let session_connected = std::rc::Rc::new(std::cell::Cell::new(false));
+                let session_connected_clone = session_connected.clone();
+
+                notebook.connect_contents_changed(session_id, move || {
+                    // Only increment once per session
+                    if !session_connected_clone.get() {
+                        // Check if content indicates actual output from the process
+                        // The initial header is 2 lines. If we have more, it means the process produced output.
+                        if let Some(row) = notebook_clone.get_terminal_cursor_row(session_id) {
+                            if row > 2 {
+                                sidebar_clone.increment_session_count(&connection_id_str);
+                                session_connected_clone.set(true);
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         Some(session_id)
@@ -2368,6 +2501,7 @@ impl MainWindow {
     fn start_connection(
         state: &SharedAppState,
         notebook: &SharedNotebook,
+        sidebar: &SharedSidebar,
         connection_id: Uuid,
     ) -> Option<Uuid> {
         let state_ref = state.borrow();
@@ -2383,7 +2517,12 @@ impl MainWindow {
                 use rustconn_core::protocol::{format_command_message, format_connection_message};
 
                 // Create terminal tab for SSH
-                let session_id = notebook.create_terminal_tab(connection_id, &conn.name, &protocol);
+                let session_id = notebook.create_terminal_tab(
+                    connection_id,
+                    &conn.name,
+                    &protocol,
+                    Some(&conn.automation),
+                );
 
                 // Build and spawn SSH command
                 let port = conn.port;
@@ -2438,7 +2577,13 @@ impl MainWindow {
                 }
 
                 // Wire up child exited callback for session cleanup
-                Self::setup_child_exited_handler(state, notebook, session_id);
+                Self::setup_child_exited_handler(
+                    state,
+                    notebook,
+                    sidebar,
+                    session_id,
+                    connection_id,
+                );
 
                 // Build SSH command string for display
                 let mut ssh_cmd_parts = vec!["ssh".to_string()];
@@ -2476,6 +2621,16 @@ impl MainWindow {
                     identity_file.as_deref(),
                     &extra_refs,
                 );
+
+                // Wire up child exited callback for session cleanup
+                Self::setup_child_exited_handler(
+                    state,
+                    notebook,
+                    sidebar,
+                    session_id,
+                    connection_id,
+                );
+
                 return Some(session_id);
             }
 
@@ -2515,9 +2670,15 @@ impl MainWindow {
                 if let Some(vnc_widget) = notebook.get_vnc_widget(session_id) {
                     // Connect state change callback to mark tab as disconnected when session ends
                     let notebook_for_state = notebook.clone();
+                    let sidebar_for_state = sidebar.clone();
                     vnc_widget.connect_state_changed(move |vnc_state| {
                         if vnc_state == crate::session::SessionState::Disconnected {
                             notebook_for_state.mark_tab_disconnected(session_id);
+                            sidebar_for_state
+                                .decrement_session_count(&connection_id.to_string(), false);
+                        } else if vnc_state == crate::session::SessionState::Connected {
+                            notebook_for_state.mark_tab_connected(session_id);
+                            sidebar_for_state.increment_session_count(&connection_id.to_string());
                         }
                     });
 
@@ -2537,6 +2698,9 @@ impl MainWindow {
                         &vnc_config,
                     ) {
                         eprintln!("Failed to connect VNC session '{}': {}", conn_name, e);
+                        sidebar.update_connection_status(&connection_id.to_string(), "failed");
+                    } else {
+                        sidebar.update_connection_status(&connection_id.to_string(), "connecting");
                     }
                 }
 
@@ -2604,12 +2768,20 @@ impl MainWindow {
 
                     // Connect state change callback to mark tab as disconnected
                     let notebook_for_state = notebook.clone();
+                    let sidebar_for_state = sidebar.clone();
                     spice_widget.connect_state_changed(move |spice_state| {
                         use crate::embedded_spice::SpiceConnectionState;
                         if spice_state == SpiceConnectionState::Disconnected
                             || spice_state == SpiceConnectionState::Error
                         {
                             notebook_for_state.mark_tab_disconnected(session_id);
+                            sidebar_for_state.decrement_session_count(
+                                &connection_id.to_string(),
+                                spice_state == SpiceConnectionState::Error,
+                            );
+                        } else if spice_state == SpiceConnectionState::Connected {
+                            notebook_for_state.mark_tab_connected(session_id);
+                            sidebar_for_state.increment_session_count(&connection_id.to_string());
                         }
                     });
 
@@ -2669,12 +2841,17 @@ impl MainWindow {
                         return None;
                     };
 
+                let automation_config = conn.automation.clone();
                 drop(state_ref);
 
                 // Create terminal tab for Zero Trust with provider-specific protocol
                 let tab_protocol = format!("zerotrust:{provider_key}");
-                let session_id =
-                    notebook.create_terminal_tab(connection_id, &conn_name, &tab_protocol);
+                let session_id = notebook.create_terminal_tab(
+                    connection_id,
+                    &conn_name,
+                    &tab_protocol,
+                    Some(&automation_config),
+                );
 
                 // Update last_connected timestamp
                 if let Ok(mut state_mut) = state.try_borrow_mut() {
@@ -2693,7 +2870,13 @@ impl MainWindow {
                 }
 
                 // Wire up child exited callback for session cleanup
-                Self::setup_child_exited_handler(state, notebook, session_id);
+                Self::setup_child_exited_handler(
+                    state,
+                    notebook,
+                    sidebar,
+                    session_id,
+                    connection_id,
+                );
 
                 // Build the full command string for display
                 let full_command = std::iter::once(program.as_str())
@@ -2813,9 +2996,14 @@ impl MainWindow {
     fn setup_child_exited_handler(
         state: &SharedAppState,
         notebook: &SharedNotebook,
+        sidebar: &SharedSidebar,
         session_id: Uuid,
+        connection_id: Uuid,
     ) {
         let state_clone = state.clone();
+        let sidebar_clone = sidebar.clone();
+        let notebook_clone = notebook.clone();
+        let connection_id_str = connection_id.to_string();
 
         notebook.connect_child_exited(session_id, move |exit_status| {
             // Update session status in state manager
@@ -2824,10 +3012,39 @@ impl MainWindow {
                 let _ = state_mut.terminate_session(session_id);
             }
 
-            // Log the exit status for debugging
-            if exit_status != 0 {
-                eprintln!("Session {session_id} exited with status: {exit_status}");
+            // Check if session still exists in notebook
+            // If it doesn't, the tab was closed by user
+            if notebook_clone.get_session_info(session_id).is_none() {
+                // Decrement session count - status changes only if no other sessions active
+                sidebar_clone.decrement_session_count(&connection_id_str, false);
+                return;
             }
+
+            // Parse waitpid status to determine if exit was a failure or intentional kill
+            // WIFSIGNALED: (status & 0x7f) != 0
+            // WTERMSIG: status & 0x7f
+            // WIFEXITED: (status & 0x7f) == 0
+            // WEXITSTATUS: (status >> 8) & 0xff
+
+            let term_sig = exit_status & 0x7f;
+            let is_signaled = term_sig != 0;
+            let exit_code = (exit_status >> 8) & 0xff;
+
+            // Consider it a failure if:
+            // 1. Killed by a signal that isn't a standard termination signal (HUP, INT, KILL, TERM)
+            // 2. Exited normally with non-zero code, UNLESS that code indicates a standard signal kill (128+N)
+            let is_failure = if is_signaled {
+                !matches!(term_sig, 1 | 2 | 9 | 15)
+            } else {
+                exit_code != 0 && !matches!(exit_code, 129 | 130 | 137 | 143)
+            };
+
+            if is_failure {
+                eprintln!("Session {session_id} exited with status: {exit_status} (Signal: {term_sig}, Code: {exit_code})");
+            }
+
+            // Decrement session count - status changes only if no other sessions active
+            sidebar_clone.decrement_session_count(&connection_id_str, is_failure);
         });
     }
 
@@ -4565,18 +4782,22 @@ impl MainWindow {
         // Add root groups with their children
         for group in state_ref.get_root_groups() {
             let group_item = ConnectionItem::new_group(&group.id.to_string(), &group.name);
-            Self::add_group_children_static(&state_ref, &group_item, group.id);
+            Self::add_group_children_static(&state_ref, sidebar, &group_item, group.id);
             store.append(&group_item);
         }
 
         // Add ungrouped connections
         for conn in state_ref.get_ungrouped_connections() {
             let protocol = get_protocol_string(&conn.protocol_config);
-            let item = ConnectionItem::new_connection(
+            let status = sidebar
+                .get_connection_status(&conn.id.to_string())
+                .unwrap_or_else(|| "disconnected".to_string());
+            let item = ConnectionItem::new_connection_with_status(
                 &conn.id.to_string(),
                 &conn.name,
                 &protocol,
                 &conn.host,
+                &status,
             );
             store.append(&item);
         }
@@ -4585,6 +4806,7 @@ impl MainWindow {
     /// Recursively adds group children (static version for reload)
     fn add_group_children_static(
         state: &std::cell::Ref<crate::state::AppState>,
+        sidebar: &SharedSidebar,
         parent_item: &ConnectionItem,
         group_id: Uuid,
     ) {
@@ -4592,18 +4814,22 @@ impl MainWindow {
         for child_group in state.get_child_groups(group_id) {
             let child_item =
                 ConnectionItem::new_group(&child_group.id.to_string(), &child_group.name);
-            Self::add_group_children_static(state, &child_item, child_group.id);
+            Self::add_group_children_static(state, sidebar, &child_item, child_group.id);
             parent_item.add_child(&child_item);
         }
 
         // Add connections in this group
         for conn in state.get_connections_by_group(group_id) {
             let protocol = get_protocol_string(&conn.protocol_config);
-            let item = ConnectionItem::new_connection(
+            let status = sidebar
+                .get_connection_status(&conn.id.to_string())
+                .unwrap_or_else(|| "disconnected".to_string());
+            let item = ConnectionItem::new_connection_with_status(
                 &conn.id.to_string(),
                 &conn.name,
                 &protocol,
                 &conn.host,
+                &status,
             );
             parent_item.add_child(&item);
         }
@@ -4696,7 +4922,7 @@ impl MainWindow {
 
     /// Opens a local shell terminal with split view integration
     fn open_local_shell_with_split(notebook: &SharedNotebook, split_view: &SharedSplitView) {
-        let session_id = notebook.create_terminal_tab(Uuid::nil(), "Local Shell", "local");
+        let session_id = notebook.create_terminal_tab(Uuid::nil(), "Local Shell", "local", None);
 
         // Get user's default shell
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
@@ -4870,15 +5096,23 @@ impl MainWindow {
             match protocol_idx {
                 0 => {
                     // SSH - use terminal tab
-                    let session_id =
-                        notebook.create_terminal_tab(Uuid::nil(), &format!("Quick: {host}"), "ssh");
+                    let session_id = notebook.create_terminal_tab(
+                        Uuid::nil(),
+                        &format!("Quick: {host}"),
+                        "ssh",
+                        None,
+                    );
 
                     notebook.spawn_ssh(session_id, &host, port, username.as_deref(), None, &[]);
                 }
                 1 => {
                     // RDP - native embedding not yet implemented, show placeholder
-                    let _session_id =
-                        notebook.create_terminal_tab(Uuid::nil(), &format!("Quick: {host}"), "rdp");
+                    let _session_id = notebook.create_terminal_tab(
+                        Uuid::nil(),
+                        &format!("Quick: {host}"),
+                        "rdp",
+                        None,
+                    );
 
                     eprintln!(
                         "Note: Native RDP embedding not yet implemented. \
@@ -4887,8 +5121,12 @@ impl MainWindow {
                 }
                 2 => {
                     // VNC - native embedding not yet implemented, show placeholder
-                    let _session_id =
-                        notebook.create_terminal_tab(Uuid::nil(), &format!("Quick: {host}"), "vnc");
+                    let _session_id = notebook.create_terminal_tab(
+                        Uuid::nil(),
+                        &format!("Quick: {host}"),
+                        "vnc",
+                        None,
+                    );
 
                     eprintln!(
                         "Note: Native VNC embedding not yet implemented. \
@@ -4897,8 +5135,12 @@ impl MainWindow {
                 }
                 _ => {
                     // Default to SSH
-                    let session_id =
-                        notebook.create_terminal_tab(Uuid::nil(), &format!("Quick: {host}"), "ssh");
+                    let session_id = notebook.create_terminal_tab(
+                        Uuid::nil(),
+                        &format!("Quick: {host}"),
+                        "ssh",
+                        None,
+                    );
 
                     notebook.spawn_ssh(session_id, &host, port, username.as_deref(), None, &[]);
                 }
@@ -5711,6 +5953,7 @@ impl MainWindow {
         window: &ApplicationWindow,
         state: SharedAppState,
         notebook: SharedNotebook,
+        sidebar: SharedSidebar,
     ) {
         let manager_window = gtk4::Window::builder()
             .title("Active Sessions")
@@ -5849,6 +6092,7 @@ impl MainWindow {
         let list_clone = sessions_list;
         let count_clone = count_label;
         let manager_clone = manager_window.clone();
+        let sidebar_clone = sidebar;
         terminate_btn.connect_clicked(move |_| {
             if let Some(row) = list_clone.selected_row() {
                 if let Some(id_str) = row.widget_name().as_str().strip_prefix("session-") {
@@ -5866,6 +6110,7 @@ impl MainWindow {
                         let notebook_inner = notebook_clone.clone();
                         let list_inner = list_clone.clone();
                         let count_inner = count_clone.clone();
+                        let sidebar_inner = sidebar_clone.clone();
                         alert.choose(
                             Some(&manager_clone),
                             gio::Cancellable::NONE,
@@ -5875,6 +6120,15 @@ impl MainWindow {
                                     if let Ok(mut state_mut) = state_inner.try_borrow_mut() {
                                         let _ = state_mut.terminate_session(id);
                                     }
+
+                                    // Decrement session count - status changes only if no other sessions
+                                    if let Some(info) = notebook_inner.get_session_info(id) {
+                                        sidebar_inner.decrement_session_count(
+                                            &info.connection_id.to_string(),
+                                            false,
+                                        );
+                                    }
+
                                     // Close the tab
                                     notebook_inner.close_tab(id);
                                     // Refresh the list
@@ -6688,6 +6942,7 @@ impl MainWindow {
         window: &ApplicationWindow,
         state: SharedAppState,
         notebook: SharedNotebook,
+        sidebar: SharedSidebar,
     ) {
         let dialog = ClusterListDialog::new(Some(&window.clone().upcast()));
 
@@ -6727,8 +6982,15 @@ impl MainWindow {
         let state_clone = state.clone();
         let notebook_clone = notebook.clone();
         let window_clone = window.clone();
+        let sidebar_clone = sidebar.clone();
         dialog_ref.set_on_connect(move |cluster_id| {
-            Self::connect_cluster(&state_clone, &notebook_clone, &window_clone, cluster_id);
+            Self::connect_cluster(
+                &state_clone,
+                &notebook_clone,
+                &window_clone,
+                &sidebar_clone,
+                cluster_id,
+            );
         });
 
         let state_clone = state.clone();
@@ -6831,6 +7093,7 @@ impl MainWindow {
         state: &SharedAppState,
         notebook: &SharedNotebook,
         _window: &ApplicationWindow,
+        sidebar: &SharedSidebar,
         cluster_id: Uuid,
     ) {
         let state_ref = state.borrow();
@@ -6843,7 +7106,7 @@ impl MainWindow {
 
         // Connect to each connection in the cluster using existing start_connection
         for conn_id in connection_ids {
-            Self::start_connection(state, notebook, conn_id);
+            Self::start_connection(state, notebook, sidebar, conn_id);
         }
     }
 

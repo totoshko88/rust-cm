@@ -3042,10 +3042,29 @@ impl EmbeddedRdpWidget {
                         RdpClientEvent::CursorPosition { .. } => {
                             // Server-side cursor position update - we handle this client-side
                         }
-                        RdpClientEvent::CursorUpdate { .. } => {
-                            // Custom cursor bitmap - for now just use default
-                            // TODO: Create custom cursor from bitmap data
-                            drawing_area.set_cursor_from_name(Some("default"));
+                        RdpClientEvent::CursorUpdate {
+                            hotspot_x,
+                            hotspot_y,
+                            width,
+                            height,
+                            data,
+                        } => {
+                            // Create custom cursor from bitmap data
+                            let bytes = glib::Bytes::from(&data);
+                            let texture = gdk::MemoryTexture::new(
+                                i32::from(width),
+                                i32::from(height),
+                                gdk::MemoryFormat::B8g8r8a8,
+                                &bytes,
+                                usize::from(width) * 4,
+                            );
+                            let cursor = gdk::Cursor::from_texture(
+                                &texture,
+                                i32::from(hotspot_x),
+                                i32::from(hotspot_y),
+                                None,
+                            );
+                            drawing_area.set_cursor(Some(&cursor));
                         }
                         RdpClientEvent::ServerMessage(msg) => {
                             tracing::debug!("[IronRDP] Server message: {}", msg);
@@ -3115,6 +3134,42 @@ impl EmbeddedRdpWidget {
                                 let _ = sender
                                     .send(RdpClientCommand::ClipboardData { format_id, data });
                             }
+                        }
+                        RdpClientEvent::ClipboardFileList(files) => {
+                            // File list available on server clipboard
+                            tracing::info!("[Clipboard] File list received: {} files", files.len());
+                            for file in &files {
+                                tracing::debug!(
+                                    "  - {} ({} bytes, dir={})",
+                                    file.name,
+                                    file.size,
+                                    file.is_directory()
+                                );
+                            }
+                            // TODO: Store file list for UI display and download
+                        }
+                        RdpClientEvent::ClipboardFileContents {
+                            stream_id,
+                            data,
+                            is_last,
+                        } => {
+                            // File contents received from server
+                            tracing::debug!(
+                                "[Clipboard] File contents: stream_id={}, {} bytes, last={}",
+                                stream_id,
+                                data.len(),
+                                is_last
+                            );
+                            // TODO: Write data to local file
+                        }
+                        RdpClientEvent::ClipboardFileSize { stream_id, size } => {
+                            // File size information received
+                            tracing::debug!(
+                                "[Clipboard] File size: stream_id={}, size={}",
+                                stream_id,
+                                size
+                            );
+                            // TODO: Use for progress indication
                         }
                     }
                 }

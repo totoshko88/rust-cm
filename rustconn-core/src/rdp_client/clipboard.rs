@@ -16,11 +16,11 @@
 //! - `CF_DIB` (8): Device-independent bitmap (future)
 //! - `CF_HDROP` (15): File list (future)
 
-use super::{ClipboardFormatInfo, RdpClientEvent};
+use super::{ClipboardFileInfo, ClipboardFormatInfo, RdpClientEvent};
 use ironrdp::cliprdr::backend::{ClipboardMessage, ClipboardMessageProxy, CliprdrBackend};
 use ironrdp::cliprdr::pdu::{
-    ClipboardFormat, ClipboardFormatId, ClipboardGeneralCapabilityFlags, FileContentsRequest,
-    FileContentsResponse, FormatDataRequest, FormatDataResponse, LockDataId,
+    ClipboardFormat, ClipboardFormatId, ClipboardGeneralCapabilityFlags, FileContentsFlags,
+    FileContentsRequest, FileContentsResponse, FormatDataRequest, FormatDataResponse, LockDataId,
 };
 use ironrdp::core::impl_as_any;
 use std::collections::HashMap;
@@ -282,6 +282,18 @@ impl CliprdrBackend for RustConnClipboardBackend {
             format_id
         );
 
+        // Check for file list format (CF_HDROP = 15 or FileGroupDescriptorW)
+        if format_id == Some(ClipboardFormatId::CF_HDROP) {
+            if let Some(files) = parse_file_group_descriptor(data) {
+                debug!("Parsed {} files from clipboard", files.len());
+                let _ = self
+                    .proxy
+                    .event_tx
+                    .send(RdpClientEvent::ClipboardFileList(files));
+                return;
+            }
+        }
+
         match format_id {
             Some(ClipboardFormatId::CF_UNICODETEXT) | None => {
                 if let Ok(text) = string_from_utf16(data) {
@@ -331,11 +343,64 @@ impl CliprdrBackend for RustConnClipboardBackend {
     }
 
     fn on_file_contents_request(&mut self, request: FileContentsRequest) {
-        debug!(?request, "File contents request (not implemented)");
+        debug!(
+            ?request,
+            "File contents request: stream_id={}, index={}, flags={:?}",
+            request.stream_id,
+            request.index,
+            request.flags
+        );
+
+        // Notify GUI about the file contents request
+        // The GUI should respond with the file data via ClipboardData command
+        let is_size_request = request.flags.contains(FileContentsFlags::SIZE);
+
+        let _ = self
+            .proxy
+            .event_tx
+            .send(RdpClientEvent::ServerMessage(format!(
+                "Server requested file contents: index={}, {}",
+                request.index,
+                if is_size_request { "size" } else { "data" }
+            )));
     }
 
     fn on_file_contents_response(&mut self, response: FileContentsResponse<'_>) {
-        debug!(?response, "File contents response (not implemented)");
+        let stream_id = response.stream_id();
+        let data = response.data();
+
+        debug!(
+            "File contents response: stream_id={}, data_len={}",
+            stream_id,
+            data.len()
+        );
+
+        // Check if this is a size response (8 bytes = u64 file size)
+        if data.len() == 8 {
+            let size = u64::from_le_bytes([
+                data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+            ]);
+            debug!("File size response: stream_id={}, size={}", stream_id, size);
+            let _ = self
+                .proxy
+                .event_tx
+                .send(RdpClientEvent::ClipboardFileSize { stream_id, size });
+        } else {
+            // This is file data
+            debug!(
+                "File data response: stream_id={}, bytes={}",
+                stream_id,
+                data.len()
+            );
+            let _ = self
+                .proxy
+                .event_tx
+                .send(RdpClientEvent::ClipboardFileContents {
+                    stream_id,
+                    data: data.to_vec(),
+                    is_last: true, // For now, assume single chunk
+                });
+        }
     }
 
     fn on_lock(&mut self, data_id: LockDataId) {
@@ -364,6 +429,118 @@ pub fn string_to_utf16(text: &str) -> Vec<u8> {
     let mut result: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
     result.extend_from_slice(&[0, 0]);
     result
+}
+
+/// Parses a `FileGroupDescriptorW` structure from clipboard data
+///
+/// The structure format (MS-RDPECLIP 2.2.5.2.3.1):
+/// - `cItems` (4 bytes): Number of `FILEDESCRIPTORW` entries
+/// - `FILEDESCRIPTORW[]`: Array of file descriptors
+///
+/// Each `FILEDESCRIPTORW` (MS-RDPECLIP 2.2.5.2.3.1.1):
+/// - `dwFlags` (4 bytes): Valid fields flags
+/// - `clsid` (16 bytes): Reserved
+/// - `sizelLow/High` (8 bytes): Reserved
+/// - `pointl` (8 bytes): Reserved
+/// - `dwFileAttributes` (4 bytes): File attributes
+/// - `ftCreationTime` (8 bytes): Creation time
+/// - `ftLastAccessTime` (8 bytes): Last access time
+/// - `ftLastWriteTime` (8 bytes): Last write time
+/// - `nFileSizeHigh` (4 bytes): High 32 bits of file size
+/// - `nFileSizeLow` (4 bytes): Low 32 bits of file size
+/// - `cFileName` (520 bytes): Null-terminated UTF-16LE filename (260 chars)
+fn parse_file_group_descriptor(data: &[u8]) -> Option<Vec<ClipboardFileInfo>> {
+    /// Size of each `FILEDESCRIPTORW` structure in bytes
+    const FILEDESCRIPTOR_SIZE: usize = 592;
+
+    // Minimum size: 4 bytes for count
+    if data.len() < 4 {
+        return None;
+    }
+
+    let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    let expected_size = 4 + count * FILEDESCRIPTOR_SIZE;
+
+    if data.len() < expected_size {
+        tracing::warn!(
+            "FileGroupDescriptorW too small: expected {}, got {}",
+            expected_size,
+            data.len()
+        );
+        return None;
+    }
+
+    let mut files = Vec::with_capacity(count);
+    let mut offset = 4;
+
+    for index in 0..count {
+        if offset + FILEDESCRIPTOR_SIZE > data.len() {
+            break;
+        }
+
+        let descriptor = &data[offset..offset + FILEDESCRIPTOR_SIZE];
+
+        // dwFlags at offset 0
+        let _flags =
+            u32::from_le_bytes([descriptor[0], descriptor[1], descriptor[2], descriptor[3]]);
+
+        // dwFileAttributes at offset 36
+        let attributes = u32::from_le_bytes([
+            descriptor[36],
+            descriptor[37],
+            descriptor[38],
+            descriptor[39],
+        ]);
+
+        // ftLastWriteTime at offset 60 (FILETIME = 8 bytes)
+        let last_write_time = i64::from_le_bytes([
+            descriptor[60],
+            descriptor[61],
+            descriptor[62],
+            descriptor[63],
+            descriptor[64],
+            descriptor[65],
+            descriptor[66],
+            descriptor[67],
+        ]);
+
+        // nFileSizeHigh at offset 68, nFileSizeLow at offset 72
+        let size_high = u32::from_le_bytes([
+            descriptor[68],
+            descriptor[69],
+            descriptor[70],
+            descriptor[71],
+        ]);
+        let size_low = u32::from_le_bytes([
+            descriptor[72],
+            descriptor[73],
+            descriptor[74],
+            descriptor[75],
+        ]);
+        let size = (u64::from(size_high) << 32) | u64::from(size_low);
+
+        // cFileName at offset 76 (520 bytes = 260 UTF-16 chars)
+        let filename_bytes = &descriptor[76..76 + 520];
+        let filename = string_from_utf16(filename_bytes).unwrap_or_default();
+
+        if !filename.is_empty() {
+            files.push(ClipboardFileInfo::new(
+                filename,
+                size,
+                attributes,
+                last_write_time,
+                index as u32,
+            ));
+        }
+
+        offset += FILEDESCRIPTOR_SIZE;
+    }
+
+    if files.is_empty() {
+        None
+    } else {
+        Some(files)
+    }
 }
 
 #[cfg(test)]

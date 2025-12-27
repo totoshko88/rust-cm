@@ -6,11 +6,11 @@
 #
 
 Name:           rustconn
-Version:        0.4.2
+Version:        0.5.0
 Release:        0
 Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
 License:        GPL-3.0-or-later
-URL:            https://github.com/totoshko88/rust-cm
+URL:            https://github.com/totoshko88/RustConn
 Source0:        %{name}-%{version}.tar.xz
 Source1:        vendor.tar.zst
 

@@ -10,9 +10,13 @@
 //!
 //! # Supported Libraries
 //!
-//! - `gtk-vnc`: VNC client widget for GTK
-//! - `gtk-frdp`: RDP client widget (GNOME Connections)
-//! - `spice-gtk`: SPICE client widget
+//! - `gtk-vnc`: VNC client widget for GTK (used by `VncSessionWidget`)
+//!
+//! # Note
+//!
+//! RDP and SPICE protocols use native Rust implementations:
+//! - RDP: `rustconn/src/embedded_rdp.rs` with `ironrdp` crate
+//! - SPICE: `rustconn/src/embedded_spice.rs` with `spice-client` crate
 //!
 //! # Architecture
 //!
@@ -22,15 +26,8 @@
 //! - Signal connection helpers
 //! - Widget accessor for GTK integration
 
-pub mod rdp;
-pub mod spice;
 pub mod vnc;
 
-pub use rdp::{RdpConnectionConfig, RdpDisplay, RdpError, RdpGatewayConfig, Resolution};
-pub use spice::{
-    SpiceChannelEvent, SpiceConnectionConfig, SpiceDisplay, SpiceError, SpiceSharedFolder,
-    SpiceTlsConfig,
-};
 pub use vnc::{VncCredentialType, VncDisplay, VncError};
 
 use thiserror::Error;

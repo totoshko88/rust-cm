@@ -197,29 +197,53 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          # Extract changelog section for this version
+          awk -v ver="## \\[${VERSION}\\]" '
+            $0 ~ ver {found=1; next}
+            found && /^## \[/ {exit}
+            found {print}
+          ' CHANGELOG.md > version_changelog.md
+          
+          # If no changelog found, use default message
+          if [ ! -s version_changelog.md ]; then
+            echo "Release ${VERSION}" > version_changelog.md
+          fi
+
       - name: Generate release notes
         id: notes
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
-          cat << 'EOF' > release_notes.md
+          cat << 'HEADER' > release_notes.md
+          ## What's Changed
+          
+          HEADER
+          
+          cat version_changelog.md >> release_notes.md
+          
+          cat << EOF >> release_notes.md
+          
           ## Installation
 
           ### Debian/Ubuntu
-          ```bash
+          \`\`\`bash
           sudo dpkg -i rustconn_${VERSION}_amd64.deb
           sudo apt-get install -f  # Install dependencies if needed
-          ```
+          \`\`\`
 
           ### AppImage
-          ```bash
+          \`\`\`bash
           chmod +x RustConn-${VERSION}-x86_64.AppImage
           ./RustConn-${VERSION}-x86_64.AppImage
-          ```
+          \`\`\`
 
           ### openSUSE (OBS)
           Packages available at: https://build.opensuse.org/package/show/home:totoshko88:rustconn/rustconn
 
-          ```bash
+          \`\`\`bash
           # Tumbleweed
           sudo zypper ar https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/openSUSE_Tumbleweed/ rustconn
           sudo zypper ref
@@ -229,9 +253,8 @@ jobs:
           sudo zypper ar https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/16.0/ rustconn
           sudo zypper ref
           sudo zypper in rustconn
-          ```
+          \`\`\`
           EOF
-          sed -i "s/\${VERSION}/$VERSION/g" release_notes.md
 
       - name: List artifacts
         run: ls -la dist/

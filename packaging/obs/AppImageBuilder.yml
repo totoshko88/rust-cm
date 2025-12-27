@@ -8,7 +8,7 @@ AppDir:
     id: io.github.totoshko88.RustConn
     name: RustConn
     icon: rustconn
-    version: 0.4.0
+    version: 0.5.0
     exec: usr/bin/rustconn
     exec_args: $@
 
@@ -67,4 +67,4 @@ AppDir:
 
 AppImage:
   arch: x86_64
-  update-information: gh-releases-zsync|totoshko88|rust-cm|latest|RustConn-*x86_64.AppImage.zsync
+  update-information: gh-releases-zsync|totoshko88|RustConn|latest|RustConn-*x86_64.AppImage.zsync
