@@ -15,7 +15,8 @@ Source0:        %{name}-%{version}.tar.xz
 Source1:        vendor.tar.zst
 
 # Rust 1.87+ required (MSRV)
-# All target distros use devel:languages:rust repository for Rust 1.87+
+# openSUSE: use devel:languages:rust repo for Rust 1.87+
+# Fedora/Ubuntu/Debian: use rustup fallback since system Rust < 1.87
 %if 0%{?suse_version}
 BuildRequires:  cargo >= 1.87
 BuildRequires:  rust >= 1.87
@@ -23,9 +24,15 @@ BuildRequires:  cargo-packaging
 BuildRequires:  alsa-devel
 %endif
 
-%if 0%{?fedora} || 0%{?rhel}
-BuildRequires:  cargo >= 1.87
-BuildRequires:  rust >= 1.87
+%if 0%{?fedora}
+# All Fedora versions: use rustup (even F42 has only 1.85)
+BuildRequires:  curl
+BuildRequires:  alsa-lib-devel
+%endif
+
+%if 0%{?rhel}
+# RHEL: use rustup
+BuildRequires:  curl
 BuildRequires:  alsa-lib-devel
 %endif
 
@@ -83,6 +90,17 @@ Features:
 %prep
 %autosetup -a1 -n %{name}-%{version}
 
+# Install rustup for Fedora/RHEL (system Rust < 1.87)
+%if 0%{?fedora}
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+
+%if 0%{?rhel}
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+
 mkdir -p .cargo
 cat > .cargo/config.toml <<EOF
 [source.crates-io]
@@ -97,6 +115,11 @@ directory = "vendor"
 EOF
 
 %build
+# Ensure rustup path is available for Fedora/RHEL
+%if 0%{?fedora} || 0%{?rhel}
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+
 %if 0%{?suse_version}
 %{cargo_build} -p rustconn -p rustconn-cli
 %else

@@ -3,29 +3,26 @@ Section: net
 Priority: optional
 Maintainer: Anton Isaiev <totoshko88@gmail.com>
 Build-Depends: debhelper-compat (= 13),
-               cargo (>= 1.87),
-               rustc (>= 1.87),
+               curl,
                libgtk-4-dev (>= 4.14),
-               libadwaita-1-dev,
                libvte-2.91-gtk4-dev,
+               libadwaita-1-dev,
                libdbus-1-dev,
                libssl-dev,
                libasound2-dev,
-               pkg-config
+               pkg-config,
+               zstd
 Standards-Version: 4.6.2
 Homepage: https://github.com/totoshko88/RustConn
-Rules-Requires-Root: no
 
 Package: rustconn
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
          libgtk-4-1 (>= 4.14),
+         libvte-2.91-gtk4-0,
          libadwaita-1-0,
-         libvte-2.91-gtk4-1,
          openssh-client
-Recommends: freerdp2-x11,
-            tigervnc-viewer,
-            virt-viewer
+Recommends: freerdp2-x11, tigervnc-viewer, virt-viewer
 Description: Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
  RustConn is a modern connection manager for Linux desktops built with GTK4.
  It provides a unified interface for managing SSH, RDP, VNC, and SPICE

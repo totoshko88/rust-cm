@@ -1,35 +1,38 @@
 #!/usr/bin/make -f
 
+export DH_VERBOSE = 1
 export CARGO_HOME = $(CURDIR)/debian/cargo_home
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
 	dh $@
 
+override_dh_auto_configure:
+	# Install rustup with Rust 1.87
+	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
+	# Setup vendor config
+	mkdir -p .cargo
+	echo '[source.crates-io]' > .cargo/config.toml
+	echo 'replace-with = "vendored-sources"' >> .cargo/config.toml
+	echo '' >> .cargo/config.toml
+	echo '[source."git+https://github.com/Devolutions/IronRDP"]' >> .cargo/config.toml
+	echo 'git = "https://github.com/Devolutions/IronRDP"' >> .cargo/config.toml
+	echo 'replace-with = "vendored-sources"' >> .cargo/config.toml
+	echo '' >> .cargo/config.toml
+	echo '[source.vendored-sources]' >> .cargo/config.toml
+	echo 'directory = "vendor"' >> .cargo/config.toml
+
 override_dh_auto_build:
-	cargo build --release -p rustconn -p rustconn-cli --offline
+	. "$$HOME/.cargo/env" && cargo build --release -p rustconn -p rustconn-cli
 
 override_dh_auto_install:
 	install -Dm755 target/release/rustconn debian/rustconn/usr/bin/rustconn
 	install -Dm755 target/release/rustconn-cli debian/rustconn/usr/bin/rustconn-cli
 	install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.desktop \
 		debian/rustconn/usr/share/applications/io.github.totoshko88.RustConn.desktop
-	# Install icons if they exist
-	for size in 16 24 32 48 64 128 256 512; do \
-		if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" ]; then \
-			install -Dm644 "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
-				"debian/rustconn/usr/share/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png"; \
-		fi; \
-	done
-	if [ -f "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" ]; then \
-		install -Dm644 "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" \
-			"debian/rustconn/usr/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg"; \
-	fi
+	install -Dm644 rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml \
+		debian/rustconn/usr/share/metainfo/io.github.totoshko88.RustConn.metainfo.xml
+	install -Dm644 rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg \
+		debian/rustconn/usr/share/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg
 
 override_dh_auto_test:
 	# Skip tests during package build
-	true
-
-override_dh_auto_clean:
-	cargo clean || true
-	rm -rf $(CARGO_HOME)
