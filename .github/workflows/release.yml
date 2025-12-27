@@ -29,6 +29,7 @@ jobs:
             libadwaita-1-dev \
             libdbus-1-dev \
             libssl-dev \
+            libasound2-dev \
             pkg-config \
             debhelper \
             devscripts
@@ -117,6 +118,7 @@ jobs:
             libadwaita-1-dev \
             libdbus-1-dev \
             libssl-dev \
+            libasound2-dev \
             pkg-config \
             libfuse2
 
