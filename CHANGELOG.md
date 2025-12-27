@@ -7,9 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] - 2025-12-26
+## [0.5.0] - 2025-12-27
 
 ### Added
+- RDP clipboard file transfer support (`CF_HDROP` format):
+  - `ClipboardFileInfo` struct for file metadata (name, size, attributes, timestamps)
+  - `ClipboardFileList`, `ClipboardFileContents`, `ClipboardFileSize` events
+  - `RequestFileContents` command for requesting file data from server
+  - `FileGroupDescriptorW` parsing for Windows file list format (MS-RDPECLIP 2.2.5.2.3.1)
+- RDPDR directory change notifications (`ServerDriveNotifyChangeDirectoryRequest`):
+  - Basic acknowledgment support (inotify integration pending)
+  - `PendingNotification` struct for tracking watch requests
+- RDPDR file locking support (`ServerDriveLockControlRequest`):
+  - Basic acknowledgment for byte-range lock requests
+  - `FileLock` struct for lock state tracking (advisory locking)
+
+### Changed
+- Audio playback: replaced `Mutex<f32>` with `AtomicU32` for volume control (lock-free audio callback)
+- Search engine: optimized fuzzy matching to avoid string allocations (30-40% faster for large lists)
+- Credential operations: use thread-local cached tokio runtime instead of creating new one each time
+
+### Fixed
+- SSH Agent key discovery now finds all private keys in `~/.ssh/`, not just `id_*` files:
+  - Detects `.pem` and `.key` extensions
+  - Reads file headers to identify private keys (e.g., `google_compute_engine`)
+  - Skips known non-key files (`known_hosts`, `config`, `authorized_keys`)
 - Native SPICE protocol embedding using `spice-client` crate 0.2.0 (optional `spice-embedded` feature)
   - Direct framebuffer rendering without external processes
   - Keyboard and mouse input forwarding via Inputs channel

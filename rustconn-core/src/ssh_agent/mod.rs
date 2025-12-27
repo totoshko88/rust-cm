@@ -583,6 +583,7 @@ impl SshAgentManager {
     /// Lists available SSH key files in ~/.ssh/ directory.
     ///
     /// Looks for common key file patterns like `id_rsa`, `id_ed25519`, etc.
+    /// Also detects other private key files by checking file content headers.
     ///
     /// # Errors
     ///
@@ -613,20 +614,55 @@ impl SshAgentManager {
             "id_ed25519_sk",
         ];
 
+        // File extensions that indicate private keys
+        let key_extensions = ["pem", "key"];
+
+        // Files to skip (not private keys)
+        let skip_files = [
+            "known_hosts",
+            "known_hosts.old",
+            "config",
+            "authorized_keys",
+        ];
+
         for entry in std::fs::read_dir(&ssh_dir)? {
             let entry = entry?;
             let path = entry.path();
 
             if path.is_file() {
                 if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    // Check if it matches a known pattern or starts with id_
+                    // Skip public keys
                     let is_pub = std::path::Path::new(file_name)
                         .extension()
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("pub"));
-                    let is_key = key_patterns.contains(&file_name)
-                        || (file_name.starts_with("id_") && !is_pub);
+                    if is_pub {
+                        continue;
+                    }
 
-                    if is_key {
+                    // Skip known non-key files
+                    if skip_files.contains(&file_name) {
+                        continue;
+                    }
+
+                    // Check if it matches a known pattern
+                    let is_standard_key =
+                        key_patterns.contains(&file_name) || file_name.starts_with("id_");
+
+                    // Check if it has a key extension (.pem, .key)
+                    let has_key_extension = std::path::Path::new(file_name)
+                        .extension()
+                        .is_some_and(|ext| {
+                            key_extensions.iter().any(|e| ext.eq_ignore_ascii_case(e))
+                        });
+
+                    // Check file content for private key header
+                    let is_private_key_content = if !is_standard_key && !has_key_extension {
+                        Self::is_private_key_file(&path)
+                    } else {
+                        false
+                    };
+
+                    if is_standard_key || has_key_extension || is_private_key_content {
                         keys.push(path);
                     }
                 }
@@ -635,5 +671,26 @@ impl SshAgentManager {
 
         keys.sort();
         Ok(keys)
+    }
+
+    /// Checks if a file contains a private key by reading its header
+    fn is_private_key_file(path: &PathBuf) -> bool {
+        use std::io::{BufRead, BufReader};
+
+        let Ok(file) = std::fs::File::open(path) else {
+            return false;
+        };
+
+        let reader = BufReader::new(file);
+        let Some(Ok(first_line)) = reader.lines().next() else {
+            return false;
+        };
+
+        // Check for common private key headers
+        first_line.contains("PRIVATE KEY")
+            || first_line.contains("OPENSSH PRIVATE KEY")
+            || first_line.contains("RSA PRIVATE KEY")
+            || first_line.contains("EC PRIVATE KEY")
+            || first_line.contains("DSA PRIVATE KEY")
     }
 }

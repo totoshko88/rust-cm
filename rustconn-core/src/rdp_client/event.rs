@@ -19,6 +19,66 @@ pub struct ClipboardFormatInfo {
     pub name: Option<String>,
 }
 
+/// File information for clipboard file transfers (`CF_HDROP`)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardFileInfo {
+    /// File name (without path)
+    pub name: String,
+    /// File size in bytes
+    pub size: u64,
+    /// File attributes (Windows file attributes)
+    pub attributes: u32,
+    /// Last write time (Windows FILETIME)
+    pub last_write_time: i64,
+    /// Index in the file list (for requesting contents)
+    pub index: u32,
+}
+
+impl ClipboardFileInfo {
+    /// Windows file attribute: Directory
+    pub const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+    /// Windows file attribute: Read-only
+    pub const FILE_ATTRIBUTE_READONLY: u32 = 0x01;
+    /// Windows file attribute: Hidden
+    pub const FILE_ATTRIBUTE_HIDDEN: u32 = 0x02;
+
+    /// Creates a new file info
+    #[must_use]
+    pub const fn new(
+        name: String,
+        size: u64,
+        attributes: u32,
+        last_write_time: i64,
+        index: u32,
+    ) -> Self {
+        Self {
+            name,
+            size,
+            attributes,
+            last_write_time,
+            index,
+        }
+    }
+
+    /// Returns true if this is a directory
+    #[must_use]
+    pub const fn is_directory(&self) -> bool {
+        self.attributes & Self::FILE_ATTRIBUTE_DIRECTORY != 0
+    }
+
+    /// Returns true if this file is read-only
+    #[must_use]
+    pub const fn is_readonly(&self) -> bool {
+        self.attributes & Self::FILE_ATTRIBUTE_READONLY != 0
+    }
+
+    /// Returns true if this file is hidden
+    #[must_use]
+    pub const fn is_hidden(&self) -> bool {
+        self.attributes & Self::FILE_ATTRIBUTE_HIDDEN != 0
+    }
+}
+
 impl ClipboardFormatInfo {
     /// Standard text format (`CF_TEXT`)
     pub const TEXT: u32 = 1;
@@ -393,6 +453,27 @@ pub enum RdpClientEvent {
     /// Request to fetch clipboard data from server (internal, triggers `initiate_paste`)
     ClipboardPasteRequest(ClipboardFormatInfo),
 
+    /// File list available on server clipboard (`CF_HDROP`)
+    ClipboardFileList(Vec<ClipboardFileInfo>),
+
+    /// File contents received from server
+    ClipboardFileContents {
+        /// Stream ID for matching request/response
+        stream_id: u32,
+        /// File data
+        data: Vec<u8>,
+        /// Whether this is the last chunk
+        is_last: bool,
+    },
+
+    /// File size information received from server
+    ClipboardFileSize {
+        /// Stream ID for matching request/response
+        stream_id: u32,
+        /// File size in bytes
+        size: u64,
+    },
+
     /// Authentication required (for NLA)
     AuthRequired,
 
@@ -508,6 +589,20 @@ pub enum RdpClientCommand {
     RequestClipboardData {
         /// Format ID to request
         format_id: u32,
+    },
+
+    /// Request file contents from server clipboard
+    RequestFileContents {
+        /// Stream ID for matching request/response
+        stream_id: u32,
+        /// File index in the file list
+        file_index: u32,
+        /// Request type: true = size, false = data
+        request_size: bool,
+        /// Offset for data requests
+        offset: u64,
+        /// Number of bytes to request (for data requests)
+        length: u32,
     },
 
     /// Request screen refresh

@@ -15,6 +15,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Stream, StreamConfig};
 use rustconn_core::AudioFormatInfo;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
@@ -95,8 +96,8 @@ pub struct RdpAudioPlayer {
     stream: Option<Stream>,
     /// Current audio format
     format: Option<AudioFormatInfo>,
-    /// Volume (0.0 - 1.0)
-    volume: Arc<Mutex<f32>>,
+    /// Volume as fixed-point (0-65535 maps to 0.0-1.0) - lock-free for audio callback
+    volume: Arc<AtomicU32>,
 }
 
 impl RdpAudioPlayer {
@@ -107,7 +108,7 @@ impl RdpAudioPlayer {
             buffer: Arc::new(Mutex::new(AudioBuffer::new())),
             stream: None,
             format: None,
-            volume: Arc::new(Mutex::new(1.0)),
+            volume: Arc::new(AtomicU32::new(65535)), // Default to full volume
         }
     }
 
@@ -179,13 +180,17 @@ impl RdpAudioPlayer {
         device: &cpal::Device,
         config: &StreamConfig,
         buffer: Arc<Mutex<AudioBuffer>>,
-        volume: Arc<Mutex<f32>>,
+        volume: Arc<AtomicU32>,
     ) -> Result<Stream, AudioError> {
         let stream = device
             .build_output_stream(
                 config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    let vol = *volume.lock().unwrap();
+                    // Lock-free volume read (0-65535 range)
+                    let vol_raw = volume.load(Ordering::Relaxed);
+                    let vol = vol_raw as f32 / 65535.0;
+
+                    // Buffer lock is still needed but volume is now lock-free
                     let mut buf = buffer.lock().unwrap();
                     let samples = buf.pop_samples(data.len());
 
@@ -216,13 +221,16 @@ impl RdpAudioPlayer {
         device: &cpal::Device,
         config: &StreamConfig,
         buffer: Arc<Mutex<AudioBuffer>>,
-        volume: Arc<Mutex<f32>>,
+        volume: Arc<AtomicU32>,
     ) -> Result<Stream, AudioError> {
         let stream = device
             .build_output_stream(
                 config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    let vol = *volume.lock().unwrap();
+                    // Lock-free volume read
+                    let vol_raw = volume.load(Ordering::Relaxed);
+                    let vol = vol_raw as f32 / 65535.0;
+
                     let mut buf = buffer.lock().unwrap();
                     let samples = buf.pop_samples(data.len());
 
@@ -260,14 +268,11 @@ impl RdpAudioPlayer {
     /// * `left` - Left channel volume (0-65535)
     /// * `right` - Right channel volume (0-65535)
     pub fn set_volume(&self, left: u16, right: u16) {
-        // Average left and right, normalize to 0.0-1.0
+        // Average left and right channels
         let avg = u32::midpoint(u32::from(left), u32::from(right));
-        let normalized = avg as f32 / 65535.0;
-
-        if let Ok(mut vol) = self.volume.lock() {
-            *vol = normalized;
-            tracing::debug!("[Audio] Volume set to {:.1}%", normalized * 100.0);
-        }
+        // Store as atomic (lock-free)
+        self.volume.store(avg, Ordering::Relaxed);
+        tracing::debug!("[Audio] Volume set to {:.1}%", avg as f32 / 65535.0 * 100.0);
     }
 
     /// Stops audio playback
