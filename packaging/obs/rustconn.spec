@@ -15,6 +15,7 @@ Source0:        %{name}-%{version}.tar.xz
 Source1:        vendor.tar.zst
 
 # Rust 1.87+ required (MSRV)
+# All target distros use devel:languages:rust repository for Rust 1.87+
 %if 0%{?suse_version}
 BuildRequires:  cargo >= 1.87
 BuildRequires:  rust >= 1.87
@@ -23,14 +24,8 @@ BuildRequires:  alsa-devel
 %endif
 
 %if 0%{?fedora} || 0%{?rhel}
-# Fedora/RHEL: use system rust if >= 1.87, otherwise rustup
-%if 0%{?fedora} >= 41 || 0%{?rhel} >= 10
 BuildRequires:  cargo >= 1.87
 BuildRequires:  rust >= 1.87
-%else
-# For older Fedora/RHEL, install rustup in %prep
-BuildRequires:  curl
-%endif
 BuildRequires:  alsa-lib-devel
 %endif
 
@@ -88,17 +83,6 @@ Features:
 %prep
 %autosetup -a1 -n %{name}-%{version}
 
-# Install rustup for older distros without Rust 1.87
-%if 0%{?fedora} && 0%{?fedora} < 41
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
-export PATH="$HOME/.cargo/bin:$PATH"
-%endif
-
-%if 0%{?rhel} && 0%{?rhel} < 10
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
-export PATH="$HOME/.cargo/bin:$PATH"
-%endif
-
 mkdir -p .cargo
 cat > .cargo/config.toml <<EOF
 [source.crates-io]
@@ -113,14 +97,6 @@ directory = "vendor"
 EOF
 
 %build
-# Ensure rustup path is available
-%if 0%{?fedora} && 0%{?fedora} < 41
-export PATH="$HOME/.cargo/bin:$PATH"
-%endif
-%if 0%{?rhel} && 0%{?rhel} < 10
-export PATH="$HOME/.cargo/bin:$PATH"
-%endif
-
 %if 0%{?suse_version}
 %{cargo_build} -p rustconn -p rustconn-cli
 %else
@@ -160,8 +136,12 @@ fi
 %changelog
 * Sat Dec 28 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.1-0
 - Update to version 0.5.1
-- Removed dead code and placeholder implementations
-- Code cleanup and documentation improvements
+- CLI: Wake-on-LAN, snippet, group management commands
+- CLI: Connection list filters (--group, --tag)
+- CLI: Native format (.rcn) support for import/export
+- Search debouncing with visual spinner indicator
+- Clipboard file transfer UI for embedded RDP sessions
+- Dead code cleanup and documentation improvements
 
 * Sat Dec 27 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.0-0
 - Update to version 0.5.0

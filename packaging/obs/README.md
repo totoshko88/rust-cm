@@ -4,18 +4,33 @@
 
 ## Підтримувані дистрибутиви
 
-| Дистрибутив | Версія | Rust | Статус |
-|-------------|--------|------|--------|
-| openSUSE Tumbleweed | Rolling | System | ✅ |
-| openSUSE Leap | 16.0 | System | ✅ |
-| Fedora | 41+ | System | ✅ |
-| Fedora | 39-40 | rustup | ✅ |
-| RHEL/CentOS | 10+ | System | ✅ |
-| RHEL/CentOS | 9 | rustup | ⚠️ |
-| Ubuntu | 24.04+ | System | ✅ |
-| Debian | 13+ | System | ✅ |
+| Дистрибутив | Версія | Rust джерело | Статус |
+|-------------|--------|--------------|--------|
+| openSUSE Tumbleweed | Rolling | System (1.87+) | ✅ |
+| openSUSE Leap | 16.0 | devel:languages:rust | ✅ |
+| Fedora | 42 | System (1.87+) | ✅ |
+| Fedora | 41 | devel:languages:rust | ✅ |
+| Fedora | 40 | devel:languages:rust | ✅ |
+| Ubuntu | 24.10 | devel:languages:rust | ✅ |
+| Ubuntu | 24.04 | devel:languages:rust | ✅ |
+| Debian | 13 | devel:languages:rust | ✅ |
 
 **Примітка:** MSRV (Minimum Supported Rust Version) = 1.87
+
+## Автоматичне оновлення
+
+При створенні нового релізу на GitHub, workflow автоматично:
+1. Оновлює `_service` з новим тегом
+2. Копіює `rustconn.changes` та `rustconn.spec`
+3. Комітить зміни в OBS
+4. Тригерить перезбірку всіх репозиторіїв
+
+### Необхідні секрети GitHub
+
+| Секрет | Опис |
+|--------|------|
+| `OBS_USERNAME` | Логін на build.opensuse.org |
+| `OBS_PASSWORD` | Пароль на build.opensuse.org |
 
 ## Структура файлів
 

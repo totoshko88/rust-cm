@@ -276,3 +276,75 @@ jobs:
           body_path: release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-obs:
+    name: Update OBS Package
+    needs: [release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install osc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osc
+
+      - name: Configure osc
+        run: |
+          mkdir -p ~/.config/osc
+          cat > ~/.config/osc/oscrc << EOF
+          [general]
+          apiurl = https://api.opensuse.org
+          
+          [https://api.opensuse.org]
+          user = ${{ secrets.OBS_USERNAME }}
+          pass = ${{ secrets.OBS_PASSWORD }}
+          EOF
+          chmod 600 ~/.config/osc/oscrc
+
+      - name: Checkout OBS package
+        run: |
+          osc checkout home:totoshko88:rustconn/rustconn
+          cd home:totoshko88:rustconn/rustconn
+          osc up
+
+      - name: Update OBS files
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          OBS_DIR="home:totoshko88:rustconn/rustconn"
+          
+          # Update _service revision
+          sed -i "s|<param name=\"revision\">v[^<]*</param>|<param name=\"revision\">v$VERSION</param>|" "$OBS_DIR/_service"
+          
+          # Update spec version
+          sed -i "s/^Version:.*$/Version:        $VERSION/" "$OBS_DIR/rustconn.spec"
+          
+          # Copy updated changelog and spec from repo
+          cp packaging/obs/rustconn.changes "$OBS_DIR/rustconn.changes"
+          cp packaging/obs/rustconn.spec "$OBS_DIR/rustconn.spec"
+          
+          # Copy vendor tarball if exists
+          if [ -f "vendor.tar.zst" ]; then
+            cp vendor.tar.zst "$OBS_DIR/vendor.tar.zst"
+          fi
+
+      - name: Commit to OBS
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          cd home:totoshko88:rustconn/rustconn
+          osc status
+          osc addremove
+          osc commit -m "Update to version $VERSION
+
+          Automated update from GitHub release v$VERSION
+          https://github.com/totoshko88/RustConn/releases/tag/v$VERSION"
+
+      - name: Trigger OBS rebuild
+        run: |
+          osc rebuild home:totoshko88:rustconn rustconn
