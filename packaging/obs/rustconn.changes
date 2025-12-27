@@ -13,6 +13,8 @@ Sat Dec 27 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.0
   * Fixed SSH Agent key discovery for all private key formats
   * Fixed system tray menu intermittent issues
   * Updated thiserror from 1.0 to 2.0
+  * Added ALSA dependency for RDP audio support
+  * Updated MSRV to 1.87
 
 -------------------------------------------------------------------
 Thu Dec 25 2025 Anton Isaiev <totoshko88@gmail.com> - 0.4.2

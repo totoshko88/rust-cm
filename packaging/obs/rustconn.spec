@@ -1,7 +1,7 @@
 #
 # spec file for package rustconn
 #
-# Copyright (c) 2024 Anton Isaiev
+# Copyright (c) 2025 Anton Isaiev
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
@@ -14,27 +14,51 @@ URL:            https://github.com/totoshko88/RustConn
 Source0:        %{name}-%{version}.tar.xz
 Source1:        vendor.tar.zst
 
-BuildRequires:  cargo >= 1.76
-BuildRequires:  rust >= 1.76
+# Rust 1.87+ required (MSRV)
 %if 0%{?suse_version}
+BuildRequires:  cargo >= 1.87
+BuildRequires:  rust >= 1.87
 BuildRequires:  cargo-packaging
+BuildRequires:  alsa-devel
 %endif
+
+%if 0%{?fedora} || 0%{?rhel}
+# Fedora/RHEL: use system rust if >= 1.87, otherwise rustup
+%if 0%{?fedora} >= 41 || 0%{?rhel} >= 10
+BuildRequires:  cargo >= 1.87
+BuildRequires:  rust >= 1.87
+%else
+# For older Fedora/RHEL, install rustup in %prep
+BuildRequires:  curl
+%endif
+BuildRequires:  alsa-lib-devel
+%endif
+
+# Common build dependencies
 BuildRequires:  pkgconfig(gtk4) >= 4.14
 BuildRequires:  pkgconfig(vte-2.91-gtk4)
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(openssl)
 BuildRequires:  zstd
+BuildRequires:  gcc
+BuildRequires:  make
 
 # Runtime dependencies
+%if 0%{?suse_version}
 Requires:       gtk4 >= 4.14
 Requires:       libadwaita
-%if 0%{?suse_version}
 Requires:       vte >= 0.74
 Requires:       openssh-clients
-%else
+Requires:       libasound2
+%endif
+
+%if 0%{?fedora} || 0%{?rhel}
+Requires:       gtk4 >= 4.14
+Requires:       libadwaita
 Requires:       vte291-gtk4
 Requires:       openssh-clients
+Requires:       alsa-lib
 %endif
 
 # Optional runtime dependencies
@@ -59,9 +83,22 @@ Features:
 - Session logging
 - Command snippets and cluster commands
 - Wake-on-LAN
+- RDP audio playback support
 
 %prep
 %autosetup -a1 -n %{name}-%{version}
+
+# Install rustup for older distros without Rust 1.87
+%if 0%{?fedora} && 0%{?fedora} < 41
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+
+%if 0%{?rhel} && 0%{?rhel} < 10
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 --profile minimal
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+
 mkdir -p .cargo
 cat > .cargo/config.toml <<EOF
 [source.crates-io]
@@ -76,6 +113,14 @@ directory = "vendor"
 EOF
 
 %build
+# Ensure rustup path is available
+%if 0%{?fedora} && 0%{?fedora} < 41
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+%if 0%{?rhel} && 0%{?rhel} < 10
+export PATH="$HOME/.cargo/bin:$PATH"
+%endif
+
 %if 0%{?suse_version}
 %{cargo_build} -p rustconn -p rustconn-cli
 %else
@@ -113,3 +158,11 @@ fi
 %{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
 
 %changelog
+* Sat Dec 27 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.0-0
+- Update to version 0.5.0
+- RDP clipboard file transfer support (CF_HDROP format)
+- RDPDR directory change notifications and file locking
+- Native SPICE protocol embedding
+- Performance optimizations (lock-free audio, optimized search)
+- Fixed SSH Agent key discovery
+

@@ -1,15 +1,19 @@
 rustconn (0.5.0-1) unstable; urgency=medium
 
   * Update to version 0.5.0
+    - RDP clipboard file transfer support (CF_HDROP format)
+    - RDPDR directory change notifications and file locking
     - Native SPICE protocol embedding using spice-client crate 0.2.0
     - Real-time connection status indicators in sidebar
     - Custom cursors in RDP sessions
     - Full Expect automation engine integration
     - Terminal context menu and keyboard shortcuts
+    - Performance: lock-free audio, optimized search, cached tokio runtime
+    - Fixed SSH Agent key discovery for all private key formats
     - Fixed system tray menu intermittent issues
     - Updated thiserror from 1.0 to 2.0
 
- -- Anton Isaiev <totoshko88@gmail.com>  Thu, 26 Dec 2025 12:00:00 +0200
+ -- Anton Isaiev <totoshko88@gmail.com>  Sat, 27 Dec 2025 12:00:00 +0200
 
 rustconn (0.4.2-1) unstable; urgency=medium
 

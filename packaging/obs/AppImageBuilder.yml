@@ -36,6 +36,7 @@ AppDir:
       - libepoxy0
       - libpcre2-8-0
       - libdbus-1-3
+      - libasound2
 
   files:
     include:

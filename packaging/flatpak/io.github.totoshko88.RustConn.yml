@@ -11,6 +11,8 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
+  # Audio for RDP sessions
+  - --socket=pulseaudio
   # Network access for SSH/RDP/VNC/SPICE
   - --share=network
   # Home directory access for SSH keys and config

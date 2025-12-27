@@ -3,13 +3,14 @@ Section: net
 Priority: optional
 Maintainer: Anton Isaiev <totoshko88@gmail.com>
 Build-Depends: debhelper-compat (= 13),
-               cargo (>= 1.76),
-               rustc (>= 1.76),
+               cargo (>= 1.87),
+               rustc (>= 1.87),
                libgtk-4-dev (>= 4.14),
                libadwaita-1-dev,
                libvte-2.91-gtk4-dev,
                libdbus-1-dev,
                libssl-dev,
+               libasound2-dev,
                pkg-config
 Standards-Version: 4.6.2
 Homepage: https://github.com/totoshko88/RustConn

@@ -3,12 +3,14 @@ Section: net
 Priority: optional
 Maintainer: Anton Isaiev <totoshko88@gmail.com>
 Build-Depends: debhelper-compat (= 13),
-               cargo,
-               rustc,
-               libgtk-4-dev,
+               cargo (>= 1.87),
+               rustc (>= 1.87),
+               libgtk-4-dev (>= 4.14),
+               libadwaita-1-dev,
                libvte-2.91-gtk4-dev,
                libdbus-1-dev,
                libssl-dev,
+               libasound2-dev,
                pkg-config,
                zstd
 Standards-Version: 4.6.2

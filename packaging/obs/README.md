@@ -2,125 +2,163 @@
 
 Файли для автоматичної збірки на [Open Build Service](https://build.opensuse.org/).
 
+## Підтримувані дистрибутиви
+
+| Дистрибутив | Версія | Rust | Статус |
+|-------------|--------|------|--------|
+| openSUSE Tumbleweed | Rolling | System | ✅ |
+| openSUSE Leap | 16.0 | System | ✅ |
+| Fedora | 41+ | System | ✅ |
+| Fedora | 39-40 | rustup | ✅ |
+| RHEL/CentOS | 10+ | System | ✅ |
+| RHEL/CentOS | 9 | rustup | ⚠️ |
+| Ubuntu | 24.04+ | System | ✅ |
+| Debian | 13+ | System | ✅ |
+
+**Примітка:** MSRV (Minimum Supported Rust Version) = 1.87
+
 ## Структура файлів
 
-| Файл                  | Призначення                                            |
-|-----------------------|--------------------------------------------------------|
-| `_service`            | Автоматичне завантаження з Git та vendoring залежностей |
-| `rustconn.spec`       | RPM spec для openSUSE, Fedora, RHEL                    |
-| `rustconn.changes`    | Changelog для RPM                                      |
-| `debian.*`            | Файли для збірки DEB (Ubuntu, Debian)                  |
-| `AppImageBuilder.yml` | Конфігурація для AppImage                              |
+| Файл | Призначення |
+|------|-------------|
+| `_service` | Автоматичне завантаження з Git |
+| `_multibuild` | Мультибілд (standard + appimage) |
+| `rustconn.spec` | RPM spec для openSUSE/Fedora/RHEL |
+| `rustconn.changes` | Changelog для RPM |
+| `rustconn.dsc` | Debian source control |
+| `debian.*` | Файли для збірки DEB |
+| `AppImageBuilder.yml` | Конфігурація для AppImage |
+
+## Залежності для збірки
+
+### RPM (openSUSE)
+```
+cargo >= 1.87, rust >= 1.87, cargo-packaging
+gtk4-devel >= 4.14, vte-devel, libadwaita-devel
+alsa-devel, dbus-1-devel, openssl-devel, zstd
+```
+
+### RPM (Fedora/RHEL)
+```
+cargo >= 1.87, rust >= 1.87 (або rustup для старіших версій)
+gtk4-devel >= 4.14, vte291-gtk4-devel, libadwaita-devel
+alsa-lib-devel, dbus-devel, openssl-devel, zstd
+```
+
+### DEB (Ubuntu/Debian)
+```
+cargo >= 1.87, rustc >= 1.87
+libgtk-4-dev >= 4.14, libvte-2.91-gtk4-dev, libadwaita-1-dev
+libasound2-dev, libdbus-1-dev, libssl-dev, zstd
+```
 
 ## Налаштування OBS
 
 ### 1. Створення проєкту
 
-1. Увійдіть на https://build.opensuse.org/
-2. Натисніть "Your Home Project" → "Create Subproject"
-3. Назва: `rustconn`
-4. Опис: "Modern connection manager for Linux"
-
-### 2. Налаштування репозиторіїв
-
-В налаштуваннях проєкту додайте репозиторії для збірки:
-
-**RPM:**
-- openSUSE Tumbleweed
-- openSUSE Leap 15.6
-- Fedora 40
-- Fedora 39
-
-**DEB:**
-- Debian 12 (Bookworm)
-- Ubuntu 24.04 (Noble)
-- Ubuntu 22.04 (Jammy)
-
-### 3. Завантаження файлів
-
 ```bash
-# Встановіть osc (OBS command-line client)
+# Встановіть osc
 # openSUSE: sudo zypper install osc
 # Fedora: sudo dnf install osc
-# Ubuntu: sudo apt install osc
-
-# Налаштуйте osc
-osc config
 
 # Checkout проєкту
-osc checkout home:YOUR_USERNAME:rustconn
-
-# Скопіюйте файли
-cd home:YOUR_USERNAME:rustconn
-cp /path/to/packaging/obs/* .
-
-# Відредагуйте _service - замініть YOUR_USERNAME на ваш GitHub username
-# Відредагуйте email в .changes та debian.changelog
-
-# Завантажте файли
-osc add *
-osc commit -m "Initial package"
+osc checkout home:totoshko88:rustconn/rustconn
+cd home:totoshko88:rustconn/rustconn
 ```
 
-### 4. Запуск збірки
+### 2. Репозиторії для збірки
 
-Після commit OBS автоматично запустить збірку. Статус можна переглянути:
-- Веб-інтерфейс: https://build.opensuse.org/package/show/home:YOUR_USERNAME:rustconn/rustconn
-- CLI: `osc results home:YOUR_USERNAME:rustconn rustconn`
+Рекомендовані репозиторії в OBS:
 
-### 5. AppImage
+**RPM:**
+- openSUSE_Tumbleweed
+- openSUSE_Leap_16.0
+- Fedora_41
+- Fedora_40 (з rustup)
 
-AppImage збирається окремо через GitHub Actions або локально:
+**DEB:**
+- Debian_13
+- xUbuntu_24.04
+- xUbuntu_24.10
+
+### 3. Оновлення версії
 
 ```bash
-# Встановіть appimage-builder
-pip install appimage-builder
+# 1. Оновіть _service revision на новий тег
+sed -i 's/revision>v.*/revision>v0.5.0</' _service
 
-# Зберіть AppImage
-appimage-builder --recipe AppImageBuilder.yml
+# 2. Оновіть rustconn.changes
+# 3. Оновіть debian.changelog
+
+# 4. Запустіть source service
+osc service runall
+
+# 5. Commit
+osc commit -m "Update to 0.5.0"
 ```
 
-## Оновлення версії
+## Встановлення
 
-1. Оновіть версію в `Cargo.toml`
-2. Додайте запис в `rustconn.changes` та `debian.changelog`
-3. Створіть git tag: `git tag v0.2.0`
-4. Push: `git push --tags`
-5. OBS автоматично підхопить нову версію через `_service`
-
-## Корисні команди osc
-
+### openSUSE Tumbleweed
 ```bash
-# Перегляд логів збірки
-osc buildlog openSUSE_Tumbleweed x86_64
-
-# Локальна збірка для тестування
-osc build openSUSE_Tumbleweed x86_64
-
-# Перегляд статусу всіх репозиторіїв
-osc results
-
-# Перезапуск збірки
-osc rebuild
+sudo zypper ar https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/openSUSE_Tumbleweed/ rustconn
+sudo zypper ref
+sudo zypper in rustconn
 ```
 
-## Публікація
-
-Після успішної збірки пакети доступні для встановлення:
-
+### openSUSE Leap 16.0
 ```bash
-# openSUSE
-sudo zypper addrepo https://download.opensuse.org/repositories/home:YOUR_USERNAME:rustconn/openSUSE_Tumbleweed/home:YOUR_USERNAME:rustconn.repo
-sudo zypper refresh
-sudo zypper install rustconn
+sudo zypper ar https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/16.0/ rustconn
+sudo zypper ref
+sudo zypper in rustconn
+```
 
-# Fedora
-sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/home:YOUR_USERNAME:rustconn/Fedora_40/home:YOUR_USERNAME:rustconn.repo
+### Fedora 41+
+```bash
+sudo dnf config-manager --add-repo \
+  https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/Fedora_41/home:totoshko88:rustconn.repo
 sudo dnf install rustconn
+```
 
-# Ubuntu/Debian
-echo "deb https://download.opensuse.org/repositories/home:YOUR_USERNAME:rustconn/xUbuntu_24.04/ /" | sudo tee /etc/apt/sources.list.d/rustconn.list
-curl -fsSL https://download.opensuse.org/repositories/home:YOUR_USERNAME:rustconn/xUbuntu_24.04/Release.key | sudo apt-key add -
+### Ubuntu 24.04
+```bash
+echo "deb https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/xUbuntu_24.04/ /" \
+  | sudo tee /etc/apt/sources.list.d/rustconn.list
+curl -fsSL https://download.opensuse.org/repositories/home:/totoshko88:/rustconn/xUbuntu_24.04/Release.key \
+  | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/rustconn.gpg
 sudo apt update
 sudo apt install rustconn
 ```
+
+## Корисні команди
+
+```bash
+# Перегляд статусу збірки
+osc results home:totoshko88:rustconn rustconn
+
+# Перегляд логів
+osc buildlog openSUSE_Tumbleweed x86_64
+
+# Локальна тестова збірка
+osc build openSUSE_Tumbleweed x86_64
+
+# Перезапуск збірки
+osc rebuild home:totoshko88:rustconn rustconn
+```
+
+## Troubleshooting
+
+### Rust version too old
+Для дистрибутивів зі старою версією Rust, spec автоматично встановлює rustup.
+Переконайтесь, що `curl` доступний як BuildRequires.
+
+### ALSA not found
+Додайте `alsa-devel` (openSUSE) або `alsa-lib-devel` (Fedora) до BuildRequires.
+
+### GTK4 version mismatch
+Потрібен GTK4 >= 4.14. Доступний в:
+- openSUSE Tumbleweed
+- Fedora 40+
+- Ubuntu 24.04+
+- Debian 13+
+

@@ -1,0 +1,4 @@
+<multibuild>
+  <flavor>standard</flavor>
+  <flavor>appimage</flavor>
+</multibuild>
