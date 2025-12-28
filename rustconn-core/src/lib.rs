@@ -21,8 +21,8 @@
 //! - `rdp-embedded` - Native RDP client via `IronRDP` (default)
 //! - `spice-embedded` - Native SPICE client
 
-// TODO: Enable when all public items are documented
-// #![warn(missing_docs)]
+// Enable missing_docs warning for public API documentation
+#![warn(missing_docs)]
 
 pub mod automation;
 pub mod cluster;

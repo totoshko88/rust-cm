@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2025-12-29
+
+### Added
+- `wayland-native` feature flag with `gdk4-wayland` integration for improved Wayland detection
+- Sidebar integration with lazy loading and virtual scrolling APIs
+
+### Changed
+- Improved display server detection using GDK4 Wayland bindings when available
+- Refactored `window.rs` into modular structure (reduced from 7283 to 2396 lines, -67%):
+  - `window_types.rs` - Type aliases and `get_protocol_string()` utility
+  - `window_snippets.rs` - Snippet management methods
+  - `window_templates.rs` - Template management methods
+  - `window_sessions.rs` - Session management methods
+  - `window_groups.rs` - Group management dialogs (move to group, error toast)
+  - `window_clusters.rs` - Cluster management methods
+  - `window_connection_dialogs.rs` - New connection/group dialogs, template picker, import dialog
+  - `window_sorting.rs` - Sorting and drag-drop reordering operations
+  - `window_operations.rs` - Connection operations (delete, duplicate, copy, paste, reload)
+  - `window_edit_dialogs.rs` - Edit dialogs (edit connection, connection details, edit group, quick connect)
+  - `window_rdp_vnc.rs` - RDP and VNC connection methods with password dialogs
+  - `window_protocols.rs` - Protocol-specific connection handlers (SSH, VNC, SPICE, ZeroTrust)
+  - `window_document_actions.rs` - Document management actions (new, open, save, close, export, import)
+- Refactored `embedded_rdp.rs` into modular structure (reduced from 4234 to 2803 lines, -34%):
+  - `embedded_rdp_types.rs` - Error types, enums, config structs, callback types
+  - `embedded_rdp_buffer.rs` - PixelBuffer and WaylandSurfaceHandle
+  - `embedded_rdp_launcher.rs` - SafeFreeRdpLauncher with Qt warning suppression
+  - `embedded_rdp_thread.rs` - FreeRdpThread, ClipboardFileTransfer, FileDownloadState
+  - `embedded_rdp_detect.rs` - FreeRDP detection utilities (detect_wlfreerdp, detect_xfreerdp, is_ironrdp_available)
+  - `embedded_rdp_ui.rs` - UI helpers (clipboard buttons, Ctrl+Alt+Del, draw_status_overlay)
+- Refactored `sidebar.rs` into modular structure (reduced from 2787 to 1937 lines, -30%):
+  - `sidebar_types.rs` - TreeState, SessionStatusInfo, DropPosition, DropIndicator, SelectionModelWrapper, DragDropData
+  - `sidebar_ui.rs` - UI helper functions (popovers, context menus, button boxes, protocol icons)
+- Refactored `embedded_vnc.rs` into modular structure (reduced from 2304 to 1857 lines, -19%):
+  - `embedded_vnc_types.rs` - Error types, VncConnectionState, VncConfig, VncPixelBuffer, VncWaylandSurface, callback types
+
+### Fixed
+- Tab icons now match sidebar icons for all protocols (SSH, RDP, VNC, SPICE, ZeroTrust providers)
+- SSH and ZeroTrust sessions now show correct protocol-specific icons in tabs
+- Cluster list not refreshing after deleting a cluster (borrow conflict in callback)
+- Snippet dialog Save button not clickable (unreliable widget tree traversal replaced with direct reference)
+- Template dialog not showing all fields (missing vexpand on notebook and scrolled window)
+
+### Improved
+- Extracted coordinate transformation utilities to `embedded_rdp_ui.rs` and `embedded_vnc_ui.rs`
+- Added `transform_widget_to_rdp()`, `gtk_button_to_rdp_mask()`, `gtk_button_to_rdp_button()` helpers
+- Added `transform_widget_to_vnc()`, `gtk_button_to_vnc_mask()` helpers
+- Reduced code duplication in mouse input handlers (4 duplicate blocks → 1 shared function)
+- Added unit tests for coordinate transformation and button conversion functions
+- Made RDP event polling interval configurable via `RdpConfig::polling_interval_ms` (default 16ms = ~60 FPS)
+- Added `RdpConfig::with_polling_interval()` builder method for custom polling rates
+- CI: Added `libadwaita-1-dev` dependency to all build jobs
+- CI: Added dedicated property tests job for better test visibility
+- CI: Consolidated OBS publish workflow into release workflow
+- CI: Auto-generate OBS changelog from CHANGELOG.md during release
+
+### Documentation
+- Added `#![warn(missing_docs)]` and documentation for public APIs in `rustconn-core`
+
 ## [0.5.1] - 2025-12-28
 
 ### Added
@@ -202,7 +260,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/totoshko88/RustConn/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/totoshko88/RustConn/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/totoshko88/RustConn/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/totoshko88/RustConn/compare/v0.4.1...v0.4.2

@@ -1519,6 +1519,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "gdk4-wayland"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcb81f3e1e7d9dac156e91a9dc81be33d8c99338975254ed93ca9f1de5cb3168"
+dependencies = [
+ "gdk4",
+ "gdk4-wayland-sys",
+ "gio",
+ "glib",
+ "libc",
+]
+
+[[package]]
+name = "gdk4-wayland-sys"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d739aa4ae9a1abb15f01ab2d8b8dd14a7792104ffb60bbc09bb94d76b905cfeb"
+dependencies = [
+ "glib-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3920,11 +3944,12 @@ dependencies = [
 
 [[package]]
 name = "rustconn"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "chrono",
  "cpal",
  "dirs",
+ "gdk4-wayland",
  "gtk4",
  "ksni",
  "open",
@@ -3943,7 +3968,7 @@ dependencies = [
 
 [[package]]
 name = "rustconn-cli"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "chrono",
  "clap",
@@ -3958,7 +3983,7 @@ dependencies = [
 
 [[package]]
 name = "rustconn-core"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "argon2",
  "async-trait",

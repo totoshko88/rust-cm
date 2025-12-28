@@ -83,12 +83,26 @@ impl DisplayServerType {
     /// Detects the current display server
     ///
     /// Detection order:
-    /// 1. Check GDK_BACKEND environment variable
-    /// 2. Check XDG_SESSION_TYPE environment variable
-    /// 3. Check for WAYLAND_DISPLAY environment variable
-    /// 4. Check for DISPLAY environment variable (X11)
+    /// 1. Check GDK display type (most reliable)
+    /// 2. Check GDK_BACKEND environment variable
+    /// 3. Check XDG_SESSION_TYPE environment variable
+    /// 4. Check for WAYLAND_DISPLAY environment variable
+    /// 5. Check for DISPLAY environment variable (X11)
     #[must_use]
     pub fn detect() -> Self {
+        // Try GDK display detection first (most reliable)
+        #[cfg(feature = "wayland-native")]
+        {
+            if let Some(display) = gtk4::gdk::Display::default() {
+                if display
+                    .downcast_ref::<gdk4_wayland::WaylandDisplay>()
+                    .is_some()
+                {
+                    return Self::Wayland;
+                }
+            }
+        }
+
         // Check GDK_BACKEND first (explicit override)
         if let Ok(backend) = std::env::var("GDK_BACKEND") {
             let backend_lower = backend.to_lowercase();
@@ -134,6 +148,12 @@ impl DisplayServerType {
     #[must_use]
     pub const fn use_cairo_fallback(&self) -> bool {
         matches!(self, Self::X11 | Self::Unknown)
+    }
+
+    /// Returns whether native Wayland feature is compiled in
+    #[must_use]
+    pub const fn has_native_wayland_support() -> bool {
+        cfg!(feature = "wayland-native")
     }
 }
 
@@ -378,6 +398,8 @@ pub struct WaylandSubsurface {
     surface_id: u32,
     /// Next surface ID counter
     next_id: u32,
+    /// Whether native Wayland rendering is active
+    native_wayland_active: bool,
 }
 
 impl WaylandSubsurface {
@@ -392,6 +414,7 @@ impl WaylandSubsurface {
             damage: DamageRect::default(),
             surface_id: 0,
             next_id: 1,
+            native_wayland_active: false,
         }
     }
 
@@ -406,6 +429,7 @@ impl WaylandSubsurface {
             damage: DamageRect::default(),
             surface_id: 0,
             next_id: 1,
+            native_wayland_active: false,
         }
     }
 
@@ -424,13 +448,13 @@ impl WaylandSubsurface {
     /// Returns whether native Wayland subsurface is being used
     #[must_use]
     pub fn is_native_wayland(&self) -> bool {
-        self.initialized && self.display_server.supports_subsurface()
+        self.initialized && self.native_wayland_active
     }
 
     /// Returns whether Cairo fallback is being used
     #[must_use]
     pub fn is_cairo_fallback(&self) -> bool {
-        self.initialized && self.display_server.use_cairo_fallback()
+        self.initialized && !self.native_wayland_active
     }
 
     /// Returns the current buffer width
@@ -464,18 +488,16 @@ impl WaylandSubsurface {
 
     /// Initializes the subsurface
     ///
-    /// On Wayland, this would:
-    /// 1. Get the wl_display from GTK
-    /// 2. Create a wl_surface
-    /// 3. Create a wl_subsurface attached to the parent widget
-    /// 4. Set up shared memory pool
+    /// On Wayland with `wayland-native` feature, this detects the Wayland
+    /// display and prepares for potential future native rendering.
     ///
-    /// On X11, this simply marks the subsurface as initialized for
-    /// Cairo fallback rendering.
+    /// Currently, all rendering uses Cairo fallback because full native
+    /// Wayland subsurface integration requires unsafe code to access
+    /// raw `wl_surface` pointers, which is forbidden in this project.
     ///
     /// # Arguments
     ///
-    /// * `_parent` - The parent GTK widget (DrawingArea)
+    /// * `parent` - The parent GTK widget (DrawingArea)
     ///
     /// # Errors
     ///
@@ -483,11 +505,11 @@ impl WaylandSubsurface {
     ///
     /// # Requirements Coverage
     ///
-    /// - Requirement 8.1: Create wl_subsurface for embedded sessions
+    /// - Requirement 8.1: Create wl_subsurface for embedded sessions (partial)
     /// - Requirement 8.4: Fall back to Cairo rendering on X11
     pub fn initialize(
         &mut self,
-        _parent: &impl IsA<gtk4::Widget>,
+        parent: &impl IsA<gtk4::Widget>,
     ) -> Result<(), WaylandSurfaceError> {
         if self.initialized {
             return Ok(());
@@ -495,38 +517,47 @@ impl WaylandSubsurface {
 
         match self.display_server {
             DisplayServerType::Wayland => {
-                // On Wayland, we would create a native subsurface
-                // For now, we use a placeholder implementation that
-                // prepares for future native Wayland integration
-                //
-                // Full implementation would:
-                // 1. Get GdkWaylandDisplay from GTK
-                // 2. Get wl_display from GdkWaylandDisplay
-                // 3. Create wl_compositor and wl_subcompositor
-                // 4. Create wl_surface
-                // 5. Create wl_subsurface attached to parent's surface
-                // 6. Create wl_shm_pool for shared memory buffers
-                //
-                // This requires wayland-client crate and careful integration
-                // with GTK's Wayland backend. For now, we fall back to Cairo.
+                #[cfg(feature = "wayland-native")]
+                {
+                    // Verify we're running on Wayland by checking the surface type
+                    if let Some(native) = parent.as_ref().native() {
+                        if let Some(surface) = native.surface() {
+                            if surface
+                                .downcast_ref::<gdk4_wayland::WaylandSurface>()
+                                .is_some()
+                            {
+                                tracing::info!(
+                                    "[WaylandSubsurface] Wayland surface confirmed, \
+                                     using Cairo rendering (native subsurface requires unsafe)"
+                                );
+                            }
+                        }
+                    }
+                }
 
-                eprintln!(
-                    "[WaylandSubsurface] Wayland detected, using Cairo fallback \
-                     (native subsurface integration pending)"
-                );
+                #[cfg(not(feature = "wayland-native"))]
+                {
+                    tracing::info!(
+                        "[WaylandSubsurface] Wayland detected, using Cairo fallback \
+                         (wayland-native feature not enabled)"
+                    );
+                }
 
+                // Cairo fallback - native subsurface would require unsafe code
+                // to access raw wl_surface pointers from gdk4-wayland
+                self.native_wayland_active = false;
                 self.surface_id = self.next_id;
                 self.next_id += 1;
                 self.initialized = true;
                 Ok(())
             }
             DisplayServerType::X11 | DisplayServerType::Unknown => {
-                // On X11 or unknown, use Cairo fallback
-                eprintln!(
+                tracing::info!(
                     "[WaylandSubsurface] {} detected, using Cairo fallback",
                     self.display_server
                 );
 
+                self.native_wayland_active = false;
                 self.surface_id = self.next_id;
                 self.next_id += 1;
                 self.initialized = true;
@@ -811,13 +842,24 @@ impl RenderingMode {
     #[must_use]
     pub fn detect() -> Self {
         let display_server = DisplayServerType::detect();
-        if display_server.supports_subsurface() {
-            // For now, always use Cairo fallback until native Wayland
-            // subsurface integration is fully implemented
+
+        // Native Wayland subsurface requires both:
+        // 1. Wayland display server
+        // 2. wayland-native feature enabled
+        if display_server.supports_subsurface() && DisplayServerType::has_native_wayland_support() {
+            // For now, still use Cairo fallback until full wl_subsurface
+            // protocol implementation is complete
             Self::CairoFallback
         } else {
             Self::CairoFallback
         }
+    }
+
+    /// Returns whether native Wayland rendering could be available
+    #[must_use]
+    pub fn native_wayland_possible() -> bool {
+        DisplayServerType::detect().supports_subsurface()
+            && DisplayServerType::has_native_wayland_support()
     }
 }
 

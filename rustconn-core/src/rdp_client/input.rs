@@ -285,12 +285,14 @@ pub const STANDARD_RESOLUTIONS: &[(u32, u32)] = &[
     (3840, 2160), // 4K UHD
 ];
 
-/// Maximum RDP resolution (per RDP specification)
+/// Maximum RDP width in pixels (per RDP specification)
 pub const MAX_RDP_WIDTH: u16 = 8192;
+/// Maximum RDP height in pixels (per RDP specification)
 pub const MAX_RDP_HEIGHT: u16 = 8192;
 
-/// Minimum RDP resolution
+/// Minimum RDP width in pixels
 pub const MIN_RDP_WIDTH: u16 = 200;
+/// Minimum RDP height in pixels
 pub const MIN_RDP_HEIGHT: u16 = 200;
 
 /// Finds the best matching standard resolution for the given dimensions
@@ -769,9 +771,11 @@ pub const fn keycode_to_scancode(keycode: u32) -> Option<RdpScancode> {
     }
 }
 
-/// Scancodes for Ctrl+Alt+Del sequence
+/// Scancode for Ctrl key in Ctrl+Alt+Del sequence
 pub const SCANCODE_CTRL: RdpScancode = RdpScancode::standard(0x1D);
+/// Scancode for Alt key in Ctrl+Alt+Del sequence
 pub const SCANCODE_ALT: RdpScancode = RdpScancode::standard(0x38);
+/// Scancode for Delete key in Ctrl+Alt+Del sequence (extended)
 pub const SCANCODE_DELETE: RdpScancode = RdpScancode::extended(0x53);
 
 /// Generates the key sequence for Ctrl+Alt+Del

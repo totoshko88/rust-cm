@@ -46,6 +46,18 @@
 //! - Requirement 6.3: FreeRDP threading isolation
 //! - Requirement 6.4: Automatic fallback to external mode
 
+// Re-export types for external use
+pub use crate::embedded_rdp_buffer::{PixelBuffer, WaylandSurfaceHandle};
+pub use crate::embedded_rdp_launcher::SafeFreeRdpLauncher;
+pub use crate::embedded_rdp_thread::FreeRdpThread;
+#[cfg(feature = "rdp-embedded")]
+pub use crate::embedded_rdp_thread::{ClipboardFileTransfer, FileDownloadState};
+pub use crate::embedded_rdp_types::{
+    EmbeddedRdpError, EmbeddedSharedFolder, FreeRdpThreadState, RdpCommand, RdpConfig,
+    RdpConnectionState, RdpEvent,
+};
+
+use crate::embedded_rdp_types::{ErrorCallback, FallbackCallback, StateCallback};
 use gtk4::gdk;
 use gtk4::glib;
 use gtk4::glib::translate::IntoGlib;
@@ -55,1153 +67,11 @@ use gtk4::{
     EventControllerScroll, EventControllerScrollFlags, GestureClick, Label, Orientation,
 };
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use thiserror::Error;
 
-#[cfg(feature = "rdp-embedded")]
-use rustconn_core::rdp_client::ClipboardFileInfo;
 #[cfg(feature = "rdp-embedded")]
 use rustconn_core::RdpClientCommand;
-
-/// Error type for embedded RDP operations
-#[derive(Debug, Error, Clone)]
-pub enum EmbeddedRdpError {
-    /// Wayland subsurface creation failed
-    #[error("Wayland subsurface creation failed: {0}")]
-    SubsurfaceCreation(String),
-
-    /// FreeRDP initialization failed
-    #[error("FreeRDP initialization failed: {0}")]
-    FreeRdpInit(String),
-
-    /// Connection to RDP server failed
-    #[error("Connection failed: {0}")]
-    Connection(String),
-
-    /// wlfreerdp is not available, falling back to external mode
-    #[error("wlfreerdp not available, falling back to external mode")]
-    WlFreeRdpNotAvailable,
-
-    /// Input forwarding error
-    #[error("Input forwarding error: {0}")]
-    InputForwarding(String),
-
-    /// Resize handling error
-    #[error("Resize handling error: {0}")]
-    ResizeError(String),
-
-    /// Qt/Wayland threading error (Requirement 6.1, 6.2)
-    #[error("Qt/Wayland threading error: {0}")]
-    QtThreadingError(String),
-
-    /// FreeRDP process failed
-    #[error("FreeRDP process failed: {0}")]
-    ProcessFailed(String),
-
-    /// Falling back to external mode (Requirement 6.4)
-    #[error("Falling back to external mode: {0}")]
-    FallbackToExternal(String),
-
-    /// Thread communication error
-    #[error("Thread communication error: {0}")]
-    ThreadError(String),
-}
-
-// ============================================================================
-// Clipboard File Transfer State (for rdp-embedded feature)
-// ============================================================================
-
-/// State of a single file download from RDP clipboard
-#[cfg(feature = "rdp-embedded")]
-#[derive(Debug, Clone)]
-pub struct FileDownloadState {
-    /// File information from server
-    pub file_info: ClipboardFileInfo,
-    /// Total file size (may be updated after size request)
-    pub total_size: u64,
-    /// Bytes received so far
-    pub bytes_received: u64,
-    /// Accumulated data chunks
-    pub data: Vec<u8>,
-    /// Whether download is complete
-    pub complete: bool,
-    /// Local path where file will be saved
-    pub local_path: Option<PathBuf>,
-}
-
-#[cfg(feature = "rdp-embedded")]
-impl FileDownloadState {
-    /// Creates a new file download state
-    fn new(file_info: ClipboardFileInfo) -> Self {
-        let total_size = file_info.size;
-        Self {
-            file_info,
-            total_size,
-            bytes_received: 0,
-            data: Vec::new(),
-            complete: false,
-            local_path: None,
-        }
-    }
-
-    /// Returns download progress as fraction (0.0 to 1.0)
-    #[allow(dead_code)] // API method for future progress UI
-    fn progress(&self) -> f64 {
-        if self.total_size == 0 {
-            return if self.complete { 1.0 } else { 0.0 };
-        }
-        #[allow(clippy::cast_precision_loss)]
-        let progress = self.bytes_received as f64 / self.total_size as f64;
-        progress.min(1.0)
-    }
-}
-
-/// Manages clipboard file transfer state
-#[cfg(feature = "rdp-embedded")]
-#[derive(Debug, Default)]
-pub struct ClipboardFileTransfer {
-    /// Available files from server clipboard
-    pub available_files: Vec<ClipboardFileInfo>,
-    /// Active downloads keyed by stream_id
-    pub downloads: HashMap<u32, FileDownloadState>,
-    /// Next stream ID to use for requests
-    pub next_stream_id: u32,
-    /// Target directory for saving files
-    pub target_directory: Option<PathBuf>,
-    /// Total files to download
-    pub total_files: usize,
-    /// Completed downloads count
-    pub completed_count: usize,
-}
-
-#[cfg(feature = "rdp-embedded")]
-impl ClipboardFileTransfer {
-    /// Creates a new file transfer manager
-    fn new() -> Self {
-        Self {
-            available_files: Vec::new(),
-            downloads: HashMap::new(),
-            next_stream_id: 1,
-            target_directory: None,
-            total_files: 0,
-            completed_count: 0,
-        }
-    }
-
-    /// Sets available files from server clipboard
-    fn set_available_files(&mut self, files: Vec<ClipboardFileInfo>) {
-        self.available_files = files;
-        self.downloads.clear();
-        self.next_stream_id = 1;
-        self.total_files = 0;
-        self.completed_count = 0;
-    }
-
-    /// Starts download for a file, returns stream_id
-    fn start_download(&mut self, file_index: u32) -> Option<u32> {
-        let file_info = self.available_files.get(file_index as usize)?.clone();
-        let stream_id = self.next_stream_id;
-        self.next_stream_id += 1;
-        self.downloads
-            .insert(stream_id, FileDownloadState::new(file_info));
-        Some(stream_id)
-    }
-
-    /// Updates file size for a download
-    fn update_size(&mut self, stream_id: u32, size: u64) {
-        if let Some(state) = self.downloads.get_mut(&stream_id) {
-            state.total_size = size;
-        }
-    }
-
-    /// Appends data to a download
-    fn append_data(&mut self, stream_id: u32, data: &[u8], is_last: bool) {
-        if let Some(state) = self.downloads.get_mut(&stream_id) {
-            state.data.extend_from_slice(data);
-            state.bytes_received += data.len() as u64;
-            if is_last {
-                state.complete = true;
-                self.completed_count += 1;
-            }
-        }
-    }
-
-    /// Saves a completed download to disk
-    fn save_download(&self, stream_id: u32) -> Result<PathBuf, std::io::Error> {
-        let state = self.downloads.get(&stream_id).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "Download not found")
-        })?;
-
-        if !state.complete {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Download not complete",
-            ));
-        }
-
-        let target_dir = self.target_directory.as_ref().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "Target directory not set")
-        })?;
-
-        let file_path = target_dir.join(&state.file_info.name);
-        let mut file = std::fs::File::create(&file_path)?;
-        file.write_all(&state.data)?;
-        Ok(file_path)
-    }
-
-    /// Returns overall progress (0.0 to 1.0)
-    fn overall_progress(&self) -> f64 {
-        if self.total_files == 0 {
-            return 0.0;
-        }
-        #[allow(clippy::cast_precision_loss)]
-        let progress = self.completed_count as f64 / self.total_files as f64;
-        progress
-    }
-
-    /// Returns true if all downloads are complete
-    fn all_complete(&self) -> bool {
-        self.total_files > 0 && self.completed_count >= self.total_files
-    }
-
-    /// Clears all state
-    #[allow(dead_code)] // API method for cleanup on disconnect
-    fn clear(&mut self) {
-        self.available_files.clear();
-        self.downloads.clear();
-        self.next_stream_id = 1;
-        self.target_directory = None;
-        self.total_files = 0;
-        self.completed_count = 0;
-    }
-}
-
-// ============================================================================
-// FreeRDP Thread Isolation (Requirement 6.3)
-// ============================================================================
-
-/// Commands that can be sent to the FreeRDP thread
-#[derive(Debug, Clone)]
-pub enum RdpCommand {
-    /// Connect to an RDP server
-    Connect(RdpConfig),
-    /// Disconnect from the server
-    Disconnect,
-    /// Send keyboard event
-    KeyEvent { keyval: u32, pressed: bool },
-    /// Send mouse event
-    MouseEvent {
-        x: i32,
-        y: i32,
-        button: u32,
-        pressed: bool,
-    },
-    /// Resize the display
-    Resize { width: u32, height: u32 },
-    /// Send Ctrl+Alt+Del key sequence (Requirement 1.4)
-    SendCtrlAltDel,
-    /// Shutdown the thread
-    Shutdown,
-}
-
-/// Events emitted by the FreeRDP thread
-#[derive(Debug, Clone)]
-pub enum RdpEvent {
-    /// Connection established
-    Connected,
-    /// Connection closed
-    Disconnected,
-    /// Connection error occurred
-    Error(String),
-    /// Frame update available
-    FrameUpdate {
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-    },
-    /// Authentication required
-    AuthRequired,
-    /// Fallback to external mode triggered
-    FallbackTriggered(String),
-}
-
-/// Thread state for FreeRDP operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FreeRdpThreadState {
-    /// Thread not started
-    #[default]
-    NotStarted,
-    /// Thread running and idle
-    Idle,
-    /// Thread connecting
-    Connecting,
-    /// Thread connected
-    Connected,
-    /// Thread encountered error
-    Error,
-    /// Thread shutting down
-    ShuttingDown,
-}
-
-/// Thread-safe FreeRDP wrapper that isolates Qt from GTK main thread
-///
-/// This struct runs FreeRDP operations in a dedicated thread to avoid
-/// Qt/GTK threading conflicts that cause QSocketNotifier and Wayland
-/// requestActivate errors.
-///
-/// # Requirements Coverage
-///
-/// - Requirement 6.3: FreeRDP threading isolation
-/// - Requirement 6.1: QSocketNotifier error handling
-/// - Requirement 6.2: Wayland requestActivate warning suppression
-#[allow(dead_code)] // process field kept for process lifecycle management
-pub struct FreeRdpThread {
-    /// Handle to the FreeRDP process
-    process: Arc<Mutex<Option<Child>>>,
-    /// Shared memory buffer for frame data
-    frame_buffer: Arc<Mutex<PixelBuffer>>,
-    /// Channel for sending commands to FreeRDP thread
-    command_tx: mpsc::Sender<RdpCommand>,
-    /// Channel for receiving events from FreeRDP thread
-    event_rx: mpsc::Receiver<RdpEvent>,
-    /// Thread handle
-    thread_handle: Option<JoinHandle<()>>,
-    /// Current thread state
-    state: Arc<Mutex<FreeRdpThreadState>>,
-    /// Whether fallback was triggered
-    fallback_triggered: Arc<Mutex<bool>>,
-}
-
-impl FreeRdpThread {
-    /// Spawns FreeRDP in a dedicated thread to avoid Qt/GTK conflicts
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The RDP connection configuration
-    ///
-    /// # Returns
-    ///
-    /// A new `FreeRdpThread` instance ready for connection.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if thread creation fails.
-    pub fn spawn(config: &RdpConfig) -> Result<Self, EmbeddedRdpError> {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<RdpCommand>();
-        let (evt_tx, evt_rx) = mpsc::channel::<RdpEvent>();
-
-        let frame_buffer = Arc::new(Mutex::new(PixelBuffer::new(config.width, config.height)));
-        let process = Arc::new(Mutex::new(None));
-        let state = Arc::new(Mutex::new(FreeRdpThreadState::NotStarted));
-        let fallback_triggered = Arc::new(Mutex::new(false));
-
-        let frame_buffer_clone = Arc::clone(&frame_buffer);
-        let process_clone = Arc::clone(&process);
-        let state_clone = Arc::clone(&state);
-        let fallback_clone = Arc::clone(&fallback_triggered);
-        let config_clone = config.clone();
-
-        let thread_handle = thread::spawn(move || {
-            Self::run_freerdp_loop(
-                cmd_rx,
-                evt_tx,
-                frame_buffer_clone,
-                process_clone,
-                state_clone,
-                fallback_clone,
-                config_clone,
-            );
-        });
-
-        *state.lock().unwrap() = FreeRdpThreadState::Idle;
-
-        Ok(Self {
-            process,
-            frame_buffer,
-            command_tx: cmd_tx,
-            event_rx: evt_rx,
-            thread_handle: Some(thread_handle),
-            state,
-            fallback_triggered,
-        })
-    }
-
-    /// Main loop for FreeRDP operations running in dedicated thread
-    fn run_freerdp_loop(
-        cmd_rx: mpsc::Receiver<RdpCommand>,
-        evt_tx: mpsc::Sender<RdpEvent>,
-        _frame_buffer: Arc<Mutex<PixelBuffer>>,
-        process: Arc<Mutex<Option<Child>>>,
-        state: Arc<Mutex<FreeRdpThreadState>>,
-        fallback_triggered: Arc<Mutex<bool>>,
-        initial_config: RdpConfig,
-    ) {
-        // Set environment variables to suppress Qt/Wayland warnings (Requirement 6.1, 6.2)
-        std::env::set_var("QT_LOGGING_RULES", "qt.qpa.wayland=false;qt.qpa.*=false");
-        std::env::set_var("QT_QPA_PLATFORM", "xcb");
-
-        let mut current_config = Some(initial_config);
-
-        loop {
-            match cmd_rx.recv() {
-                Ok(RdpCommand::Connect(config)) => {
-                    *state.lock().unwrap() = FreeRdpThreadState::Connecting;
-                    current_config = Some(config.clone());
-
-                    match Self::launch_freerdp(&config, &process) {
-                        Ok(()) => {
-                            *state.lock().unwrap() = FreeRdpThreadState::Connected;
-                            let _ = evt_tx.send(RdpEvent::Connected);
-                        }
-                        Err(e) => {
-                            // Trigger fallback to external mode (Requirement 6.4)
-                            *fallback_triggered.lock().unwrap() = true;
-                            *state.lock().unwrap() = FreeRdpThreadState::Error;
-                            let _ = evt_tx.send(RdpEvent::FallbackTriggered(e.to_string()));
-                        }
-                    }
-                }
-                Ok(RdpCommand::Disconnect) => {
-                    Self::cleanup_process(&process);
-                    *state.lock().unwrap() = FreeRdpThreadState::Idle;
-                    let _ = evt_tx.send(RdpEvent::Disconnected);
-                }
-                Ok(RdpCommand::KeyEvent {
-                    keyval: _,
-                    pressed: _,
-                }) => {
-                    // Forward keyboard event to FreeRDP process
-                    // In a real implementation, this would use FreeRDP's input API
-                }
-                Ok(RdpCommand::MouseEvent {
-                    x: _,
-                    y: _,
-                    button: _,
-                    pressed: _,
-                }) => {
-                    // Forward mouse event to FreeRDP process
-                    // In a real implementation, this would use FreeRDP's input API
-                }
-                Ok(RdpCommand::Resize { width, height }) => {
-                    // Handle resize - may need to reconnect with new resolution
-                    if let Some(ref mut config) = current_config {
-                        config.width = width;
-                        config.height = height;
-                    }
-                }
-                Ok(RdpCommand::SendCtrlAltDel) => {
-                    // Send Ctrl+Alt+Del key sequence (Requirement 1.4)
-                    // In a real implementation, this would use FreeRDP's input API
-                    // to send the key sequence to the RDP server
-                    eprintln!("[FreeRDP] Ctrl+Alt+Del requested");
-                }
-                Ok(RdpCommand::Shutdown) => {
-                    *state.lock().unwrap() = FreeRdpThreadState::ShuttingDown;
-                    Self::cleanup_process(&process);
-                    break;
-                }
-                Err(_) => {
-                    // Channel closed, exit loop
-                    Self::cleanup_process(&process);
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Launches FreeRDP with Qt error suppression
-    fn launch_freerdp(
-        config: &RdpConfig,
-        process: &Arc<Mutex<Option<Child>>>,
-    ) -> Result<(), EmbeddedRdpError> {
-        // Try wlfreerdp first for embedded mode
-        let binary = if Command::new("which")
-            .arg("wlfreerdp")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
-        {
-            "wlfreerdp"
-        } else {
-            return Err(EmbeddedRdpError::WlFreeRdpNotAvailable);
-        };
-
-        let mut cmd = Command::new(binary);
-
-        // Set environment to suppress Qt warnings (Requirement 6.1, 6.2)
-        cmd.env("QT_LOGGING_RULES", "qt.qpa.wayland=false;qt.qpa.*=false");
-        cmd.env("QT_QPA_PLATFORM", "xcb");
-
-        // Build connection arguments
-        if let Some(ref domain) = config.domain {
-            if !domain.is_empty() {
-                cmd.arg(format!("/d:{domain}"));
-            }
-        }
-
-        if let Some(ref username) = config.username {
-            cmd.arg(format!("/u:{username}"));
-        }
-
-        if let Some(ref password) = config.password {
-            if !password.is_empty() {
-                cmd.arg(format!("/p:{password}"));
-            }
-        }
-
-        cmd.arg(format!("/w:{}", config.width));
-        cmd.arg(format!("/h:{}", config.height));
-        cmd.arg("/cert:ignore");
-        cmd.arg("/dynamic-resolution");
-
-        if config.clipboard_enabled {
-            cmd.arg("+clipboard");
-        }
-
-        for arg in &config.extra_args {
-            cmd.arg(arg);
-        }
-
-        if config.port == 3389 {
-            cmd.arg(format!("/v:{}", config.host));
-        } else {
-            cmd.arg(format!("/v:{}:{}", config.host, config.port));
-        }
-
-        // Redirect stderr to suppress Qt warnings
-        cmd.stderr(Stdio::null());
-
-        match cmd.spawn() {
-            Ok(child) => {
-                *process.lock().unwrap() = Some(child);
-                Ok(())
-            }
-            Err(e) => Err(EmbeddedRdpError::FreeRdpInit(e.to_string())),
-        }
-    }
-
-    /// Cleans up the FreeRDP process
-    fn cleanup_process(process: &Arc<Mutex<Option<Child>>>) {
-        if let Some(mut child) = process.lock().unwrap().take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-
-    /// Sends a command to the FreeRDP thread
-    pub fn send_command(&self, cmd: RdpCommand) -> Result<(), EmbeddedRdpError> {
-        self.command_tx
-            .send(cmd)
-            .map_err(|e| EmbeddedRdpError::ThreadError(e.to_string()))
-    }
-
-    /// Tries to receive an event from the FreeRDP thread (non-blocking)
-    pub fn try_recv_event(&self) -> Option<RdpEvent> {
-        self.event_rx.try_recv().ok()
-    }
-
-    /// Returns the current thread state
-    pub fn state(&self) -> FreeRdpThreadState {
-        *self.state.lock().unwrap()
-    }
-
-    /// Returns whether fallback was triggered
-    pub fn fallback_triggered(&self) -> bool {
-        *self.fallback_triggered.lock().unwrap()
-    }
-
-    /// Returns a reference to the frame buffer
-    pub fn frame_buffer(&self) -> &Arc<Mutex<PixelBuffer>> {
-        &self.frame_buffer
-    }
-
-    /// Shuts down the FreeRDP thread
-    pub fn shutdown(&mut self) {
-        let _ = self.command_tx.send(RdpCommand::Shutdown);
-        if let Some(handle) = self.thread_handle.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
-impl Drop for FreeRdpThread {
-    fn drop(&mut self) {
-        self.shutdown();
-    }
-}
-
-// ============================================================================
-// Qt/Wayland Warning Suppression (Requirement 6.1, 6.2)
-// ============================================================================
-
-/// Safe FreeRDP launcher with Qt error suppression
-///
-/// This struct provides methods to launch FreeRDP with environment variables
-/// set to suppress Qt/Wayland warnings that can cause issues when mixing
-/// Qt-based FreeRDP with GTK4 applications.
-///
-/// # Requirements Coverage
-///
-/// - Requirement 6.1: QSocketNotifier error handling
-/// - Requirement 6.2: Wayland requestActivate warning suppression
-pub struct SafeFreeRdpLauncher {
-    /// Whether to suppress Qt warnings
-    suppress_qt_warnings: bool,
-    /// Whether to force X11 backend
-    force_x11: bool,
-}
-
-impl SafeFreeRdpLauncher {
-    /// Creates a new launcher with default settings (warnings suppressed)
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            suppress_qt_warnings: true,
-            force_x11: true,
-        }
-    }
-
-    /// Sets whether to suppress Qt warnings
-    #[must_use]
-    pub const fn with_suppress_warnings(mut self, suppress: bool) -> Self {
-        self.suppress_qt_warnings = suppress;
-        self
-    }
-
-    /// Sets whether to force X11 backend for FreeRDP
-    #[must_use]
-    pub const fn with_force_x11(mut self, force: bool) -> Self {
-        self.force_x11 = force;
-        self
-    }
-
-    /// Builds the environment variables for Qt suppression
-    fn build_env(&self) -> Vec<(&'static str, &'static str)> {
-        let mut env = Vec::new();
-
-        if self.suppress_qt_warnings {
-            // Suppress Qt/Wayland warnings (Requirement 6.1, 6.2)
-            env.push(("QT_LOGGING_RULES", "qt.qpa.wayland=false;qt.qpa.*=false"));
-        }
-
-        if self.force_x11 {
-            // Force X11 backend to avoid Wayland-specific issues
-            env.push(("QT_QPA_PLATFORM", "xcb"));
-        }
-
-        env
-    }
-
-    /// Launches xfreerdp with Qt error suppression
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The RDP connection configuration
-    ///
-    /// # Returns
-    ///
-    /// The spawned child process.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if FreeRDP cannot be launched.
-    pub fn launch(&self, config: &RdpConfig) -> Result<Child, EmbeddedRdpError> {
-        let binary = Self::detect_freerdp().ok_or_else(|| {
-            EmbeddedRdpError::FreeRdpInit(
-                "No FreeRDP client found. Install xfreerdp or wlfreerdp.".to_string(),
-            )
-        })?;
-
-        let mut cmd = Command::new(&binary);
-
-        // Set environment to suppress Qt warnings (Requirement 6.1, 6.2)
-        for (key, value) in self.build_env() {
-            cmd.env(key, value);
-        }
-
-        // Build connection arguments
-        Self::add_connection_args(&mut cmd, config);
-
-        // Redirect stderr to suppress warnings
-        cmd.stderr(Stdio::null());
-
-        cmd.spawn()
-            .map_err(|e| EmbeddedRdpError::FreeRdpInit(e.to_string()))
-    }
-
-    /// Detects available FreeRDP binary
-    fn detect_freerdp() -> Option<String> {
-        let candidates = ["xfreerdp3", "xfreerdp", "freerdp"];
-        for candidate in candidates {
-            if Command::new("which")
-                .arg(candidate)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success())
-            {
-                return Some(candidate.to_string());
-            }
-        }
-        None
-    }
-
-    /// Adds connection arguments to the command
-    fn add_connection_args(cmd: &mut Command, config: &RdpConfig) {
-        if let Some(ref domain) = config.domain {
-            if !domain.is_empty() {
-                cmd.arg(format!("/d:{domain}"));
-            }
-        }
-
-        if let Some(ref username) = config.username {
-            cmd.arg(format!("/u:{username}"));
-        }
-
-        if let Some(ref password) = config.password {
-            if !password.is_empty() {
-                cmd.arg(format!("/p:{password}"));
-            }
-        }
-
-        cmd.arg(format!("/w:{}", config.width));
-        cmd.arg(format!("/h:{}", config.height));
-        cmd.arg("/cert:ignore");
-        cmd.arg("/dynamic-resolution");
-
-        // Add decorations flag for window controls (Requirement 6.1)
-        cmd.arg("/decorations");
-
-        // Add window geometry if saved and remember_window_position is enabled
-        if config.remember_window_position {
-            if let Some((x, y, _width, _height)) = config.window_geometry {
-                cmd.arg(format!("/x:{x}"));
-                cmd.arg(format!("/y:{y}"));
-            }
-        }
-
-        if config.clipboard_enabled {
-            cmd.arg("+clipboard");
-        }
-
-        // Add shared folders for drive redirection
-        for folder in &config.shared_folders {
-            let path = folder.local_path.display();
-            cmd.arg(format!("/drive:{},{}", folder.share_name, path));
-        }
-
-        for arg in &config.extra_args {
-            cmd.arg(arg);
-        }
-
-        if config.port == 3389 {
-            cmd.arg(format!("/v:{}", config.host));
-        } else {
-            cmd.arg(format!("/v:{}:{}", config.host, config.port));
-        }
-    }
-}
-
-impl Default for SafeFreeRdpLauncher {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Connection state for embedded RDP widget
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RdpConnectionState {
-    /// Not connected
-    #[default]
-    Disconnected,
-    /// Connection in progress
-    Connecting,
-    /// Connected and rendering
-    Connected,
-    /// Connection error occurred
-    Error,
-}
-
-impl std::fmt::Display for RdpConnectionState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Disconnected => write!(f, "Disconnected"),
-            Self::Connecting => write!(f, "Connecting"),
-            Self::Connected => write!(f, "Connected"),
-            Self::Error => write!(f, "Error"),
-        }
-    }
-}
-
-/// A shared folder for RDP drive redirection
-#[derive(Debug, Clone)]
-pub struct EmbeddedSharedFolder {
-    /// Local directory path to share
-    pub local_path: std::path::PathBuf,
-    /// Share name visible in the remote session
-    pub share_name: String,
-}
-
-/// RDP connection configuration
-#[derive(Debug, Clone, Default)]
-pub struct RdpConfig {
-    /// Target hostname or IP address
-    pub host: String,
-    /// Target port (default: 3389)
-    pub port: u16,
-    /// Username for authentication
-    pub username: Option<String>,
-    /// Password for authentication (should use SecretString in production)
-    pub password: Option<String>,
-    /// Domain for authentication
-    pub domain: Option<String>,
-    /// Desired width in pixels
-    pub width: u32,
-    /// Desired height in pixels
-    pub height: u32,
-    /// Enable clipboard sharing
-    pub clipboard_enabled: bool,
-    /// Shared folders for drive redirection
-    pub shared_folders: Vec<EmbeddedSharedFolder>,
-    /// Additional FreeRDP arguments
-    pub extra_args: Vec<String>,
-    /// Window geometry for external mode (x, y, width, height)
-    pub window_geometry: Option<(i32, i32, i32, i32)>,
-    /// Whether to remember window position
-    pub remember_window_position: bool,
-}
-
-impl RdpConfig {
-    /// Creates a new RDP configuration with default settings
-    #[must_use]
-    pub fn new(host: impl Into<String>) -> Self {
-        Self {
-            host: host.into(),
-            port: 3389,
-            username: None,
-            password: None,
-            domain: None,
-            width: 1920,
-            height: 1080,
-            clipboard_enabled: true,
-            shared_folders: Vec::new(),
-            extra_args: Vec::new(),
-            window_geometry: None,
-            remember_window_position: true,
-        }
-    }
-
-    /// Sets the port
-    #[must_use]
-    pub const fn with_port(mut self, port: u16) -> Self {
-        self.port = port;
-        self
-    }
-
-    /// Sets the username
-    #[must_use]
-    pub fn with_username(mut self, username: impl Into<String>) -> Self {
-        self.username = Some(username.into());
-        self
-    }
-
-    /// Sets the password
-    #[must_use]
-    pub fn with_password(mut self, password: impl Into<String>) -> Self {
-        self.password = Some(password.into());
-        self
-    }
-
-    /// Sets the domain
-    #[must_use]
-    pub fn with_domain(mut self, domain: impl Into<String>) -> Self {
-        self.domain = Some(domain.into());
-        self
-    }
-
-    /// Sets the resolution
-    #[must_use]
-    pub const fn with_resolution(mut self, width: u32, height: u32) -> Self {
-        self.width = width;
-        self.height = height;
-        self
-    }
-
-    /// Enables or disables clipboard sharing
-    #[must_use]
-    pub const fn with_clipboard(mut self, enabled: bool) -> Self {
-        self.clipboard_enabled = enabled;
-        self
-    }
-
-    /// Sets shared folders for drive redirection
-    #[must_use]
-    pub fn with_shared_folders(mut self, folders: Vec<EmbeddedSharedFolder>) -> Self {
-        self.shared_folders = folders;
-        self
-    }
-
-    /// Adds extra FreeRDP arguments
-    #[must_use]
-    pub fn with_extra_args(mut self, args: Vec<String>) -> Self {
-        self.extra_args = args;
-        self
-    }
-
-    /// Sets the window geometry for external mode
-    #[must_use]
-    pub const fn with_window_geometry(mut self, x: i32, y: i32, width: i32, height: i32) -> Self {
-        self.window_geometry = Some((x, y, width, height));
-        self
-    }
-
-    /// Sets whether to remember window position
-    #[must_use]
-    pub const fn with_remember_window_position(mut self, remember: bool) -> Self {
-        self.remember_window_position = remember;
-        self
-    }
-}
-
-/// Pixel buffer for frame data
-///
-/// This struct holds the pixel data received from FreeRDP's EndPaint callback
-/// and is used to blit to the Wayland surface.
-#[derive(Debug)]
-pub struct PixelBuffer {
-    /// Raw pixel data in BGRA format
-    data: Vec<u8>,
-    /// Buffer width in pixels
-    width: u32,
-    /// Buffer height in pixels
-    height: u32,
-    /// Stride (bytes per row)
-    stride: u32,
-    /// Whether the buffer has received any data
-    has_data: bool,
-}
-
-impl PixelBuffer {
-    /// Creates a new pixel buffer with the specified dimensions
-    #[must_use]
-    pub fn new(width: u32, height: u32) -> Self {
-        let stride = width * 4; // BGRA = 4 bytes per pixel
-        let size = (stride * height) as usize;
-        Self {
-            data: vec![0; size],
-            width,
-            height,
-            stride,
-            has_data: false,
-        }
-    }
-
-    /// Returns the buffer width
-    #[must_use]
-    pub const fn width(&self) -> u32 {
-        self.width
-    }
-
-    /// Returns the buffer height
-    #[must_use]
-    pub const fn height(&self) -> u32 {
-        self.height
-    }
-
-    /// Returns whether the buffer has received any data
-    #[must_use]
-    pub const fn has_data(&self) -> bool {
-        self.has_data
-    }
-
-    /// Sets the has_data flag
-    pub fn set_has_data(&mut self, has_data: bool) {
-        self.has_data = has_data;
-    }
-
-    /// Returns the stride (bytes per row)
-    #[must_use]
-    pub const fn stride(&self) -> u32 {
-        self.stride
-    }
-
-    /// Returns a reference to the raw pixel data
-    #[must_use]
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
-    /// Returns a mutable reference to the raw pixel data
-    pub fn data_mut(&mut self) -> &mut [u8] {
-        &mut self.data
-    }
-
-    /// Resizes the buffer to new dimensions
-    ///
-    /// Preserves existing content by scaling it to the new size to avoid
-    /// visual artifacts during resize. The has_data flag is preserved.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if self.width == width && self.height == height {
-            return; // No change needed
-        }
-
-        let old_width = self.width;
-        let old_height = self.height;
-        let had_data = self.has_data;
-
-        self.width = width;
-        self.height = height;
-        self.stride = width * 4;
-        let new_size = (self.stride * height) as usize;
-
-        if had_data && old_width > 0 && old_height > 0 {
-            // Preserve old data - just resize the buffer
-            // The old content will be scaled during rendering
-            self.data.resize(new_size, 0);
-            self.has_data = true; // Keep has_data true to continue rendering
-        } else {
-            self.data.resize(new_size, 0);
-            self.has_data = false;
-        }
-    }
-
-    /// Clears the buffer to black
-    pub fn clear(&mut self) {
-        self.data.fill(0);
-        self.has_data = false; // Reset data flag on clear
-    }
-
-    /// Updates a region of the buffer
-    ///
-    /// # Arguments
-    ///
-    /// * `x` - X coordinate of the region
-    /// * `y` - Y coordinate of the region
-    /// * `w` - Width of the region
-    /// * `h` - Height of the region
-    /// * `src_data` - Source pixel data
-    /// * `src_stride` - Source stride
-    pub fn update_region(
-        &mut self,
-        x: u32,
-        y: u32,
-        w: u32,
-        h: u32,
-        src_data: &[u8],
-        src_stride: u32,
-    ) {
-        let dst_stride = self.stride as usize;
-        let src_stride = src_stride as usize;
-        let bytes_per_pixel = 4;
-
-        for row in 0..h {
-            let dst_y = (y + row) as usize;
-            if dst_y >= self.height as usize {
-                break;
-            }
-
-            let x_offset = x as usize * bytes_per_pixel;
-            if x_offset >= dst_stride {
-                continue;
-            }
-
-            let dst_offset = dst_y * dst_stride + x_offset;
-            let src_offset = row as usize * src_stride;
-            let max_copy = dst_stride.saturating_sub(x_offset);
-            let copy_width = (w as usize * bytes_per_pixel).min(max_copy);
-
-            if copy_width > 0
-                && src_offset + copy_width <= src_data.len()
-                && dst_offset + copy_width <= self.data.len()
-            {
-                self.data[dst_offset..dst_offset + copy_width]
-                    .copy_from_slice(&src_data[src_offset..src_offset + copy_width]);
-                self.has_data = true; // Mark that we have received data
-            }
-        }
-    }
-}
-
-/// Wayland surface handle for subsurface integration
-///
-/// This struct manages the Wayland surface resources for embedding
-/// the RDP display within the GTK widget hierarchy.
-#[derive(Debug, Default)]
-pub struct WaylandSurfaceHandle {
-    /// Whether the surface is initialized
-    initialized: bool,
-    /// Surface ID (for debugging)
-    surface_id: u32,
-}
-
-impl WaylandSurfaceHandle {
-    /// Creates a new uninitialized surface handle
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            initialized: false,
-            surface_id: 0,
-        }
-    }
-
-    /// Initializes the Wayland surface
-    ///
-    /// # Errors
-    ///
-    /// Returns error if surface creation fails
-    pub fn initialize(&mut self) -> Result<(), EmbeddedRdpError> {
-        // In a real implementation, this would:
-        // 1. Get the wl_display from GTK
-        // 2. Create a wl_surface
-        // 3. Create a wl_subsurface attached to the parent
-        // 4. Set up shared memory buffers
-
-        // For now, we mark as initialized for the fallback path
-        self.initialized = true;
-        self.surface_id = 1;
-        Ok(())
-    }
-
-    /// Returns whether the surface is initialized
-    #[must_use]
-    pub const fn is_initialized(&self) -> bool {
-        self.initialized
-    }
-
-    /// Commits pending changes to the surface
-    pub fn commit(&self) {
-        // In a real implementation, this would call wl_surface_commit
-    }
-
-    /// Damages a region of the surface for redraw
-    pub fn damage(&self, _x: i32, _y: i32, _width: i32, _height: i32) {
-        // In a real implementation, this would call wl_surface_damage_buffer
-    }
-
-    /// Cleans up the surface resources
-    pub fn cleanup(&mut self) {
-        self.initialized = false;
-        self.surface_id = 0;
-    }
-}
-
-/// Callback type for state change notifications
-type StateCallback = Box<dyn Fn(RdpConnectionState) + 'static>;
-
-/// Callback type for error notifications
-type ErrorCallback = Box<dyn Fn(&str) + 'static>;
-
-/// Callback type for fallback notifications (Requirement 6.4)
-type FallbackCallback = Box<dyn Fn(&str) + 'static>;
 
 /// Embedded RDP widget using Wayland subsurface
 ///
@@ -1882,100 +752,19 @@ impl EmbeddedRdpWidget {
         current_state: RdpConnectionState,
         embedded: bool,
         config: &Rc<RefCell<Option<RdpConfig>>>,
-        _rdp_width: &Rc<RefCell<u32>>,
-        _rdp_height: &Rc<RefCell<u32>>,
+        rdp_width: &Rc<RefCell<u32>>,
+        rdp_height: &Rc<RefCell<u32>>,
     ) {
-        cr.select_font_face(
-            "Sans",
-            gtk4::cairo::FontSlant::Normal,
-            gtk4::cairo::FontWeight::Normal,
+        crate::embedded_rdp_ui::draw_status_overlay(
+            cr,
+            width,
+            height,
+            current_state,
+            embedded,
+            config,
+            rdp_width,
+            rdp_height,
         );
-
-        let center_y = f64::from(height) / 2.0 - 40.0;
-
-        // Protocol icon (circle with "R" for RDP)
-        let icon_color = match current_state {
-            RdpConnectionState::Connected => (0.3, 0.6, 0.4), // Green for connected
-            RdpConnectionState::Connecting => (0.5, 0.5, 0.3), // Yellow for connecting
-            RdpConnectionState::Error => (0.6, 0.3, 0.3),     // Red for error
-            RdpConnectionState::Disconnected => (0.3, 0.5, 0.7), // Blue for disconnected
-        };
-        cr.set_source_rgb(icon_color.0, icon_color.1, icon_color.2);
-        cr.arc(
-            f64::from(width) / 2.0,
-            center_y,
-            40.0,
-            0.0,
-            2.0 * std::f64::consts::PI,
-        );
-        let _ = cr.fill();
-
-        cr.set_source_rgb(1.0, 1.0, 1.0);
-        cr.set_font_size(32.0);
-        let extents = cr.text_extents("R").unwrap();
-        cr.move_to(
-            f64::from(width) / 2.0 - extents.width() / 2.0,
-            center_y + extents.height() / 2.0,
-        );
-        let _ = cr.show_text("R");
-
-        // Connection info - show host from config
-        let config_ref = config.borrow();
-        let host = config_ref
-            .as_ref()
-            .map(|c| c.host.as_str())
-            .unwrap_or("No connection");
-
-        cr.set_source_rgb(0.9, 0.9, 0.9);
-        cr.set_font_size(18.0);
-        let extents = cr.text_extents(host).unwrap();
-        cr.move_to((f64::from(width) - extents.width()) / 2.0, center_y + 70.0);
-        let _ = cr.show_text(host);
-
-        // Status message - be clear about mode
-        cr.set_font_size(13.0);
-        let (status_text, status_color) = match current_state {
-            RdpConnectionState::Disconnected => {
-                if config_ref.is_some() {
-                    // Was connected before, now disconnected
-                    ("Session ended", (0.8, 0.4, 0.4))
-                } else {
-                    ("No connection configured", (0.5, 0.5, 0.5))
-                }
-            }
-            RdpConnectionState::Connecting => {
-                if embedded {
-                    ("Connecting via IronRDP...", (0.8, 0.8, 0.6))
-                } else {
-                    ("Starting FreeRDP...", (0.8, 0.8, 0.6))
-                }
-            }
-            RdpConnectionState::Connected => {
-                if embedded {
-                    // IronRDP embedded mode - waiting for framebuffer
-                    ("✓ Connected - waiting for display", (0.6, 0.8, 0.6))
-                } else {
-                    // FreeRDP runs in separate window
-                    ("✓ RDP session running in FreeRDP window", (0.6, 0.8, 0.6))
-                }
-            }
-            RdpConnectionState::Error => ("Connection failed", (0.8, 0.4, 0.4)),
-        };
-
-        cr.set_source_rgb(status_color.0, status_color.1, status_color.2);
-        let extents = cr.text_extents(status_text).unwrap();
-        cr.move_to((f64::from(width) - extents.width()) / 2.0, center_y + 100.0);
-        let _ = cr.show_text(status_text);
-
-        // Show hint for connected state
-        if current_state == RdpConnectionState::Connected && !embedded {
-            cr.set_source_rgb(0.6, 0.6, 0.6);
-            cr.set_font_size(11.0);
-            let hint = "Switch to the FreeRDP window to interact with the session";
-            let extents = cr.text_extents(hint).unwrap();
-            cr.move_to((f64::from(width) - extents.width()) / 2.0, center_y + 125.0);
-            let _ = cr.show_text(hint);
-        }
     }
 
     /// Sets up keyboard and mouse input handlers with coordinate transformation
@@ -2101,14 +890,9 @@ impl EmbeddedRdpWidget {
                 let rdp_w = f64::from(*rdp_width_motion.borrow());
                 let rdp_h = f64::from(*rdp_height_motion.borrow());
 
-                let scale_x = widget_w / rdp_w;
-                let scale_y = widget_h / rdp_h;
-                let scale = scale_x.min(scale_y);
-                let offset_x = rdp_w.mul_add(-scale, widget_w) / 2.0;
-                let offset_y = rdp_h.mul_add(-scale, widget_h) / 2.0;
-
-                let rdp_x = ((x - offset_x) / scale).clamp(0.0, rdp_w - 1.0);
-                let rdp_y = ((y - offset_y) / scale).clamp(0.0, rdp_h - 1.0);
+                let (rdp_x, rdp_y) = crate::embedded_rdp_ui::transform_widget_to_rdp(
+                    x, y, widget_w, widget_h, rdp_w, rdp_h,
+                );
                 let buttons = *button_state_motion.borrow();
 
                 if using_ironrdp {
@@ -2167,37 +951,19 @@ impl EmbeddedRdpWidget {
                 let rdp_w = f64::from(*rdp_width_press.borrow());
                 let rdp_h = f64::from(*rdp_height_press.borrow());
 
-                let scale_x = widget_w / rdp_w;
-                let scale_y = widget_h / rdp_h;
-                let scale = scale_x.min(scale_y);
-                let offset_x = rdp_w.mul_add(-scale, widget_w) / 2.0;
-                let offset_y = rdp_h.mul_add(-scale, widget_h) / 2.0;
-
-                let rdp_x = ((x - offset_x) / scale).clamp(0.0, rdp_w - 1.0);
-                let rdp_y = ((y - offset_y) / scale).clamp(0.0, rdp_h - 1.0);
+                let (rdp_x, rdp_y) = crate::embedded_rdp_ui::transform_widget_to_rdp(
+                    x, y, widget_w, widget_h, rdp_w, rdp_h,
+                );
 
                 // Convert GTK button to RDP button mask
-                let button_bit: u8 = match button {
-                    1 => 0x01, // Left
-                    2 => 0x04, // Middle
-                    3 => 0x02, // Right
-                    _ => 0x00,
-                };
+                let button_bit = crate::embedded_rdp_ui::gtk_button_to_rdp_mask(button);
                 let buttons = *button_state_press.borrow() | button_bit;
                 *button_state_press.borrow_mut() = buttons;
 
                 if using_ironrdp {
                     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
                     if let Some(ref tx) = *ironrdp_tx.borrow() {
-                        // Send button press event (separate from motion)
-                        // GTK button: 1=left, 2=middle, 3=right
-                        // RDP button: 1=left, 2=right, 3=middle
-                        let rdp_button = match button {
-                            1 => 1, // Left
-                            2 => 3, // Middle (GTK button 2 = middle)
-                            3 => 2, // Right (GTK button 3 = right)
-                            _ => 1,
-                        };
+                        let rdp_button = crate::embedded_rdp_ui::gtk_button_to_rdp_button(button);
                         let _ = tx.send(RdpClientCommand::MouseButtonPress {
                             x: rdp_x as u16,
                             y: rdp_y as u16,
@@ -2242,36 +1008,18 @@ impl EmbeddedRdpWidget {
                 let rdp_w = f64::from(*rdp_width_release.borrow());
                 let rdp_h = f64::from(*rdp_height_release.borrow());
 
-                let scale_x = widget_w / rdp_w;
-                let scale_y = widget_h / rdp_h;
-                let scale = scale_x.min(scale_y);
-                let offset_x = rdp_w.mul_add(-scale, widget_w) / 2.0;
-                let offset_y = rdp_h.mul_add(-scale, widget_h) / 2.0;
+                let (rdp_x, rdp_y) = crate::embedded_rdp_ui::transform_widget_to_rdp(
+                    x, y, widget_w, widget_h, rdp_w, rdp_h,
+                );
 
-                let rdp_x = ((x - offset_x) / scale).clamp(0.0, rdp_w - 1.0);
-                let rdp_y = ((y - offset_y) / scale).clamp(0.0, rdp_h - 1.0);
-
-                let button_bit: u8 = match button {
-                    1 => 0x01,
-                    2 => 0x04,
-                    3 => 0x02,
-                    _ => 0x00,
-                };
+                let button_bit = crate::embedded_rdp_ui::gtk_button_to_rdp_mask(button);
                 let buttons = *button_state_release.borrow() & !button_bit;
                 *button_state_release.borrow_mut() = buttons;
 
                 if using_ironrdp {
                     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
                     if let Some(ref tx) = *ironrdp_tx.borrow() {
-                        // Send button release event (separate from motion)
-                        // GTK button: 1=left, 2=middle, 3=right
-                        // RDP button: 1=left, 2=right, 3=middle
-                        let rdp_button = match button {
-                            1 => 1, // Left
-                            2 => 3, // Middle
-                            3 => 2, // Right
-                            _ => 1,
-                        };
+                        let rdp_button = crate::embedded_rdp_ui::gtk_button_to_rdp_button(button);
                         let _ = tx.send(RdpClientCommand::MouseButtonRelease {
                             x: rdp_x as u16,
                             y: rdp_y as u16,
@@ -2585,133 +1333,137 @@ impl EmbeddedRdpWidget {
         // Store client in a shared reference for the polling closure
         let client = std::rc::Rc::new(std::cell::RefCell::new(Some(client)));
         let client_ref = client.clone();
+        let polling_interval = u64::from(config.polling_interval_ms);
 
-        glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-            // Check if we're still in embedded mode
-            if !*is_embedded.borrow() || !*is_ironrdp.borrow() {
-                // Clean up client
-                if let Some(mut c) = client_ref.borrow_mut().take() {
-                    c.disconnect();
+        glib::timeout_add_local(
+            std::time::Duration::from_millis(polling_interval),
+            move || {
+                // Check if we're still in embedded mode
+                if !*is_embedded.borrow() || !*is_ironrdp.borrow() {
+                    // Clean up client
+                    if let Some(mut c) = client_ref.borrow_mut().take() {
+                        c.disconnect();
+                    }
+                    *ironrdp_tx.borrow_mut() = None;
+                    toolbar.set_visible(false);
+                    return glib::ControlFlow::Break;
                 }
-                *ironrdp_tx.borrow_mut() = None;
-                toolbar.set_visible(false);
-                return glib::ControlFlow::Break;
-            }
 
-            // Track if we need to redraw
-            let mut needs_redraw = false;
-            let mut should_break = false;
+                // Track if we need to redraw
+                let mut needs_redraw = false;
+                let mut should_break = false;
 
-            // Poll for events from IronRDP client
-            if let Some(ref client) = *client_ref.borrow() {
-                while let Some(event) = client.try_recv_event() {
-                    match event {
-                        RdpClientEvent::Connected { width, height } => {
-                            tracing::debug!("[IronRDP] Reconnected: {}x{}", width, height);
-                            *state.borrow_mut() = RdpConnectionState::Connected;
-                            *rdp_width_ref.borrow_mut() = u32::from(width);
-                            *rdp_height_ref.borrow_mut() = u32::from(height);
-                            {
-                                let mut buffer = pixel_buffer.borrow_mut();
-                                buffer.resize(u32::from(width), u32::from(height));
-                                buffer.clear();
-                            }
-                            // Show toolbar and hide status label when connected
-                            toolbar.set_visible(true);
-                            status_label.set_visible(false);
-                            if let Some(ref callback) = *on_state_changed.borrow() {
-                                callback(RdpConnectionState::Connected);
-                            }
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::Disconnected => {
-                            tracing::debug!("[IronRDP] Disconnected after reconnect");
-                            *state.borrow_mut() = RdpConnectionState::Disconnected;
-                            toolbar.set_visible(false);
-                            status_label.set_visible(false);
-                            if let Some(ref callback) = *on_state_changed.borrow() {
-                                callback(RdpConnectionState::Disconnected);
-                            }
-                            needs_redraw = true;
-                            should_break = true;
-                        }
-                        RdpClientEvent::Error(msg) => {
-                            tracing::error!("[IronRDP] Error after reconnect: {}", msg);
-                            *state.borrow_mut() = RdpConnectionState::Error;
-                            toolbar.set_visible(false);
-                            status_label.set_visible(false);
-                            if let Some(ref callback) = *on_error.borrow() {
-                                callback(&msg);
-                            }
-                            needs_redraw = true;
-                            should_break = true;
-                        }
-                        RdpClientEvent::FrameUpdate { rect, data } => {
-                            let mut buffer = pixel_buffer.borrow_mut();
-                            buffer.update_region(
-                                u32::from(rect.x),
-                                u32::from(rect.y),
-                                u32::from(rect.width),
-                                u32::from(rect.height),
-                                &data,
-                                u32::from(rect.width) * 4,
-                            );
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::FullFrameUpdate {
-                            width,
-                            height,
-                            data,
-                        } => {
-                            let mut buffer = pixel_buffer.borrow_mut();
-                            if buffer.width() != u32::from(width)
-                                || buffer.height() != u32::from(height)
-                            {
-                                buffer.resize(u32::from(width), u32::from(height));
+                // Poll for events from IronRDP client
+                if let Some(ref client) = *client_ref.borrow() {
+                    while let Some(event) = client.try_recv_event() {
+                        match event {
+                            RdpClientEvent::Connected { width, height } => {
+                                tracing::debug!("[IronRDP] Reconnected: {}x{}", width, height);
+                                *state.borrow_mut() = RdpConnectionState::Connected;
                                 *rdp_width_ref.borrow_mut() = u32::from(width);
                                 *rdp_height_ref.borrow_mut() = u32::from(height);
-                            }
-                            buffer.update_region(
-                                0,
-                                0,
-                                u32::from(width),
-                                u32::from(height),
-                                &data,
-                                u32::from(width) * 4,
-                            );
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::ResolutionChanged { width, height } => {
-                            *rdp_width_ref.borrow_mut() = u32::from(width);
-                            *rdp_height_ref.borrow_mut() = u32::from(height);
-                            {
-                                let mut buffer = pixel_buffer.borrow_mut();
-                                buffer.resize(u32::from(width), u32::from(height));
-                                for chunk in buffer.data_mut().chunks_exact_mut(4) {
-                                    chunk[0] = 0x1E;
-                                    chunk[1] = 0x1E;
-                                    chunk[2] = 0x1E;
-                                    chunk[3] = 0xFF;
+                                {
+                                    let mut buffer = pixel_buffer.borrow_mut();
+                                    buffer.resize(u32::from(width), u32::from(height));
+                                    buffer.clear();
                                 }
-                                buffer.set_has_data(true);
+                                // Show toolbar and hide status label when connected
+                                toolbar.set_visible(true);
+                                status_label.set_visible(false);
+                                if let Some(ref callback) = *on_state_changed.borrow() {
+                                    callback(RdpConnectionState::Connected);
+                                }
+                                needs_redraw = true;
                             }
-                            needs_redraw = true;
+                            RdpClientEvent::Disconnected => {
+                                tracing::debug!("[IronRDP] Disconnected after reconnect");
+                                *state.borrow_mut() = RdpConnectionState::Disconnected;
+                                toolbar.set_visible(false);
+                                status_label.set_visible(false);
+                                if let Some(ref callback) = *on_state_changed.borrow() {
+                                    callback(RdpConnectionState::Disconnected);
+                                }
+                                needs_redraw = true;
+                                should_break = true;
+                            }
+                            RdpClientEvent::Error(msg) => {
+                                tracing::error!("[IronRDP] Error after reconnect: {}", msg);
+                                *state.borrow_mut() = RdpConnectionState::Error;
+                                toolbar.set_visible(false);
+                                status_label.set_visible(false);
+                                if let Some(ref callback) = *on_error.borrow() {
+                                    callback(&msg);
+                                }
+                                needs_redraw = true;
+                                should_break = true;
+                            }
+                            RdpClientEvent::FrameUpdate { rect, data } => {
+                                let mut buffer = pixel_buffer.borrow_mut();
+                                buffer.update_region(
+                                    u32::from(rect.x),
+                                    u32::from(rect.y),
+                                    u32::from(rect.width),
+                                    u32::from(rect.height),
+                                    &data,
+                                    u32::from(rect.width) * 4,
+                                );
+                                needs_redraw = true;
+                            }
+                            RdpClientEvent::FullFrameUpdate {
+                                width,
+                                height,
+                                data,
+                            } => {
+                                let mut buffer = pixel_buffer.borrow_mut();
+                                if buffer.width() != u32::from(width)
+                                    || buffer.height() != u32::from(height)
+                                {
+                                    buffer.resize(u32::from(width), u32::from(height));
+                                    *rdp_width_ref.borrow_mut() = u32::from(width);
+                                    *rdp_height_ref.borrow_mut() = u32::from(height);
+                                }
+                                buffer.update_region(
+                                    0,
+                                    0,
+                                    u32::from(width),
+                                    u32::from(height),
+                                    &data,
+                                    u32::from(width) * 4,
+                                );
+                                needs_redraw = true;
+                            }
+                            RdpClientEvent::ResolutionChanged { width, height } => {
+                                *rdp_width_ref.borrow_mut() = u32::from(width);
+                                *rdp_height_ref.borrow_mut() = u32::from(height);
+                                {
+                                    let mut buffer = pixel_buffer.borrow_mut();
+                                    buffer.resize(u32::from(width), u32::from(height));
+                                    for chunk in buffer.data_mut().chunks_exact_mut(4) {
+                                        chunk[0] = 0x1E;
+                                        chunk[1] = 0x1E;
+                                        chunk[2] = 0x1E;
+                                        chunk[3] = 0xFF;
+                                    }
+                                    buffer.set_has_data(true);
+                                }
+                                needs_redraw = true;
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
-            }
 
-            if needs_redraw {
-                drawing_area.queue_draw();
-            }
+                if needs_redraw {
+                    drawing_area.queue_draw();
+                }
 
-            if should_break {
-                return glib::ControlFlow::Break;
-            }
+                if should_break {
+                    return glib::ControlFlow::Break;
+                }
 
-            glib::ControlFlow::Continue
-        });
+                glib::ControlFlow::Continue
+            },
+        );
     }
 
     /// Sets up the resize handler (fallback when rdp-embedded is disabled)
@@ -2877,30 +1629,13 @@ impl EmbeddedRdpWidget {
     /// Detects if wlfreerdp is available for embedded mode
     #[must_use]
     pub fn detect_wlfreerdp() -> bool {
-        Command::new("which")
-            .arg("wlfreerdp")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        crate::embedded_rdp_detect::detect_wlfreerdp()
     }
 
     /// Detects if xfreerdp is available for external mode
     #[must_use]
     pub fn detect_xfreerdp() -> Option<String> {
-        let candidates = ["xfreerdp3", "xfreerdp", "freerdp"];
-        for candidate in candidates {
-            if Command::new("which")
-                .arg(candidate)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success())
-            {
-                return Some(candidate.to_string());
-            }
-        }
-        None
+        crate::embedded_rdp_detect::detect_xfreerdp()
     }
 
     /// Connects to an RDP server
@@ -2980,7 +1715,7 @@ impl EmbeddedRdpWidget {
     /// When IronRDP dependencies are resolved, this will return true.
     #[must_use]
     pub fn is_ironrdp_available() -> bool {
-        rustconn_core::is_embedded_rdp_available()
+        crate::embedded_rdp_detect::is_ironrdp_available()
     }
 
     /// Connects using IronRDP native client
@@ -3108,432 +1843,454 @@ impl EmbeddedRdpWidget {
         // Store client in a shared reference for the polling closure
         let client = std::rc::Rc::new(std::cell::RefCell::new(Some(client)));
         let client_ref = client.clone();
+        let polling_interval = u64::from(config.polling_interval_ms);
 
-        glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-            // Check if we're still in embedded mode
-            if !*is_embedded.borrow() || !*is_ironrdp.borrow() {
-                // Clean up client
-                if let Some(mut c) = client_ref.borrow_mut().take() {
-                    c.disconnect();
+        glib::timeout_add_local(
+            std::time::Duration::from_millis(polling_interval),
+            move || {
+                // Check if we're still in embedded mode
+                if !*is_embedded.borrow() || !*is_ironrdp.borrow() {
+                    // Clean up client
+                    if let Some(mut c) = client_ref.borrow_mut().take() {
+                        c.disconnect();
+                    }
+                    *ironrdp_tx.borrow_mut() = None;
+                    toolbar.set_visible(false);
+                    return glib::ControlFlow::Break;
                 }
-                *ironrdp_tx.borrow_mut() = None;
-                toolbar.set_visible(false);
-                return glib::ControlFlow::Break;
-            }
 
-            // Track if we need to redraw
-            let mut needs_redraw = false;
-            let mut should_break = false;
+                // Track if we need to redraw
+                let mut needs_redraw = false;
+                let mut should_break = false;
 
-            // Poll for events from IronRDP client
-            if let Some(ref client) = *client_ref.borrow() {
-                while let Some(event) = client.try_recv_event() {
-                    match event {
-                        RdpClientEvent::Connected { width, height } => {
-                            tracing::debug!("[IronRDP] Connected: {}x{}", width, height);
-                            *state.borrow_mut() = RdpConnectionState::Connected;
-                            *rdp_width_ref.borrow_mut() = u32::from(width);
-                            *rdp_height_ref.borrow_mut() = u32::from(height);
-                            {
-                                let mut buffer = pixel_buffer.borrow_mut();
-                                buffer.resize(u32::from(width), u32::from(height));
-                                buffer.clear();
-                            }
-                            if let Some(ref callback) = *on_state_changed.borrow() {
-                                callback(RdpConnectionState::Connected);
-                            }
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::Disconnected => {
-                            tracing::debug!("[IronRDP] Disconnected");
-                            *state.borrow_mut() = RdpConnectionState::Disconnected;
-                            toolbar.set_visible(false);
-                            if let Some(ref callback) = *on_state_changed.borrow() {
-                                callback(RdpConnectionState::Disconnected);
-                            }
-                            needs_redraw = true;
-                            should_break = true;
-                        }
-                        RdpClientEvent::Error(msg) => {
-                            tracing::error!("[IronRDP] Error: {}", msg);
-                            *state.borrow_mut() = RdpConnectionState::Error;
-                            toolbar.set_visible(false);
-                            if let Some(ref callback) = *on_error.borrow() {
-                                callback(&msg);
-                            }
-                            needs_redraw = true;
-                            should_break = true;
-                        }
-                        RdpClientEvent::FrameUpdate { rect, data } => {
-                            // Update pixel buffer with framebuffer data
-                            let mut buffer = pixel_buffer.borrow_mut();
-                            buffer.update_region(
-                                u32::from(rect.x),
-                                u32::from(rect.y),
-                                u32::from(rect.width),
-                                u32::from(rect.height),
-                                &data,
-                                u32::from(rect.width) * 4,
-                            );
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::FullFrameUpdate {
-                            width,
-                            height,
-                            data,
-                        } => {
-                            // Full screen update
-                            let mut buffer = pixel_buffer.borrow_mut();
-                            if buffer.width() != u32::from(width)
-                                || buffer.height() != u32::from(height)
-                            {
-                                buffer.resize(u32::from(width), u32::from(height));
+                // Poll for events from IronRDP client
+                if let Some(ref client) = *client_ref.borrow() {
+                    while let Some(event) = client.try_recv_event() {
+                        match event {
+                            RdpClientEvent::Connected { width, height } => {
+                                tracing::debug!("[IronRDP] Connected: {}x{}", width, height);
+                                *state.borrow_mut() = RdpConnectionState::Connected;
                                 *rdp_width_ref.borrow_mut() = u32::from(width);
                                 *rdp_height_ref.borrow_mut() = u32::from(height);
-                            }
-                            buffer.update_region(
-                                0,
-                                0,
-                                u32::from(width),
-                                u32::from(height),
-                                &data,
-                                u32::from(width) * 4,
-                            );
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::ResolutionChanged { width, height } => {
-                            tracing::debug!("[IronRDP] Resolution changed: {}x{}", width, height);
-                            *rdp_width_ref.borrow_mut() = u32::from(width);
-                            *rdp_height_ref.borrow_mut() = u32::from(height);
-                            {
-                                let mut buffer = pixel_buffer.borrow_mut();
-                                // Resize buffer but fill with dark gray instead of black
-                                // to indicate we're waiting for new frame data
-                                buffer.resize(u32::from(width), u32::from(height));
-                                // Fill with dark gray (0x1E1E1E) to show resize is happening
-                                for chunk in buffer.data_mut().chunks_exact_mut(4) {
-                                    chunk[0] = 0x1E; // B
-                                    chunk[1] = 0x1E; // G
-                                    chunk[2] = 0x1E; // R
-                                    chunk[3] = 0xFF; // A
+                                {
+                                    let mut buffer = pixel_buffer.borrow_mut();
+                                    buffer.resize(u32::from(width), u32::from(height));
+                                    buffer.clear();
                                 }
-                                // Keep has_data true so we continue rendering
-                                buffer.set_has_data(true);
+                                if let Some(ref callback) = *on_state_changed.borrow() {
+                                    callback(RdpConnectionState::Connected);
+                                }
+                                needs_redraw = true;
                             }
-                            needs_redraw = true;
-                        }
-                        RdpClientEvent::AuthRequired => {
-                            tracing::debug!("[IronRDP] Authentication required");
-                        }
-                        RdpClientEvent::ClipboardText(text) => {
-                            // Server sent clipboard text - store it and enable Copy button
-                            tracing::debug!("[Clipboard] Received text from server");
-                            *remote_clipboard_text.borrow_mut() = Some(text);
-                            copy_button.set_sensitive(true);
-                            copy_button.set_tooltip_text(Some("Copy remote clipboard to local"));
-                        }
-                        RdpClientEvent::ClipboardFormatsAvailable(formats) => {
-                            // Server has clipboard data available
-                            tracing::debug!(
-                                "[Clipboard] Formats available: {} formats",
-                                formats.len()
-                            );
-                            *remote_clipboard_formats.borrow_mut() = formats;
-                        }
-                        RdpClientEvent::ClipboardInitiateCopy(formats) => {
-                            // Backend wants to send format list to server (initialization)
-                            if let Some(ref sender) = *ironrdp_tx.borrow() {
-                                let _ = sender.send(RdpClientCommand::ClipboardCopy(formats));
+                            RdpClientEvent::Disconnected => {
+                                tracing::debug!("[IronRDP] Disconnected");
+                                *state.borrow_mut() = RdpConnectionState::Disconnected;
+                                toolbar.set_visible(false);
+                                if let Some(ref callback) = *on_state_changed.borrow() {
+                                    callback(RdpConnectionState::Disconnected);
+                                }
+                                needs_redraw = true;
+                                should_break = true;
                             }
-                        }
-                        RdpClientEvent::ClipboardDataRequest(format) => {
-                            // Server requests clipboard data from us
-                            // Get local clipboard and send to server
-                            eprintln!("[Clipboard] Server requests data for format {}", format.id);
-                            let display = drawing_area.display();
-                            let clipboard = display.clipboard();
-                            let tx = ironrdp_tx.clone();
-                            let format_id = format.id;
+                            RdpClientEvent::Error(msg) => {
+                                tracing::error!("[IronRDP] Error: {}", msg);
+                                *state.borrow_mut() = RdpConnectionState::Error;
+                                toolbar.set_visible(false);
+                                if let Some(ref callback) = *on_error.borrow() {
+                                    callback(&msg);
+                                }
+                                needs_redraw = true;
+                                should_break = true;
+                            }
+                            RdpClientEvent::FrameUpdate { rect, data } => {
+                                // Update pixel buffer with framebuffer data
+                                let mut buffer = pixel_buffer.borrow_mut();
+                                buffer.update_region(
+                                    u32::from(rect.x),
+                                    u32::from(rect.y),
+                                    u32::from(rect.width),
+                                    u32::from(rect.height),
+                                    &data,
+                                    u32::from(rect.width) * 4,
+                                );
+                                needs_redraw = true;
+                            }
+                            RdpClientEvent::FullFrameUpdate {
+                                width,
+                                height,
+                                data,
+                            } => {
+                                // Full screen update
+                                let mut buffer = pixel_buffer.borrow_mut();
+                                if buffer.width() != u32::from(width)
+                                    || buffer.height() != u32::from(height)
+                                {
+                                    buffer.resize(u32::from(width), u32::from(height));
+                                    *rdp_width_ref.borrow_mut() = u32::from(width);
+                                    *rdp_height_ref.borrow_mut() = u32::from(height);
+                                }
+                                buffer.update_region(
+                                    0,
+                                    0,
+                                    u32::from(width),
+                                    u32::from(height),
+                                    &data,
+                                    u32::from(width) * 4,
+                                );
+                                needs_redraw = true;
+                            }
+                            RdpClientEvent::ResolutionChanged { width, height } => {
+                                tracing::debug!(
+                                    "[IronRDP] Resolution changed: {}x{}",
+                                    width,
+                                    height
+                                );
+                                *rdp_width_ref.borrow_mut() = u32::from(width);
+                                *rdp_height_ref.borrow_mut() = u32::from(height);
+                                {
+                                    let mut buffer = pixel_buffer.borrow_mut();
+                                    // Resize buffer but fill with dark gray instead of black
+                                    // to indicate we're waiting for new frame data
+                                    buffer.resize(u32::from(width), u32::from(height));
+                                    // Fill with dark gray (0x1E1E1E) to show resize is happening
+                                    for chunk in buffer.data_mut().chunks_exact_mut(4) {
+                                        chunk[0] = 0x1E; // B
+                                        chunk[1] = 0x1E; // G
+                                        chunk[2] = 0x1E; // R
+                                        chunk[3] = 0xFF; // A
+                                    }
+                                    // Keep has_data true so we continue rendering
+                                    buffer.set_has_data(true);
+                                }
+                                needs_redraw = true;
+                            }
+                            RdpClientEvent::AuthRequired => {
+                                tracing::debug!("[IronRDP] Authentication required");
+                            }
+                            RdpClientEvent::ClipboardText(text) => {
+                                // Server sent clipboard text - store it and enable Copy button
+                                tracing::debug!("[Clipboard] Received text from server");
+                                *remote_clipboard_text.borrow_mut() = Some(text);
+                                copy_button.set_sensitive(true);
+                                copy_button
+                                    .set_tooltip_text(Some("Copy remote clipboard to local"));
+                            }
+                            RdpClientEvent::ClipboardFormatsAvailable(formats) => {
+                                // Server has clipboard data available
+                                tracing::debug!(
+                                    "[Clipboard] Formats available: {} formats",
+                                    formats.len()
+                                );
+                                *remote_clipboard_formats.borrow_mut() = formats;
+                            }
+                            RdpClientEvent::ClipboardInitiateCopy(formats) => {
+                                // Backend wants to send format list to server (initialization)
+                                if let Some(ref sender) = *ironrdp_tx.borrow() {
+                                    let _ = sender.send(RdpClientCommand::ClipboardCopy(formats));
+                                }
+                            }
+                            RdpClientEvent::ClipboardDataRequest(format) => {
+                                // Server requests clipboard data from us
+                                // Get local clipboard and send to server
+                                eprintln!(
+                                    "[Clipboard] Server requests data for format {}",
+                                    format.id
+                                );
+                                let display = drawing_area.display();
+                                let clipboard = display.clipboard();
+                                let tx = ironrdp_tx.clone();
+                                let format_id = format.id;
 
-                            clipboard.read_text_async(
-                                None::<&gtk4::gio::Cancellable>,
-                                move |result| {
-                                    if let Ok(Some(text)) = result {
-                                        eprintln!(
-                                            "[Clipboard] Sending {} chars to server",
-                                            text.len()
-                                        );
-                                        if let Some(ref sender) = *tx.borrow() {
-                                            // Send as UTF-16 for CF_UNICODETEXT
-                                            if format_id == 13 {
-                                                // CF_UNICODETEXT
-                                                let data: Vec<u8> = text
-                                                    .encode_utf16()
-                                                    .flat_map(u16::to_le_bytes)
-                                                    .chain([0, 0]) // null terminator
-                                                    .collect();
-                                                let _ =
-                                                    sender.send(RdpClientCommand::ClipboardData {
-                                                        format_id,
-                                                        data,
-                                                    });
-                                            } else {
-                                                // CF_TEXT - send as bytes
-                                                let mut data = text.as_bytes().to_vec();
-                                                data.push(0); // null terminator
-                                                let _ =
-                                                    sender.send(RdpClientCommand::ClipboardData {
-                                                        format_id,
-                                                        data,
-                                                    });
+                                clipboard.read_text_async(
+                                    None::<&gtk4::gio::Cancellable>,
+                                    move |result| {
+                                        if let Ok(Some(text)) = result {
+                                            eprintln!(
+                                                "[Clipboard] Sending {} chars to server",
+                                                text.len()
+                                            );
+                                            if let Some(ref sender) = *tx.borrow() {
+                                                // Send as UTF-16 for CF_UNICODETEXT
+                                                if format_id == 13 {
+                                                    // CF_UNICODETEXT
+                                                    let data: Vec<u8> = text
+                                                        .encode_utf16()
+                                                        .flat_map(u16::to_le_bytes)
+                                                        .chain([0, 0]) // null terminator
+                                                        .collect();
+                                                    let _ = sender.send(
+                                                        RdpClientCommand::ClipboardData {
+                                                            format_id,
+                                                            data,
+                                                        },
+                                                    );
+                                                } else {
+                                                    // CF_TEXT - send as bytes
+                                                    let mut data = text.as_bytes().to_vec();
+                                                    data.push(0); // null terminator
+                                                    let _ = sender.send(
+                                                        RdpClientCommand::ClipboardData {
+                                                            format_id,
+                                                            data,
+                                                        },
+                                                    );
+                                                }
                                             }
                                         }
-                                    }
-                                },
-                            );
-                        }
-                        RdpClientEvent::ClipboardPasteRequest(format) => {
-                            // Backend requests to fetch data from server
-                            if let Some(ref sender) = *ironrdp_tx.borrow() {
-                                let _ = sender.send(RdpClientCommand::RequestClipboardData {
-                                    format_id: format.id,
-                                });
-                            }
-                        }
-                        RdpClientEvent::CursorDefault => {
-                            // Reset to default cursor
-                            drawing_area.set_cursor_from_name(Some("default"));
-                        }
-                        RdpClientEvent::CursorHidden => {
-                            // Hide cursor
-                            drawing_area.set_cursor_from_name(Some("none"));
-                        }
-                        RdpClientEvent::CursorPosition { .. } => {
-                            // Server-side cursor position update - we handle this client-side
-                        }
-                        RdpClientEvent::CursorUpdate {
-                            hotspot_x,
-                            hotspot_y,
-                            width,
-                            height,
-                            data,
-                        } => {
-                            // Create custom cursor from bitmap data
-                            let bytes = glib::Bytes::from(&data);
-                            let texture = gdk::MemoryTexture::new(
-                                i32::from(width),
-                                i32::from(height),
-                                gdk::MemoryFormat::B8g8r8a8,
-                                &bytes,
-                                usize::from(width) * 4,
-                            );
-                            let cursor = gdk::Cursor::from_texture(
-                                &texture,
-                                i32::from(hotspot_x),
-                                i32::from(hotspot_y),
-                                None,
-                            );
-                            drawing_area.set_cursor(Some(&cursor));
-                        }
-                        RdpClientEvent::ServerMessage(msg) => {
-                            tracing::debug!("[IronRDP] Server message: {}", msg);
-                        }
-                        #[cfg(feature = "rdp-audio")]
-                        RdpClientEvent::AudioFormatChanged(format) => {
-                            // Audio format negotiated - configure audio player
-                            tracing::debug!(
-                                "[Audio] Format changed: {} Hz, {} ch",
-                                format.samples_per_sec,
-                                format.channels
-                            );
-                            if let Ok(mut player_opt) = audio_player.try_borrow_mut() {
-                                if player_opt.is_none() {
-                                    *player_opt = Some(crate::audio::RdpAudioPlayer::new());
-                                }
-                                if let Some(ref mut player) = *player_opt {
-                                    if let Err(e) = player.configure(format) {
-                                        tracing::warn!("[Audio] Failed to configure: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                        #[cfg(feature = "rdp-audio")]
-                        RdpClientEvent::AudioData { data, .. } => {
-                            // Queue audio data for playback
-                            if let Ok(player_opt) = audio_player.try_borrow() {
-                                if let Some(ref player) = *player_opt {
-                                    player.queue_data(&data);
-                                }
-                            }
-                        }
-                        #[cfg(feature = "rdp-audio")]
-                        RdpClientEvent::AudioVolume { left, right } => {
-                            // Update audio volume
-                            if let Ok(player_opt) = audio_player.try_borrow() {
-                                if let Some(ref player) = *player_opt {
-                                    player.set_volume(left, right);
-                                }
-                            }
-                        }
-                        #[cfg(feature = "rdp-audio")]
-                        RdpClientEvent::AudioClose => {
-                            // Stop audio playback
-                            tracing::debug!("[Audio] Channel closed");
-                            if let Ok(mut player_opt) = audio_player.try_borrow_mut() {
-                                if let Some(ref mut player) = *player_opt {
-                                    player.stop();
-                                }
-                            }
-                        }
-                        #[cfg(not(feature = "rdp-audio"))]
-                        RdpClientEvent::AudioFormatChanged(_)
-                        | RdpClientEvent::AudioData { .. }
-                        | RdpClientEvent::AudioVolume { .. }
-                        | RdpClientEvent::AudioClose => {
-                            // Audio not enabled - ignore
-                        }
-                        RdpClientEvent::ClipboardDataReady { format_id, data } => {
-                            // Clipboard data ready to send to server
-                            tracing::debug!(
-                                "[Clipboard] Data ready for format {}: {} bytes",
-                                format_id,
-                                data.len()
-                            );
-                            if let Some(ref sender) = *ironrdp_tx.borrow() {
-                                let _ = sender
-                                    .send(RdpClientCommand::ClipboardData { format_id, data });
-                            }
-                        }
-                        RdpClientEvent::ClipboardFileList(files) => {
-                            // File list available on server clipboard
-                            tracing::info!("[Clipboard] File list received: {} files", files.len());
-                            for file in &files {
-                                tracing::debug!(
-                                    "  - {} ({} bytes, dir={})",
-                                    file.name,
-                                    file.size,
-                                    file.is_directory()
-                                );
-                            }
-                            // Store file list and show Save Files button
-                            let file_count = files.len();
-                            file_transfer.borrow_mut().set_available_files(files);
-                            if file_count > 0 {
-                                save_files_button.set_label(&format!("Save {} Files", file_count));
-                                save_files_button.set_tooltip_text(Some(&format!(
-                                    "Save {} files from remote clipboard",
-                                    file_count
-                                )));
-                                save_files_button.set_visible(true);
-                                save_files_button.set_sensitive(true);
-                            } else {
-                                save_files_button.set_visible(false);
-                            }
-                        }
-                        RdpClientEvent::ClipboardFileContents {
-                            stream_id,
-                            data,
-                            is_last,
-                        } => {
-                            // File contents received from server
-                            tracing::debug!(
-                                "[Clipboard] File contents: stream_id={}, {} bytes, last={}",
-                                stream_id,
-                                data.len(),
-                                is_last
-                            );
-                            // Append data to download state
-                            file_transfer
-                                .borrow_mut()
-                                .append_data(stream_id, &data, is_last);
-
-                            // Update progress
-                            let (progress, completed, total) = {
-                                let transfer = file_transfer.borrow();
-                                (
-                                    transfer.overall_progress(),
-                                    transfer.completed_count,
-                                    transfer.total_files,
-                                )
-                            };
-
-                            if let Some(ref callback) = *on_file_progress.borrow() {
-                                callback(
-                                    progress,
-                                    &format!("Downloaded {}/{} files", completed, total),
-                                );
-                            }
-
-                            // If this file is complete, save it
-                            if is_last {
-                                match file_transfer.borrow().save_download(stream_id) {
-                                    Ok(path) => {
-                                        tracing::info!(
-                                            "[Clipboard] Saved file: {}",
-                                            path.display()
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("[Clipboard] Failed to save file: {}", e);
-                                    }
-                                }
-                            }
-
-                            // Check if all downloads complete
-                            if file_transfer.borrow().all_complete() {
-                                let count = file_transfer.borrow().completed_count;
-                                let target = file_transfer
-                                    .borrow()
-                                    .target_directory
-                                    .as_ref()
-                                    .map(|p| p.display().to_string())
-                                    .unwrap_or_default();
-
-                                // Reset button
-                                save_files_button.set_sensitive(true);
-                                let file_count = file_transfer.borrow().available_files.len();
-                                save_files_button.set_label(&format!("Save {} Files", file_count));
-
-                                // Show completion status
-                                status_label.set_text(&format!("Saved {} files", count));
-                                let status_hide = status_label.clone();
-                                glib::timeout_add_local_once(
-                                    std::time::Duration::from_secs(3),
-                                    move || {
-                                        status_hide.set_visible(false);
                                     },
                                 );
-
-                                if let Some(ref callback) = *on_file_complete.borrow() {
-                                    callback(count, &target);
+                            }
+                            RdpClientEvent::ClipboardPasteRequest(format) => {
+                                // Backend requests to fetch data from server
+                                if let Some(ref sender) = *ironrdp_tx.borrow() {
+                                    let _ = sender.send(RdpClientCommand::RequestClipboardData {
+                                        format_id: format.id,
+                                    });
                                 }
                             }
-                        }
-                        RdpClientEvent::ClipboardFileSize { stream_id, size } => {
-                            // File size information received
-                            tracing::debug!(
-                                "[Clipboard] File size: stream_id={}, size={}",
+                            RdpClientEvent::CursorDefault => {
+                                // Reset to default cursor
+                                drawing_area.set_cursor_from_name(Some("default"));
+                            }
+                            RdpClientEvent::CursorHidden => {
+                                // Hide cursor
+                                drawing_area.set_cursor_from_name(Some("none"));
+                            }
+                            RdpClientEvent::CursorPosition { .. } => {
+                                // Server-side cursor position update - we handle this client-side
+                            }
+                            RdpClientEvent::CursorUpdate {
+                                hotspot_x,
+                                hotspot_y,
+                                width,
+                                height,
+                                data,
+                            } => {
+                                // Create custom cursor from bitmap data
+                                let bytes = glib::Bytes::from(&data);
+                                let texture = gdk::MemoryTexture::new(
+                                    i32::from(width),
+                                    i32::from(height),
+                                    gdk::MemoryFormat::B8g8r8a8,
+                                    &bytes,
+                                    usize::from(width) * 4,
+                                );
+                                let cursor = gdk::Cursor::from_texture(
+                                    &texture,
+                                    i32::from(hotspot_x),
+                                    i32::from(hotspot_y),
+                                    None,
+                                );
+                                drawing_area.set_cursor(Some(&cursor));
+                            }
+                            RdpClientEvent::ServerMessage(msg) => {
+                                tracing::debug!("[IronRDP] Server message: {}", msg);
+                            }
+                            #[cfg(feature = "rdp-audio")]
+                            RdpClientEvent::AudioFormatChanged(format) => {
+                                // Audio format negotiated - configure audio player
+                                tracing::debug!(
+                                    "[Audio] Format changed: {} Hz, {} ch",
+                                    format.samples_per_sec,
+                                    format.channels
+                                );
+                                if let Ok(mut player_opt) = audio_player.try_borrow_mut() {
+                                    if player_opt.is_none() {
+                                        *player_opt = Some(crate::audio::RdpAudioPlayer::new());
+                                    }
+                                    if let Some(ref mut player) = *player_opt {
+                                        if let Err(e) = player.configure(format) {
+                                            tracing::warn!("[Audio] Failed to configure: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                            #[cfg(feature = "rdp-audio")]
+                            RdpClientEvent::AudioData { data, .. } => {
+                                // Queue audio data for playback
+                                if let Ok(player_opt) = audio_player.try_borrow() {
+                                    if let Some(ref player) = *player_opt {
+                                        player.queue_data(&data);
+                                    }
+                                }
+                            }
+                            #[cfg(feature = "rdp-audio")]
+                            RdpClientEvent::AudioVolume { left, right } => {
+                                // Update audio volume
+                                if let Ok(player_opt) = audio_player.try_borrow() {
+                                    if let Some(ref player) = *player_opt {
+                                        player.set_volume(left, right);
+                                    }
+                                }
+                            }
+                            #[cfg(feature = "rdp-audio")]
+                            RdpClientEvent::AudioClose => {
+                                // Stop audio playback
+                                tracing::debug!("[Audio] Channel closed");
+                                if let Ok(mut player_opt) = audio_player.try_borrow_mut() {
+                                    if let Some(ref mut player) = *player_opt {
+                                        player.stop();
+                                    }
+                                }
+                            }
+                            #[cfg(not(feature = "rdp-audio"))]
+                            RdpClientEvent::AudioFormatChanged(_)
+                            | RdpClientEvent::AudioData { .. }
+                            | RdpClientEvent::AudioVolume { .. }
+                            | RdpClientEvent::AudioClose => {
+                                // Audio not enabled - ignore
+                            }
+                            RdpClientEvent::ClipboardDataReady { format_id, data } => {
+                                // Clipboard data ready to send to server
+                                tracing::debug!(
+                                    "[Clipboard] Data ready for format {}: {} bytes",
+                                    format_id,
+                                    data.len()
+                                );
+                                if let Some(ref sender) = *ironrdp_tx.borrow() {
+                                    let _ = sender
+                                        .send(RdpClientCommand::ClipboardData { format_id, data });
+                                }
+                            }
+                            RdpClientEvent::ClipboardFileList(files) => {
+                                // File list available on server clipboard
+                                tracing::info!(
+                                    "[Clipboard] File list received: {} files",
+                                    files.len()
+                                );
+                                for file in &files {
+                                    tracing::debug!(
+                                        "  - {} ({} bytes, dir={})",
+                                        file.name,
+                                        file.size,
+                                        file.is_directory()
+                                    );
+                                }
+                                // Store file list and show Save Files button
+                                let file_count = files.len();
+                                file_transfer.borrow_mut().set_available_files(files);
+                                if file_count > 0 {
+                                    save_files_button
+                                        .set_label(&format!("Save {} Files", file_count));
+                                    save_files_button.set_tooltip_text(Some(&format!(
+                                        "Save {} files from remote clipboard",
+                                        file_count
+                                    )));
+                                    save_files_button.set_visible(true);
+                                    save_files_button.set_sensitive(true);
+                                } else {
+                                    save_files_button.set_visible(false);
+                                }
+                            }
+                            RdpClientEvent::ClipboardFileContents {
                                 stream_id,
-                                size
-                            );
-                            // Update size for progress indication
-                            file_transfer.borrow_mut().update_size(stream_id, size);
+                                data,
+                                is_last,
+                            } => {
+                                // File contents received from server
+                                tracing::debug!(
+                                    "[Clipboard] File contents: stream_id={}, {} bytes, last={}",
+                                    stream_id,
+                                    data.len(),
+                                    is_last
+                                );
+                                // Append data to download state
+                                file_transfer
+                                    .borrow_mut()
+                                    .append_data(stream_id, &data, is_last);
+
+                                // Update progress
+                                let (progress, completed, total) = {
+                                    let transfer = file_transfer.borrow();
+                                    (
+                                        transfer.overall_progress(),
+                                        transfer.completed_count,
+                                        transfer.total_files,
+                                    )
+                                };
+
+                                if let Some(ref callback) = *on_file_progress.borrow() {
+                                    callback(
+                                        progress,
+                                        &format!("Downloaded {}/{} files", completed, total),
+                                    );
+                                }
+
+                                // If this file is complete, save it
+                                if is_last {
+                                    match file_transfer.borrow().save_download(stream_id) {
+                                        Ok(path) => {
+                                            tracing::info!(
+                                                "[Clipboard] Saved file: {}",
+                                                path.display()
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "[Clipboard] Failed to save file: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+                                }
+
+                                // Check if all downloads complete
+                                if file_transfer.borrow().all_complete() {
+                                    let count = file_transfer.borrow().completed_count;
+                                    let target = file_transfer
+                                        .borrow()
+                                        .target_directory
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_default();
+
+                                    // Reset button
+                                    save_files_button.set_sensitive(true);
+                                    let file_count = file_transfer.borrow().available_files.len();
+                                    save_files_button
+                                        .set_label(&format!("Save {} Files", file_count));
+
+                                    // Show completion status
+                                    status_label.set_text(&format!("Saved {} files", count));
+                                    let status_hide = status_label.clone();
+                                    glib::timeout_add_local_once(
+                                        std::time::Duration::from_secs(3),
+                                        move || {
+                                            status_hide.set_visible(false);
+                                        },
+                                    );
+
+                                    if let Some(ref callback) = *on_file_complete.borrow() {
+                                        callback(count, &target);
+                                    }
+                                }
+                            }
+                            RdpClientEvent::ClipboardFileSize { stream_id, size } => {
+                                // File size information received
+                                tracing::debug!(
+                                    "[Clipboard] File size: stream_id={}, size={}",
+                                    stream_id,
+                                    size
+                                );
+                                // Update size for progress indication
+                                file_transfer.borrow_mut().update_size(stream_id, size);
+                            }
                         }
                     }
                 }
-            }
 
-            // Only redraw once after processing all events
-            if needs_redraw {
-                drawing_area.queue_draw();
-            }
+                // Only redraw once after processing all events
+                if needs_redraw {
+                    drawing_area.queue_draw();
+                }
 
-            if should_break {
-                return glib::ControlFlow::Break;
-            }
+                if should_break {
+                    return glib::ControlFlow::Break;
+                }
 
-            glib::ControlFlow::Continue
-        });
+                glib::ControlFlow::Continue
+            },
+        );
 
         self.set_state(RdpConnectionState::Connecting);
         Ok(())
@@ -4028,206 +2785,4 @@ impl Drop for EmbeddedRdpWidget {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_rdp_config_builder() {
-        let config = RdpConfig::new("server.example.com")
-            .with_port(3390)
-            .with_username("admin")
-            .with_domain("CORP")
-            .with_resolution(1920, 1080)
-            .with_clipboard(true);
-
-        assert_eq!(config.host, "server.example.com");
-        assert_eq!(config.port, 3390);
-        assert_eq!(config.username, Some("admin".to_string()));
-        assert_eq!(config.domain, Some("CORP".to_string()));
-        assert_eq!(config.width, 1920);
-        assert_eq!(config.height, 1080);
-        assert!(config.clipboard_enabled);
-    }
-
-    #[test]
-    fn test_pixel_buffer_new() {
-        let buffer = PixelBuffer::new(100, 50);
-        assert_eq!(buffer.width(), 100);
-        assert_eq!(buffer.height(), 50);
-        assert_eq!(buffer.stride(), 400); // 100 * 4 bytes per pixel
-        assert_eq!(buffer.data().len(), 20000); // 100 * 50 * 4
-    }
-
-    #[test]
-    fn test_pixel_buffer_resize() {
-        let mut buffer = PixelBuffer::new(100, 50);
-        buffer.resize(200, 100);
-        assert_eq!(buffer.width(), 200);
-        assert_eq!(buffer.height(), 100);
-        assert_eq!(buffer.stride(), 800);
-        assert_eq!(buffer.data().len(), 80000);
-    }
-
-    #[test]
-    fn test_pixel_buffer_clear() {
-        let mut buffer = PixelBuffer::new(10, 10);
-        buffer.data_mut()[0] = 255;
-        buffer.clear();
-        assert!(buffer.data().iter().all(|&b| b == 0));
-    }
-
-    #[test]
-    fn test_wayland_surface_handle() {
-        let mut handle = WaylandSurfaceHandle::new();
-        assert!(!handle.is_initialized());
-
-        handle.initialize().unwrap();
-        assert!(handle.is_initialized());
-
-        handle.cleanup();
-        assert!(!handle.is_initialized());
-    }
-
-    #[test]
-    fn test_rdp_connection_state_display() {
-        assert_eq!(RdpConnectionState::Disconnected.to_string(), "Disconnected");
-        assert_eq!(RdpConnectionState::Connecting.to_string(), "Connecting");
-        assert_eq!(RdpConnectionState::Connected.to_string(), "Connected");
-        assert_eq!(RdpConnectionState::Error.to_string(), "Error");
-    }
-
-    #[test]
-    fn test_embedded_rdp_error_display() {
-        let err = EmbeddedRdpError::WlFreeRdpNotAvailable;
-        assert!(err.to_string().contains("wlfreerdp not available"));
-
-        let err = EmbeddedRdpError::Connection("timeout".to_string());
-        assert!(err.to_string().contains("timeout"));
-    }
-
-    // Tests for FreeRDP thread isolation (Requirement 6.3)
-
-    #[test]
-    fn test_rdp_command_variants() {
-        let config = RdpConfig::new("test.example.com");
-        let cmd = RdpCommand::Connect(config);
-        assert!(matches!(cmd, RdpCommand::Connect(_)));
-
-        let cmd = RdpCommand::Disconnect;
-        assert!(matches!(cmd, RdpCommand::Disconnect));
-
-        let cmd = RdpCommand::KeyEvent {
-            keyval: 65,
-            pressed: true,
-        };
-        assert!(matches!(cmd, RdpCommand::KeyEvent { .. }));
-
-        let cmd = RdpCommand::MouseEvent {
-            x: 100,
-            y: 200,
-            button: 1,
-            pressed: true,
-        };
-        assert!(matches!(cmd, RdpCommand::MouseEvent { .. }));
-
-        let cmd = RdpCommand::Resize {
-            width: 1920,
-            height: 1080,
-        };
-        assert!(matches!(cmd, RdpCommand::Resize { .. }));
-
-        let cmd = RdpCommand::Shutdown;
-        assert!(matches!(cmd, RdpCommand::Shutdown));
-    }
-
-    #[test]
-    fn test_rdp_event_variants() {
-        let evt = RdpEvent::Connected;
-        assert!(matches!(evt, RdpEvent::Connected));
-
-        let evt = RdpEvent::Disconnected;
-        assert!(matches!(evt, RdpEvent::Disconnected));
-
-        let evt = RdpEvent::Error("test error".to_string());
-        assert!(matches!(evt, RdpEvent::Error(_)));
-
-        let evt = RdpEvent::FrameUpdate {
-            x: 0,
-            y: 0,
-            width: 100,
-            height: 100,
-        };
-        assert!(matches!(evt, RdpEvent::FrameUpdate { .. }));
-
-        let evt = RdpEvent::AuthRequired;
-        assert!(matches!(evt, RdpEvent::AuthRequired));
-
-        let evt = RdpEvent::FallbackTriggered("reason".to_string());
-        assert!(matches!(evt, RdpEvent::FallbackTriggered(_)));
-    }
-
-    #[test]
-    fn test_freerdp_thread_state_default() {
-        let state = FreeRdpThreadState::default();
-        assert_eq!(state, FreeRdpThreadState::NotStarted);
-    }
-
-    #[test]
-    fn test_qt_threading_error() {
-        let err = EmbeddedRdpError::QtThreadingError("QSocketNotifier error".to_string());
-        assert!(err.to_string().contains("Qt/Wayland threading error"));
-        assert!(err.to_string().contains("QSocketNotifier"));
-    }
-
-    #[test]
-    fn test_fallback_to_external_error() {
-        let err = EmbeddedRdpError::FallbackToExternal("embedded mode failed".to_string());
-        assert!(err.to_string().contains("Falling back to external mode"));
-    }
-
-    #[test]
-    fn test_thread_error() {
-        let err = EmbeddedRdpError::ThreadError("channel closed".to_string());
-        assert!(err.to_string().contains("Thread communication error"));
-    }
-
-    // Tests for SafeFreeRdpLauncher (Requirement 6.1, 6.2)
-
-    #[test]
-    fn test_safe_freerdp_launcher_default() {
-        let launcher = SafeFreeRdpLauncher::new();
-        assert!(launcher.suppress_qt_warnings);
-        assert!(launcher.force_x11);
-    }
-
-    #[test]
-    fn test_safe_freerdp_launcher_builder() {
-        let launcher = SafeFreeRdpLauncher::new()
-            .with_suppress_warnings(false)
-            .with_force_x11(false);
-        assert!(!launcher.suppress_qt_warnings);
-        assert!(!launcher.force_x11);
-    }
-
-    #[test]
-    fn test_safe_freerdp_launcher_env() {
-        let launcher = SafeFreeRdpLauncher::new();
-        let env = launcher.build_env();
-
-        // Should have both QT_LOGGING_RULES and QT_QPA_PLATFORM
-        assert!(env.iter().any(|(k, _)| *k == "QT_LOGGING_RULES"));
-        assert!(env.iter().any(|(k, _)| *k == "QT_QPA_PLATFORM"));
-    }
-
-    #[test]
-    fn test_safe_freerdp_launcher_env_disabled() {
-        let launcher = SafeFreeRdpLauncher::new()
-            .with_suppress_warnings(false)
-            .with_force_x11(false);
-        let env = launcher.build_env();
-
-        // Should be empty when both are disabled
-        assert!(env.is_empty());
-    }
-}
+// Tests moved to embedded_rdp_types.rs, embedded_rdp_buffer.rs, and embedded_rdp_launcher.rs
