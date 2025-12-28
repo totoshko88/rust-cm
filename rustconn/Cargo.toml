@@ -15,6 +15,7 @@ path = "src/main.rs"
 rustconn-core = { path = "../rustconn-core" }
 tokio = { workspace = true }
 gtk4 = { workspace = true, features = ["v4_14"] }
+gdk4-wayland = { version = "0.10", optional = true }
 vte4 = { workspace = true, features = ["v0_72"] }
 uuid = { workspace = true }
 regex = "1.10"
@@ -36,12 +37,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 cpal = { version = "0.17", optional = true }
 
 [features]
-default = ["tray", "vnc-embedded", "rdp-embedded", "rdp-audio"]
+default = ["tray", "vnc-embedded", "rdp-embedded", "rdp-audio", "wayland-native"]
 tray = ["dep:ksni", "dep:resvg"]
 vnc-embedded = ["rustconn-core/vnc-embedded"]
 rdp-embedded = ["rustconn-core/rdp-embedded"]
 rdp-audio = ["rdp-embedded", "dep:cpal"]
 spice-embedded = ["rustconn-core/spice-embedded"]
+wayland-native = ["dep:gdk4-wayland"]
 
 [lints]
 workspace = true

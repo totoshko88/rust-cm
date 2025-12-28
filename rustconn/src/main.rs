@@ -56,6 +56,12 @@ mod terminal;
 pub mod tray;
 pub mod wayland_surface;
 mod window;
+mod window_clusters;
+mod window_groups;
+mod window_sessions;
+mod window_snippets;
+mod window_templates;
+mod window_types;
 
 fn main() -> gtk4::glib::ExitCode {
     // Initialize logging with environment filter (RUST_LOG)

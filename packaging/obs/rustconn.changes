@@ -1,4 +1,14 @@
 -------------------------------------------------------------------
+Sat Dec 28 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.2
+
+- Update to version 0.5.2
+  * Native Wayland subsurface integration module (wayland_surface.rs)
+  * Lazy loading API for connection groups (LazyGroupLoader)
+  * Virtual scrolling state management (SelectionState, VirtualScrollConfig)
+  * Sidebar integration with lazy loading and virtual scrolling APIs
+  * Documentation for public APIs (#![warn(missing_docs)] enabled)
+
+-------------------------------------------------------------------
 Sat Dec 28 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.1
 
 - Update to version 0.5.1

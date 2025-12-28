@@ -484,6 +484,33 @@ RustConn includes several performance optimizations designed to handle large con
 - Keyboard and mouse events are forwarded to the SPICE server
 - If native connection fails, falls back to external `remote-viewer`
 
+### ZeroTrust Connections
+
+**Purpose:** Connect through cloud provider bastion services and zero-trust access platforms.
+
+**Supported Providers:**
+- **AWS SSM** - AWS Systems Manager Session Manager
+- **GCP IAP** - Google Cloud Identity-Aware Proxy
+- **Azure Bastion** - Azure Bastion service
+- **Azure SSH** - Azure SSH extension
+- **OCI Bastion** - Oracle Cloud Infrastructure Bastion
+- **Cloudflare Access** - Cloudflare Zero Trust
+- **Teleport** - Gravitational Teleport
+- **Tailscale SSH** - Tailscale SSH
+- **HashiCorp Boundary** - HashiCorp Boundary
+
+**How to:**
+1. Create new connection → Select "ZeroTrust" protocol
+2. Choose provider from dropdown
+3. Configure provider-specific settings (instance ID, project, etc.)
+4. Save and connect
+
+**Note:** Each provider requires its CLI tool to be installed and configured:
+- AWS: `aws` CLI with SSM plugin
+- GCP: `gcloud` CLI
+- Azure: `az` CLI
+- Tailscale: `tailscale` CLI
+
 ---
 
 ## Tracing and Debugging

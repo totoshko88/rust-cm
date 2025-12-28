@@ -6,7 +6,7 @@
 #
 
 Name:           rustconn
-Version:        0.5.1
+Version:        0.5.2
 Release:        0
 Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
 License:        GPL-3.0-or-later
@@ -157,6 +157,13 @@ fi
 %{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
 
 %changelog
+* Sat Dec 28 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.2-0
+- Update to version 0.5.2
+- Native Wayland subsurface integration module
+- Lazy loading API for connection groups
+- Virtual scrolling state management
+- Documentation for public APIs
+
 * Sat Dec 28 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.1-0
 - Update to version 0.5.1
 - CLI: Wake-on-LAN, snippet, group management commands

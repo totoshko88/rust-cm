@@ -1,3 +1,13 @@
+rustconn (0.5.2-1) unstable; urgency=medium
+
+  * New upstream release
+  * Native Wayland subsurface integration module
+  * Lazy loading API for connection groups
+  * Virtual scrolling state management
+  * Documentation for public APIs
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Sat, 28 Dec 2025 12:00:00 +0200
+
 rustconn (0.5.1-1) unstable; urgency=medium
 
   * New upstream release

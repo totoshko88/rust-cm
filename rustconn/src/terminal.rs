@@ -378,12 +378,14 @@ impl TerminalNotebook {
         spacer.set_content_height(1);
         placeholder.append(&spacer);
 
-        // Create tab label with close button
-        let tab_label = Self::create_tab_label(
+        // Create tab label with protocol icon
+        let tab_label = Self::create_tab_label_with_protocol(
             title,
             session_id,
             &self.notebook,
             &self.sessions,
+            protocol,
+            "",
             &self.tab_labels,
             &self.overflow_box,
         );
@@ -896,35 +898,12 @@ impl TerminalNotebook {
         self.spawn_command(session_id, &argv, None, None)
     }
 
-    /// Creates a tab label with icon, title, close button, and drag source
+    /// Creates a tab label with protocol icon, title, close button, and drag source
     ///
     /// The tab label adapts to available space:
     /// - Shows protocol icon for quick identification
     /// - Label truncates with ellipsis when space is limited
     /// - Tooltip shows full name and host information
-    fn create_tab_label(
-        title: &str,
-        session_id: Uuid,
-        notebook: &Notebook,
-        sessions: &Rc<RefCell<HashMap<Uuid, u32>>>,
-        tab_labels: &Rc<RefCell<HashMap<Uuid, TabLabelWidgets>>>,
-        overflow_box: &GtkBox,
-    ) -> GtkBox {
-        Self::create_tab_label_with_protocol(
-            title,
-            session_id,
-            notebook,
-            sessions,
-            "ssh",
-            "",
-            tab_labels,
-            overflow_box,
-        )
-    }
-
-    /// Creates a tab label with protocol icon, title, close button, and drag source
-    ///
-    /// Extended version that includes protocol icon and host for tooltip.
     #[allow(clippy::too_many_arguments)]
     fn create_tab_label_with_protocol(
         title: &str,
@@ -1395,7 +1374,13 @@ impl TerminalNotebook {
     ///
     /// This method adds a pre-created widget to the notebook for sessions
     /// that use external processes (like xfreerdp) instead of native embedding.
-    pub fn add_embedded_session_tab(&self, session_id: Uuid, title: &str, widget: &GtkBox) {
+    pub fn add_embedded_session_tab(
+        &self,
+        session_id: Uuid,
+        title: &str,
+        protocol: &str,
+        widget: &GtkBox,
+    ) {
         let is_first_session = self.sessions.borrow().is_empty();
 
         // Remove Welcome tab if this is the first session
@@ -1403,12 +1388,14 @@ impl TerminalNotebook {
             self.notebook.remove_page(Some(0));
         }
 
-        // Create tab label with close button
-        let tab_label = Self::create_tab_label(
+        // Create tab label with protocol icon
+        let tab_label = Self::create_tab_label_with_protocol(
             title,
             session_id,
             &self.notebook,
             &self.sessions,
+            protocol,
+            "",
             &self.tab_labels,
             &self.overflow_box,
         );
@@ -1426,7 +1413,7 @@ impl TerminalNotebook {
                 id: session_id,
                 connection_id: session_id, // Will be updated by caller if needed
                 name: title.to_string(),
-                protocol: "embedded".to_string(),
+                protocol: protocol.to_string(),
                 is_embedded: false, // External process
                 log_file: None,
             },

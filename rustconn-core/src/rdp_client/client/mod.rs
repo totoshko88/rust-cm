@@ -35,11 +35,16 @@ pub type RdpEventReceiver = std::sync::mpsc::Receiver<RdpClientEvent>;
 /// RDP client state for tracking connection lifecycle
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RdpClientState {
+    /// Client is disconnected from the server
     #[default]
     Disconnected,
+    /// Client is attempting to connect
     Connecting,
+    /// Client is connected and active
     Connected,
+    /// Client is in the process of disconnecting
     Disconnecting,
+    /// Client encountered an error
     Error,
 }
 
@@ -54,6 +59,7 @@ pub struct RdpClient {
 }
 
 impl RdpClient {
+    /// Creates a new RDP client with the given configuration
     #[must_use]
     pub fn new(config: RdpClientConfig) -> Self {
         Self {
@@ -121,6 +127,7 @@ impl RdpClient {
         Ok(())
     }
 
+    /// Tries to receive an event from the RDP client without blocking
     #[must_use]
     pub fn try_recv_event(&self) -> Option<RdpClientEvent> {
         self.event_rx.as_ref()?.try_recv().ok()
@@ -181,6 +188,7 @@ impl RdpClient {
         self.send_command(RdpClientCommand::SetDesktopSize { width, height })
     }
 
+    /// Disconnects from the RDP server and cleans up resources
     pub fn disconnect(&mut self) {
         self.shutdown_signal.store(true, Ordering::SeqCst);
         if let Some(tx) = &self.command_tx {
@@ -194,6 +202,7 @@ impl RdpClient {
         self.connected.store(false, Ordering::SeqCst);
     }
 
+    /// Returns whether all resources have been cleaned up
     #[must_use]
     pub fn is_cleaned_up(&self) -> bool {
         self.command_tx.is_none()
@@ -202,21 +211,25 @@ impl RdpClient {
             && !self.connected.load(Ordering::SeqCst)
     }
 
+    /// Returns whether the client is currently connected
     #[must_use]
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::SeqCst)
     }
 
+    /// Returns a reference to the client configuration
     #[must_use]
     pub const fn config(&self) -> &RdpClientConfig {
         &self.config
     }
 
+    /// Returns a reference to the event receiver channel
     #[must_use]
     pub const fn event_receiver(&self) -> Option<&std::sync::mpsc::Receiver<RdpClientEvent>> {
         self.event_rx.as_ref()
     }
 
+    /// Returns a clone of the command sender channel
     #[must_use]
     pub fn command_sender(&self) -> Option<std::sync::mpsc::Sender<RdpClientCommand>> {
         self.command_tx.clone()

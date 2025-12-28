@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2025-12-28
+
+### Added
+- `wayland-native` feature flag with `gdk4-wayland` integration for improved Wayland detection
+- Sidebar integration with lazy loading and virtual scrolling APIs
+
+### Changed
+- Improved display server detection using GDK4 Wayland bindings when available
+- Refactored `window.rs` into modular structure (reduced from 7283 to 5475 lines):
+  - `window_types.rs` - Type aliases and `get_protocol_string()` utility
+  - `window_snippets.rs` - Snippet management methods
+  - `window_templates.rs` - Template management methods
+  - `window_sessions.rs` - Session management methods
+  - `window_groups.rs` - Group management dialogs (move to group, error toast)
+  - `window_clusters.rs` - Cluster management methods
+
+### Fixed
+- Tab icons now match sidebar icons for all protocols (SSH, RDP, VNC, SPICE, ZeroTrust providers)
+- SSH and ZeroTrust sessions now show correct protocol-specific icons in tabs
+- Cluster list not refreshing after deleting a cluster (borrow conflict in callback)
+
+### Documentation
+- Added `#![warn(missing_docs)]` and documentation for public APIs in `rustconn-core`
+
 ## [0.5.1] - 2025-12-28
 
 ### Added
@@ -202,7 +226,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/totoshko88/RustConn/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/totoshko88/RustConn/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/totoshko88/RustConn/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/totoshko88/RustConn/compare/v0.4.1...v0.4.2

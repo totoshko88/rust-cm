@@ -35,17 +35,37 @@ pub enum VncClientEvent {
     /// Connection closed
     Disconnected,
 
-    /// Resolution changed (width, height)
-    ResolutionChanged { width: u32, height: u32 },
+    /// Resolution changed
+    ResolutionChanged {
+        /// New width in pixels
+        width: u32,
+        /// New height in pixels
+        height: u32,
+    },
 
-    /// Raw framebuffer update (rect, BGRA pixel data)
-    FrameUpdate { rect: VncRect, data: Vec<u8> },
+    /// Raw framebuffer update (BGRA pixel data)
+    FrameUpdate {
+        /// Rectangle area being updated
+        rect: VncRect,
+        /// Pixel data in BGRA format
+        data: Vec<u8>,
+    },
 
     /// Copy rectangle from source to destination
-    CopyRect { dst: VncRect, src: VncRect },
+    CopyRect {
+        /// Destination rectangle
+        dst: VncRect,
+        /// Source rectangle to copy from
+        src: VncRect,
+    },
 
     /// Cursor shape update
-    CursorUpdate { rect: VncRect, data: Vec<u8> },
+    CursorUpdate {
+        /// Cursor hotspot and dimensions
+        rect: VncRect,
+        /// Cursor pixel data
+        data: Vec<u8>,
+    },
 
     /// Server sent bell notification
     Bell,
@@ -66,11 +86,23 @@ pub enum VncClientCommand {
     /// Disconnect from server
     Disconnect,
 
-    /// Send keyboard event (keysym, pressed)
-    KeyEvent { keysym: u32, pressed: bool },
+    /// Send keyboard event
+    KeyEvent {
+        /// X11 keysym code
+        keysym: u32,
+        /// True if key pressed, false if released
+        pressed: bool,
+    },
 
-    /// Send pointer/mouse event (x, y, buttons)
-    PointerEvent { x: u16, y: u16, buttons: u8 },
+    /// Send pointer/mouse event
+    PointerEvent {
+        /// X coordinate
+        x: u16,
+        /// Y coordinate
+        y: u16,
+        /// Button mask (bit 0 = left, bit 1 = middle, bit 2 = right)
+        buttons: u8,
+    },
 
     /// Send clipboard text to server
     ClipboardText(String),
@@ -82,7 +114,12 @@ pub enum VncClientCommand {
     Authenticate(String),
 
     /// Request desktop size change (requires server support for `ExtendedDesktopSize`)
-    SetDesktopSize { width: u16, height: u16 },
+    SetDesktopSize {
+        /// Requested width in pixels
+        width: u16,
+        /// Requested height in pixels
+        height: u16,
+    },
 
     /// Send Ctrl+Alt+Del key sequence (for Windows login screens)
     SendCtrlAltDel,
