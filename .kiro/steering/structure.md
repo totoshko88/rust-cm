@@ -4,92 +4,95 @@ inclusion: always
 
 # RustConn Project Structure
 
-## Workspace Layout
+Three-crate Cargo workspace with strict separation between GUI and business logic.
 
-Three-crate Cargo workspace:
+## Crate Boundaries (ENFORCED)
 
-| Crate | Type | Purpose |
-|-------|------|---------|
-| `rustconn/` | Binary | GTK4 GUI application |
-| `rustconn-core/` | Library | Business logic, models, protocols (GUI-free) |
-| `rustconn-cli/` | Binary | CLI for headless operations |
+| Crate | Type | Depends On | Rule |
+|-------|------|------------|------|
+| `rustconn/` | Binary | `rustconn-core` | GUI only — widgets, dialogs, rendering |
+| `rustconn-core/` | Library | — | GUI-free — MUST NOT import `gtk4`, `vte4`, `adw` |
+| `rustconn-cli/` | Binary | `rustconn-core` | CLI for headless operations |
 
-## Crate Boundaries (STRICT)
+When adding code, ask: "Does this need GTK?" If no → `rustconn-core`. If yes → `rustconn`.
 
-- `rustconn-core` MUST NOT import `gtk4`, `vte4`, `adw`, or any GUI crate
-- Business logic, data models, protocol implementations → `rustconn-core`
-- GUI code (widgets, dialogs, rendering) → `rustconn`
-- Both binaries depend on `rustconn-core`
+## File Placement Rules
 
-## Key Directories
+| Adding | Location | Required Steps |
+|--------|----------|----------------|
+| Data model | `rustconn-core/src/models/` | Re-export in `models.rs` |
+| Protocol | `rustconn-core/src/protocol/` | Implement `Protocol` trait |
+| Import format | `rustconn-core/src/import/` | Implement `ImportSource` trait |
+| Export format | `rustconn-core/src/export/` | Implement `ExportTarget` trait |
+| Secret backend | `rustconn-core/src/secret/` | Implement `SecretBackend` trait |
+| Dialog | `rustconn/src/dialogs/` | Register in `mod.rs` |
+| Property tests | `rustconn-core/tests/properties/` | Add module to `mod.rs` |
 
-### rustconn/ (GUI)
+## Key Files (rustconn/)
 
-| Path | Purpose |
-|------|---------|
-| `src/app.rs` | GTK Application, actions, shortcuts |
-| `src/window.rs` | Main window, header bar |
-| `src/sidebar.rs` | Connection tree view |
-| `src/terminal.rs` | VTE terminal notebook (SSH) |
-| `src/state.rs` | `SharedAppState` = `Rc<RefCell<AppState>>` |
-| `src/dialogs/` | Modal dialogs |
-| `src/session/` | Protocol session widgets |
+| File | Responsibility |
+|------|----------------|
+| `app.rs` | GTK Application, global actions, keyboard shortcuts |
+| `window.rs` | Main window layout, header bar |
+| `window_*.rs` | Window functionality split by domain (sessions, protocols, dialogs) |
+| `sidebar.rs` | Connection tree view logic |
+| `sidebar_ui.rs` | Sidebar widget construction |
+| `sidebar_types.rs` | Sidebar data types |
+| `terminal.rs` | VTE terminal notebook for SSH |
+| `state.rs` | `SharedAppState` = `Rc<RefCell<AppState>>` |
+| `dialogs/` | Modal dialog implementations |
+| `embedded_*.rs` | Embedded protocol viewers (RDP, VNC, SPICE) |
 
-### rustconn-core/src/
+## Key Directories (rustconn-core/src/)
 
-| Path | Purpose |
-|------|---------|
-| `lib.rs` | Public API exports |
-| `error.rs` | Error types (`thiserror`) |
-| `models/` | Connection, Group, Protocol, Snippet, Template |
-| `config/` | Settings persistence |
-| `connection/` | Connection CRUD |
-| `protocol/` | Protocol trait + implementations |
-| `import/` | Import formats |
-| `export/` | Export formats |
-| `secret/` | Credential backends |
+| Directory | Purpose |
+|-----------|---------|
+| `models/` | Connection, Group, Protocol, Snippet, Template structs |
+| `config/` | Settings persistence (`manager.rs`, `settings.rs`) |
+| `connection/` | Connection CRUD, lazy loading, virtual scroll |
+| `protocol/` | Protocol trait + SSH, RDP, VNC, SPICE implementations |
+| `import/` | Remmina, Asbru, SSH config, Ansible importers |
+| `export/` | Export format implementations |
+| `secret/` | Credential backends (libsecret, KeePassXC, KDBX) |
 | `session/` | Session state, logging |
 | `automation/` | Expect scripts, key sequences |
-| `cluster/` | Multi-host commands |
-| `variables/` | Variable substitution |
-| `search/` | Connection filtering |
-| `wol/` | Wake-on-LAN |
-
-### rustconn-core/tests/
-
-| Path | Purpose |
-|------|---------|
-| `properties/` | Property-based tests (`proptest`) |
-| `integration/` | Integration tests |
-| `fixtures/` | Test data files |
+| `search/` | Connection filtering with caching |
 
 ## Extension Traits
 
-| Feature | Trait | Location |
-|---------|-------|----------|
-| Protocol | `Protocol` | `rustconn-core/src/protocol/` |
-| Import format | `ImportSource` | `rustconn-core/src/import/` |
-| Export format | `ExportTarget` | `rustconn-core/src/export/` |
-| Credential backend | `SecretBackend` | `rustconn-core/src/secret/` |
+Implement these traits to extend functionality:
+
+```rust
+// New protocol
+impl Protocol for MyProtocol { ... }  // in rustconn-core/src/protocol/
+
+// New import format  
+impl ImportSource for MyImporter { ... }  // in rustconn-core/src/import/
+
+// New export format
+impl ExportTarget for MyExporter { ... }  // in rustconn-core/src/export/
+
+// New credential backend
+impl SecretBackend for MyBackend { ... }  // in rustconn-core/src/secret/
+```
 
 ## State Management
 
-- GUI: `SharedAppState` = `Rc<RefCell<AppState>>` (interior mutability)
-- Persistence: Manager structs own data and handle I/O
+- GUI state: `SharedAppState` = `Rc<RefCell<AppState>>` (single-threaded interior mutability)
+- Persistence: Manager structs (`ConnectionManager`, `ConfigManager`, etc.) own data and handle I/O
+- Pass `&SharedAppState` to functions needing mutable access
 
 ## Module Conventions
 
 - Feature directories use `mod.rs` for organization
 - Public types re-exported through `lib.rs`
-- Test modules mirror source structure
+- Large files split by suffix: `*_types.rs`, `*_ui.rs` (e.g., `sidebar.rs` → `sidebar_types.rs`, `sidebar_ui.rs`)
+- Test modules in `tests/properties/` mirror source structure
 
-## File Placement
+## Tests Location
 
-| Adding | Location | Steps |
-|--------|----------|-------|
-| Data model | `rustconn-core/src/models/` | Re-export in `models.rs` |
-| Protocol | `rustconn-core/src/protocol/` | Implement `Protocol` trait |
-| Import format | `rustconn-core/src/import/` | Implement `ImportSource` trait |
-| Export format | `rustconn-core/src/export/` | Implement `ExportTarget` trait |
-| Dialog | `rustconn/src/dialogs/` | Register in `mod.rs` |
-| Property tests | `rustconn-core/tests/properties/` | Add module to `mod.rs` |
+| Test Type | Location |
+|-----------|----------|
+| Property tests | `rustconn-core/tests/properties/` |
+| Integration tests | `rustconn-core/tests/integration/` |
+| Test fixtures | `rustconn-core/tests/fixtures/` |
