@@ -286,6 +286,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies for vendor generation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd
+
+      - name: Generate vendor tarball with all features
+        run: |
+          # Vendor all dependencies including optional ones
+          cargo vendor --versioned-dirs
+          # Create compressed tarball
+          tar --zstd -cf vendor.tar.zst vendor/
+          echo "=== Vendor tarball created ==="
+          ls -lh vendor.tar.zst
+          echo "=== Checking for gdk4-wayland ==="
+          ls vendor/ | grep -i gdk4 || echo "Warning: no gdk4 packages found"
+
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
@@ -376,10 +395,10 @@ jobs:
           # Update spec version
           sed -i "s/^Version:.*$/Version:        $VERSION/" "$OBS_DIR/rustconn.spec"
           
-          # Copy vendor tarball if exists
-          if [ -f "vendor.tar.zst" ]; then
-            cp vendor.tar.zst "$OBS_DIR/vendor.tar.zst"
-          fi
+          # Copy vendor tarball (generated earlier in this job)
+          cp vendor.tar.zst "$OBS_DIR/vendor.tar.zst"
+          echo "=== Vendor tarball copied to OBS ==="
+          ls -lh "$OBS_DIR/vendor.tar.zst"
 
       - name: Commit to OBS
         run: |
