@@ -170,6 +170,11 @@ impl SshConfigImporter {
             .get("identitiesonly")
             .is_some_and(|v| v.to_lowercase() == "yes");
 
+        // Check for ForwardAgent option
+        let agent_forwarding = options
+            .get("forwardagent")
+            .is_some_and(|v| v.to_lowercase() == "yes");
+
         // Build SSH config
         let ssh_config = SshConfig {
             auth_method,
@@ -181,6 +186,7 @@ impl SshConfigImporter {
             use_control_master: options
                 .get("controlmaster")
                 .is_some_and(|v| v.to_lowercase() == "auto" || v.to_lowercase() == "yes"),
+            agent_forwarding,
             custom_options: self.extract_custom_options(options),
             startup_command: None,
         };
@@ -209,8 +215,10 @@ impl SshConfigImporter {
             "port",
             "user",
             "identityfile",
+            "identitiesonly",
             "proxyjump",
             "controlmaster",
+            "forwardagent",
         ];
 
         options
@@ -426,5 +434,25 @@ Host server2
 
         let result = importer.parse_config(config, "test");
         assert_eq!(result.connections.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_forward_agent() {
+        let importer = SshConfigImporter::new();
+        let config = r"
+Host bastion
+    HostName bastion.example.com
+    ForwardAgent yes
+";
+
+        let result = importer.parse_config(config, "test");
+        assert_eq!(result.connections.len(), 1);
+
+        let conn = &result.connections[0];
+        if let ProtocolConfig::Ssh(ssh_config) = &conn.protocol_config {
+            assert!(ssh_config.agent_forwarding);
+        } else {
+            panic!("Expected SSH config");
+        }
     }
 }

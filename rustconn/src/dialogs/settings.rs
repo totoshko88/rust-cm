@@ -80,7 +80,8 @@ impl SettingsDialog {
         let window = Window::builder()
             .title("Settings")
             .modal(true)
-            .default_width(500)
+            .default_width(750)
+            .default_height(600)
             .resizable(true)
             .build();
 
@@ -88,15 +89,13 @@ impl SettingsDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar with Cancel/Save buttons
+        // Create header bar (no Cancel button - window X is sufficient)
         let header = HeaderBar::new();
-        let cancel_btn = Button::builder().label("Cancel").build();
         let save_btn = Button::builder()
             .label("Save")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&cancel_btn);
-        header.pack_end(&save_btn);
+        header.pack_start(&save_btn);
         window.set_titlebar(Some(&header));
 
         // Create main content area
@@ -165,16 +164,6 @@ impl SettingsDialog {
 
         let on_save: super::SettingsCallback = Rc::new(RefCell::new(None));
         let settings: Rc<RefCell<AppSettings>> = Rc::new(RefCell::new(AppSettings::default()));
-
-        // Connect cancel button
-        let window_clone = window.clone();
-        let on_save_clone = on_save.clone();
-        cancel_btn.connect_clicked(move |_| {
-            if let Some(ref cb) = *on_save_clone.borrow() {
-                cb(None);
-            }
-            window_clone.close();
-        });
 
         // Connect save button once in constructor (not in run())
         {
@@ -284,6 +273,7 @@ impl SettingsDialog {
                     enable_tray_icon: enable_tray_icon_clone.is_active(),
                     minimize_to_tray: minimize_to_tray_clone.is_active(),
                     expanded_groups: existing.ui.expanded_groups.clone(),
+                    session_restore: existing.ui.session_restore.clone(),
                 };
 
                 let new_settings = AppSettings {
@@ -292,6 +282,7 @@ impl SettingsDialog {
                     secrets,
                     ui,
                     global_variables: existing.global_variables.clone(),
+                    history: existing.history.clone(),
                 };
                 drop(existing);
 

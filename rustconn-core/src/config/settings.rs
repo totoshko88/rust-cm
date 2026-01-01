@@ -2,6 +2,7 @@
 //!
 //! This module defines the application-wide settings stored in config.toml.
 
+use crate::models::HistorySettings;
 use crate::variables::Variable;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,9 @@ pub struct AppSettings {
     /// Global variables
     #[serde(default)]
     pub global_variables: Vec<Variable>,
+    /// Connection history settings
+    #[serde(default)]
+    pub history: HistorySettings,
 }
 
 /// Terminal-related settings
@@ -196,6 +200,58 @@ pub struct UiSettings {
     /// IDs of groups that are expanded in the sidebar (for state persistence)
     #[serde(default, skip_serializing_if = "std::collections::HashSet::is_empty")]
     pub expanded_groups: std::collections::HashSet<uuid::Uuid>,
+    /// Session restore settings
+    #[serde(default)]
+    pub session_restore: SessionRestoreSettings,
+}
+
+/// Session restore settings
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionRestoreSettings {
+    /// Whether to restore sessions on startup
+    #[serde(default)]
+    pub enabled: bool,
+    /// Whether to prompt before restoring
+    #[serde(default = "default_true")]
+    pub prompt_on_restore: bool,
+    /// Maximum age of sessions to restore (in hours, 0 = no limit)
+    #[serde(default = "default_session_max_age")]
+    pub max_age_hours: u32,
+    /// Sessions to restore (connection IDs)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub saved_sessions: Vec<SavedSession>,
+}
+
+const fn default_session_max_age() -> u32 {
+    24
+}
+
+impl Default for SessionRestoreSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            prompt_on_restore: true,
+            max_age_hours: default_session_max_age(),
+            saved_sessions: Vec::new(),
+        }
+    }
+}
+
+/// A saved session for restore
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedSession {
+    /// Connection ID
+    pub connection_id: uuid::Uuid,
+    /// Connection name (for display if connection deleted)
+    pub connection_name: String,
+    /// Protocol type
+    pub protocol: String,
+    /// Host
+    pub host: String,
+    /// Port
+    pub port: u16,
+    /// When the session was saved
+    pub saved_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Default for UiSettings {
@@ -208,6 +264,7 @@ impl Default for UiSettings {
             enable_tray_icon: true,
             minimize_to_tray: false,
             expanded_groups: std::collections::HashSet::new(),
+            session_restore: SessionRestoreSettings::default(),
         }
     }
 }

@@ -51,6 +51,7 @@ pub mod embedded_rdp_thread;
 pub mod embedded_rdp_types;
 pub mod embedded_rdp_ui;
 pub mod embedded_spice;
+pub mod embedded_trait;
 pub mod embedded_vnc;
 pub mod embedded_vnc_types;
 pub mod embedded_vnc_ui;

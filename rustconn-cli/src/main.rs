@@ -718,6 +718,11 @@ fn build_ssh_command(connection: &Connection) -> ConnectionCommand {
             args.push("ControlPersist=10m".to_string());
         }
 
+        // Add agent forwarding if enabled
+        if ssh_config.agent_forwarding {
+            args.push("-A".to_string());
+        }
+
         // Add custom options
         for (key, value) in &ssh_config.custom_options {
             args.push("-o".to_string());

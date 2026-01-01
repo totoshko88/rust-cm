@@ -1039,9 +1039,57 @@ impl Default for EmbeddedSpiceWidget {
     }
 }
 
+impl crate::embedded_trait::EmbeddedWidget for EmbeddedSpiceWidget {
+    fn widget(&self) -> &gtk4::Box {
+        &self.container
+    }
+
+    fn state(&self) -> crate::embedded_trait::EmbeddedConnectionState {
+        match *self.state.borrow() {
+            SpiceConnectionState::Disconnected => {
+                crate::embedded_trait::EmbeddedConnectionState::Disconnected
+            }
+            SpiceConnectionState::Connecting => {
+                crate::embedded_trait::EmbeddedConnectionState::Connecting
+            }
+            SpiceConnectionState::Connected => {
+                crate::embedded_trait::EmbeddedConnectionState::Connected
+            }
+            SpiceConnectionState::Error => crate::embedded_trait::EmbeddedConnectionState::Error,
+        }
+    }
+
+    fn is_embedded(&self) -> bool {
+        *self.is_embedded.borrow()
+    }
+
+    fn disconnect(&self) -> Result<(), crate::embedded_trait::EmbeddedError> {
+        Self::disconnect(self);
+        Ok(())
+    }
+
+    fn reconnect(&self) -> Result<(), crate::embedded_trait::EmbeddedError> {
+        Self::reconnect(self)
+            .map_err(|e| crate::embedded_trait::EmbeddedError::ConnectionFailed(e.to_string()))
+    }
+
+    fn send_ctrl_alt_del(&self) {
+        #[cfg(feature = "spice-embedded")]
+        {
+            if let Some(ref sender) = *self.command_sender.borrow() {
+                let _ = sender.send(SpiceClientCommand::SendCtrlAltDel);
+            }
+        }
+    }
+
+    fn protocol_name(&self) -> &'static str {
+        "SPICE"
+    }
+}
+
 impl Drop for EmbeddedSpiceWidget {
     fn drop(&mut self) {
-        self.disconnect();
+        Self::disconnect(self);
     }
 }
 

@@ -24,8 +24,10 @@ Depends: ${shlibs:Depends}, ${misc:Depends},
 Recommends: freerdp2-x11,
             tigervnc-viewer,
             virt-viewer
-Description: Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
+Description: Modern connection manager for Linux (SSH, RDP, VNC, SPICE, Zero Trust)
  RustConn is a modern connection manager for Linux desktops.
- It provides a GTK4-based GUI for managing SSH, RDP, VNC, and SPICE
- remote connections with features like connection groups, credential
- management, session logging, and import/export capabilities.
+ It provides a GTK4-based GUI for managing SSH, RDP, VNC, SPICE,
+ and Zero Trust remote connections with features like connection groups,
+ credential management via KeePassXC and libsecret, session logging,
+ connection history and statistics, and import/export from Asbru-CM,
+ Remmina, SSH config, and Ansible inventory.

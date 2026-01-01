@@ -5,7 +5,77 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.3] - 2026-01-02
+
+### Added
+- Connection history recording for all protocols (SSH, VNC, SPICE, RDP, ZeroTrust)
+- "New Group" button in Group Operations Mode bulk actions bar
+- "Reset" buttons in Connection History and Statistics dialogs (header bar)
+- "Clear Statistics" functionality in AppState
+- Protocol-specific tabs in Template Dialog matching Connection Dialog functionality:
+  - SSH: auth method, key source, proxy jump, agent forwarding, startup command, custom options
+  - RDP: client mode, resolution, color depth, audio, gateway, custom args
+  - VNC: client mode, encoding, compression, quality, view only, scaling, clipboard
+  - SPICE: TLS, CA cert, USB, clipboard, image compression
+  - ZeroTrust: all 10 providers (AWS SSM, GCP IAP, Azure Bastion/SSH, OCI, Cloudflare, Teleport, Tailscale, Boundary, Generic)
+- Connection history dialog (`HistoryDialog`) for viewing and searching session history
+- Connection statistics dialog (`StatisticsDialog`) with success rate visualization
+- Common embedded widget trait (`EmbeddedWidget`) for RDP/VNC/SPICE deduplication
+- `EmbeddedConnectionState` enum for unified connection state handling
+- `EmbeddedWidgetState` helper for managing common widget state
+- `create_embedded_toolbar()` helper for consistent toolbar creation
+- `draw_status_overlay()` helper for status rendering
+- Quick Connect dialog now supports connection templates (auto-fills protocol, host, port, username)
+- History/Statistics menu items in Tools section
+- `AppState` methods for recording connection history (`record_connection_start`, `record_connection_end`, etc.)
+- `ConfigManager.load_history()` and `save_history()` for history persistence
+- Property tests for history models (`history_tests.rs`):
+  - Entry creation, quick connect, end/fail operations
+  - Statistics update consistency, success rate bounds
+  - Serialization round-trips for all history types
+- Property tests for session restore models (`session_restore_tests.rs`):
+  - `SavedSession` creation and serialization
+  - `SessionRestoreSettings` configuration and serialization
+  - Round-trip tests with multiple saved sessions
+- Quick Connect now supports RDP and VNC protocols (previously only SSH worked)
+- RDP Quick Connect uses embedded IronRDP widget with state callbacks and reconnect support
+- VNC Quick Connect uses native VncSessionWidget with full embedded mode support
+- Quick Connect password field for RDP and VNC connections
+- Connection history model (`ConnectionHistoryEntry`) for tracking session history
+- Connection statistics model (`ConnectionStatistics`) with success rate, duration tracking
+- History settings (`HistorySettings`) with configurable retention and max entries
+- Session restore settings (`SessionRestoreSettings`) for restoring sessions on startup
+- `SavedSession` model for persisting session state across restarts
+
+### Changed
+- UI Unification: All dialogs now use consistent 750×500px dimensions
+- Removed duplicate Close/Cancel buttons from all dialogs (window X button is sufficient)
+- Renamed action buttons for consistency:
+  - "New X" → "Create" (moved to left side of header bar)
+  - "Quick Connect" → "Connect" in Quick Connect dialog
+  - "Clear History/Statistics" → "Reset" (moved to header bar with destructive style)
+- Create Connection now always opens blank New Connection dialog (removed template picker)
+- Templates can be used from Manage Templates dialog
+- Button styling: All action buttons (Create, Save, Import, Export) use `suggested-action` CSS class
+- When editing existing items, button label changes from "Create" to "Save"
+- Extracted common embedded widget patterns to `embedded_trait.rs`
+- `show_quick_connect_dialog()` now accepts optional `SharedAppState` for template access
+- Refactored `terminal.rs` into modular structure (`rustconn/src/terminal/`):
+  - `mod.rs` - Main `TerminalNotebook` implementation
+  - `types.rs` - `TabDisplayMode`, `TerminalSession`, `SessionWidgetStorage`, `TabLabelWidgets`
+  - `config.rs` - Terminal appearance and behavior configuration
+  - `tabs.rs` - Tab creation, display modes, overflow menu management
+- `EmbeddedSpiceWidget` now implements `EmbeddedWidget` trait for unified interface
+- Updated `gtk4` dependency from 0.10 to 0.10.2
+- Improved picky dependency documentation with monitoring notes for future ironrdp compatibility
+- `AppSettings` now includes `history` field for connection history configuration
+- `UiSettings` now includes `session_restore` field for session restore configuration
+
+### Fixed
+- Connection History "Connect" button now actually connects (was only logging)
+- History statistics labels (Total/Successful/Failed) now update correctly
+- Statistics dialog content no longer cut off (increased size)
+- Quick Connect RDP/VNC no longer shows placeholder tabs — actual connections are established
 
 ## [0.5.2] - 2025-12-29
 
@@ -260,7 +330,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/totoshko88/RustConn/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/totoshko88/RustConn/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/totoshko88/RustConn/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/totoshko88/RustConn/compare/v0.4.2...v0.5.0

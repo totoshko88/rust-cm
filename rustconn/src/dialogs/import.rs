@@ -46,23 +46,21 @@ impl ImportDialog {
         let window = Window::builder()
             .title("Import Connections")
             .modal(true)
-            .default_width(500)
-            .default_height(450)
+            .default_width(750)
+            .default_height(500)
             .build();
 
         if let Some(p) = parent {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar with Close/Import buttons
+        // Create header bar (no Close button - window X is sufficient)
         let header = HeaderBar::new();
-        let close_button = Button::builder().label("Close").build();
         let import_button = Button::builder()
             .label("Import")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&close_button);
-        header.pack_end(&import_button);
+        header.pack_start(&import_button);
         window.set_titlebar(Some(&header));
 
         // Create main content area
@@ -96,20 +94,6 @@ impl ImportDialog {
         let on_complete: super::ImportCallback = Rc::new(RefCell::new(None));
         let on_complete_with_source: super::ImportWithSourceCallback = Rc::new(RefCell::new(None));
         let source_name: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-
-        // Connect close button
-        let window_clone = window.clone();
-        let on_complete_clone = on_complete.clone();
-        let on_complete_with_source_clone = on_complete_with_source.clone();
-        close_button.connect_clicked(move |_| {
-            if let Some(ref cb) = *on_complete_clone.borrow() {
-                cb(None);
-            }
-            if let Some(ref cb) = *on_complete_with_source_clone.borrow() {
-                cb(None, String::new());
-            }
-            window_clone.close();
-        });
 
         let dialog = Self {
             window,

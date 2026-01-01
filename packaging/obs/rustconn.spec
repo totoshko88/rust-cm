@@ -6,7 +6,7 @@
 #
 
 Name:           rustconn
-Version:        0.5.2
+Version:        0.5.3
 Release:        0
 Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
 License:        GPL-3.0-or-later
@@ -157,6 +157,17 @@ fi
 %{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
 
 %changelog
+* Thu Jan 02 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.3-0
+- Update to version 0.5.3
+- UI Unification: All dialogs now use consistent 750×500px dimensions
+- Connection history recording for all protocols
+- Protocol-specific tabs in Template Dialog
+- Connection history and statistics dialogs
+- Common embedded widget trait for RDP/VNC/SPICE
+- Quick Connect supports RDP and VNC with templates
+- Refactored terminal.rs into modular structure
+- Updated gtk4 dependency to 0.10.2
+
 * Sun Dec 29 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.2-0
 - Update to version 0.5.2
 - Refactored window.rs, embedded_rdp.rs, sidebar.rs, embedded_vnc.rs into modular structure

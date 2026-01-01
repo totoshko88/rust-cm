@@ -2785,4 +2785,48 @@ impl Drop for EmbeddedRdpWidget {
     }
 }
 
+impl crate::embedded_trait::EmbeddedWidget for EmbeddedRdpWidget {
+    fn widget(&self) -> &gtk4::Box {
+        &self.container
+    }
+
+    fn state(&self) -> crate::embedded_trait::EmbeddedConnectionState {
+        match *self.state.borrow() {
+            RdpConnectionState::Disconnected => {
+                crate::embedded_trait::EmbeddedConnectionState::Disconnected
+            }
+            RdpConnectionState::Connecting => {
+                crate::embedded_trait::EmbeddedConnectionState::Connecting
+            }
+            RdpConnectionState::Connected => {
+                crate::embedded_trait::EmbeddedConnectionState::Connected
+            }
+            RdpConnectionState::Error => crate::embedded_trait::EmbeddedConnectionState::Error,
+        }
+    }
+
+    fn is_embedded(&self) -> bool {
+        *self.is_embedded.borrow()
+    }
+
+    fn disconnect(&self) -> Result<(), crate::embedded_trait::EmbeddedError> {
+        // Call the existing disconnect method (returns ())
+        Self::disconnect(self);
+        Ok(())
+    }
+
+    fn reconnect(&self) -> Result<(), crate::embedded_trait::EmbeddedError> {
+        Self::reconnect(self)
+            .map_err(|e| crate::embedded_trait::EmbeddedError::ConnectionFailed(e.to_string()))
+    }
+
+    fn send_ctrl_alt_del(&self) {
+        Self::send_ctrl_alt_del(self);
+    }
+
+    fn protocol_name(&self) -> &'static str {
+        "RDP"
+    }
+}
+
 // Tests moved to embedded_rdp_types.rs, embedded_rdp_buffer.rs, and embedded_rdp_launcher.rs

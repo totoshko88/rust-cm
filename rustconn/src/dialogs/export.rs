@@ -60,23 +60,21 @@ impl ExportDialog {
         let window = Window::builder()
             .title("Export Connections")
             .modal(true)
-            .default_width(500)
-            .default_height(400)
+            .default_width(750)
+            .default_height(500)
             .build();
 
         if let Some(p) = parent {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar with Cancel/Export buttons
+        // Create header bar (no Cancel button - window X is sufficient)
         let header = HeaderBar::new();
-        let cancel_btn = Button::builder().label("Cancel").build();
         let export_button = Button::builder()
             .label("Export")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&cancel_btn);
-        header.pack_end(&export_button);
+        header.pack_start(&export_button);
         window.set_titlebar(Some(&header));
 
         // Create main content area
@@ -116,16 +114,6 @@ impl ExportDialog {
         stack.set_visible_child_name("options");
 
         let on_complete: ExportCallback = Rc::new(RefCell::new(None));
-
-        // Connect cancel button
-        let window_clone = window.clone();
-        let on_complete_clone = on_complete.clone();
-        cancel_btn.connect_clicked(move |_| {
-            if let Some(ref cb) = *on_complete_clone.borrow() {
-                cb(None);
-            }
-            window_clone.close();
-        });
 
         Self {
             window,

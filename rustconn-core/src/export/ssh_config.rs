@@ -111,6 +111,11 @@ impl SshConfigExporter {
                 let _ = writeln!(output, "    ControlMaster auto");
             }
 
+            // ForwardAgent
+            if ssh_config.agent_forwarding {
+                let _ = writeln!(output, "    ForwardAgent yes");
+            }
+
             // Custom options
             for (key, value) in &ssh_config.custom_options {
                 let escaped_value = escape_value(value);
@@ -281,6 +286,17 @@ mod tests {
         let entry = SshConfigExporter::format_host_entry(&conn);
 
         assert!(entry.contains("ControlMaster auto"));
+    }
+
+    #[test]
+    fn test_format_host_entry_with_agent_forwarding() {
+        let mut conn = create_ssh_connection("bastion", "bastion.example.com", 22);
+        if let ProtocolConfig::Ssh(ref mut ssh_config) = conn.protocol_config {
+            ssh_config.agent_forwarding = true;
+        }
+        let entry = SshConfigExporter::format_host_entry(&conn);
+
+        assert!(entry.contains("ForwardAgent yes"));
     }
 
     #[test]

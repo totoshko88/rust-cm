@@ -30,19 +30,17 @@ pub fn show_sessions_manager(
         .title("Active Sessions")
         .transient_for(window)
         .modal(true)
-        .default_width(500)
-        .default_height(400)
+        .default_width(750)
+        .default_height(500)
         .build();
 
-    // Create header bar
+    // Create header bar (no Close button - window X is sufficient)
     let header = HeaderBar::new();
-    let close_btn = Button::builder().label("Close").build();
     let refresh_btn = Button::builder()
         .icon_name("view-refresh-symbolic")
         .tooltip_text("Refresh")
         .build();
-    header.pack_start(&close_btn);
-    header.pack_end(&refresh_btn);
+    header.pack_start(&refresh_btn);
     manager_window.set_titlebar(Some(&header));
 
     // Create main content
@@ -110,12 +108,6 @@ pub fn show_sessions_manager(
         switch_clone.set_sensitive(has_selection);
         send_text_clone.set_sensitive(has_selection);
         terminate_clone.set_sensitive(has_selection);
-    });
-
-    // Connect close button
-    let window_clone = manager_window.clone();
-    close_btn.connect_clicked(move |_| {
-        window_clone.close();
     });
 
     // Connect refresh button

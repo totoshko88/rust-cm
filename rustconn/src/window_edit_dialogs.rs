@@ -4,7 +4,9 @@
 //! showing connection details, and quick connect dialog.
 
 use crate::dialogs::ConnectionDialog;
+use crate::embedded_rdp::{EmbeddedRdpWidget, RdpConfig as EmbeddedRdpConfig};
 use crate::sidebar::ConnectionSidebar;
+use crate::split_view::SplitTerminalView;
 use crate::state::SharedAppState;
 use crate::terminal::TerminalNotebook;
 use crate::window::MainWindow;
@@ -19,6 +21,9 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 
 /// Type alias for shared notebook reference
 pub type SharedNotebook = Rc<TerminalNotebook>;
+
+/// Type alias for shared split view reference
+pub type SharedSplitView = Rc<SplitTerminalView>;
 
 /// Edits the selected connection or group
 pub fn edit_selected_connection(
@@ -566,27 +571,50 @@ pub fn show_edit_group_dialog(
     group_window.present();
 }
 
-/// Shows the quick connect dialog with protocol selection
+/// Shows the quick connect dialog with protocol selection and template support
 #[allow(clippy::too_many_lines)]
-pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNotebook) {
+pub fn show_quick_connect_dialog(
+    window: &ApplicationWindow,
+    notebook: SharedNotebook,
+    split_view: SharedSplitView,
+    sidebar: SharedSidebar,
+) {
+    show_quick_connect_dialog_with_state(window, notebook, split_view, sidebar, None);
+}
+
+/// Shows the quick connect dialog with optional state for template access
+#[allow(clippy::too_many_lines)]
+pub fn show_quick_connect_dialog_with_state(
+    window: &ApplicationWindow,
+    notebook: SharedNotebook,
+    split_view: SharedSplitView,
+    sidebar: SharedSidebar,
+    state: Option<&SharedAppState>,
+) {
+    // Collect templates if state is available
+    let templates: Vec<rustconn_core::models::ConnectionTemplate> = state
+        .map(|s| {
+            let state_ref = s.borrow();
+            state_ref.load_templates().unwrap_or_default()
+        })
+        .unwrap_or_default();
+
     // Create a quick connect window
     let quick_window = gtk4::Window::builder()
         .title("Quick Connect")
         .transient_for(window)
         .modal(true)
-        .default_width(550)
+        .default_width(750)
         .default_height(550)
         .build();
 
-    // Create header bar with Cancel/Quick Connect buttons
+    // Create header bar (no Cancel button - window X is sufficient)
     let header = gtk4::HeaderBar::new();
-    let cancel_btn = Button::builder().label("Cancel").build();
     let connect_btn = Button::builder()
-        .label("Quick Connect")
+        .label("Connect")
         .css_classes(["suggested-action"])
         .build();
-    header.pack_start(&cancel_btn);
-    header.pack_end(&connect_btn);
+    header.pack_start(&connect_btn);
     quick_window.set_titlebar(Some(&header));
 
     // Create content
@@ -607,7 +635,32 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
         .column_spacing(12)
         .build();
 
-    // Protocol dropdown (SSH, RDP, VNC)
+    // Template dropdown (if templates available)
+    let template_dropdown: Option<gtk4::DropDown> = if templates.is_empty() {
+        None
+    } else {
+        let template_label = Label::builder()
+            .label("Template:")
+            .halign(gtk4::Align::End)
+            .build();
+
+        // Build template names list with "None" option
+        let mut template_names: Vec<String> = vec!["(None)".to_string()];
+        template_names.extend(templates.iter().map(|t| t.name.clone()));
+        let template_strings: Vec<&str> = template_names.iter().map(String::as_str).collect();
+        let template_list = gtk4::StringList::new(&template_strings);
+
+        let dropdown = gtk4::DropDown::builder().model(&template_list).build();
+        dropdown.set_selected(0); // Default to "None"
+
+        grid.attach(&template_label, 0, 0, 1, 1);
+        grid.attach(&dropdown, 1, 0, 2, 1);
+
+        Some(dropdown)
+    };
+
+    // Protocol dropdown (SSH, RDP, VNC) - row depends on whether template dropdown exists
+    let protocol_row = i32::from(template_dropdown.is_some());
     let protocol_label = Label::builder()
         .label("Protocol:")
         .halign(gtk4::Align::End)
@@ -615,8 +668,8 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
     let protocol_list = gtk4::StringList::new(&["SSH", "RDP", "VNC"]);
     let protocol_dropdown = gtk4::DropDown::builder().model(&protocol_list).build();
     protocol_dropdown.set_selected(0); // Default to SSH
-    grid.attach(&protocol_label, 0, 0, 1, 1);
-    grid.attach(&protocol_dropdown, 1, 0, 2, 1);
+    grid.attach(&protocol_label, 0, protocol_row, 1, 1);
+    grid.attach(&protocol_dropdown, 1, protocol_row, 2, 1);
 
     let host_label = Label::builder()
         .label("Host:")
@@ -626,8 +679,8 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
         .hexpand(true)
         .placeholder_text("hostname or IP")
         .build();
-    grid.attach(&host_label, 0, 1, 1, 1);
-    grid.attach(&host_entry, 1, 1, 2, 1);
+    grid.attach(&host_label, 0, protocol_row + 1, 1, 1);
+    grid.attach(&host_entry, 1, protocol_row + 1, 2, 1);
 
     let port_label = Label::builder()
         .label("Port:")
@@ -639,8 +692,8 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
         .climb_rate(1.0)
         .digits(0)
         .build();
-    grid.attach(&port_label, 0, 2, 1, 1);
-    grid.attach(&port_spin, 1, 2, 1, 1);
+    grid.attach(&port_label, 0, protocol_row + 2, 1, 1);
+    grid.attach(&port_spin, 1, protocol_row + 2, 1, 1);
 
     let user_label = Label::builder()
         .label("Username:")
@@ -650,8 +703,21 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
         .hexpand(true)
         .placeholder_text("(optional)")
         .build();
-    grid.attach(&user_label, 0, 3, 1, 1);
-    grid.attach(&user_entry, 1, 3, 2, 1);
+    grid.attach(&user_label, 0, protocol_row + 3, 1, 1);
+    grid.attach(&user_entry, 1, protocol_row + 3, 2, 1);
+
+    // Password field
+    let password_label = Label::builder()
+        .label("Password:")
+        .halign(gtk4::Align::End)
+        .build();
+    let password_entry = gtk4::PasswordEntry::builder()
+        .hexpand(true)
+        .show_peek_icon(true)
+        .placeholder_text("(optional)")
+        .build();
+    grid.attach(&password_label, 0, protocol_row + 4, 1, 1);
+    grid.attach(&password_entry, 1, protocol_row + 4, 2, 1);
 
     content.append(&grid);
     quick_window.set_child(Some(&content));
@@ -664,6 +730,50 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
     port_spin.connect_value_changed(move |_| {
         *port_manually_changed_clone.borrow_mut() = true;
     });
+
+    // Connect template selection to fill fields
+    if let Some(ref template_dd) = template_dropdown {
+        let templates_clone = templates.clone();
+        let protocol_dd = protocol_dropdown.clone();
+        let host_entry_clone = host_entry.clone();
+        let port_spin_clone = port_spin.clone();
+        let user_entry_clone = user_entry.clone();
+        let port_manually_changed_for_template = Rc::new(RefCell::new(false));
+
+        template_dd.connect_selected_notify(move |dropdown| {
+            let selected = dropdown.selected();
+            if selected == 0 {
+                // "None" selected - clear fields
+                return;
+            }
+
+            // Get template (index - 1 because of "None" option)
+            if let Some(template) = templates_clone.get(selected as usize - 1) {
+                // Set protocol
+                let protocol_idx = match template.protocol {
+                    rustconn_core::models::ProtocolType::Ssh => 0,
+                    rustconn_core::models::ProtocolType::Rdp => 1,
+                    rustconn_core::models::ProtocolType::Vnc => 2,
+                    _ => 0,
+                };
+                protocol_dd.set_selected(protocol_idx);
+
+                // Set host if not empty
+                if !template.host.is_empty() {
+                    host_entry_clone.set_text(&template.host);
+                }
+
+                // Set port
+                *port_manually_changed_for_template.borrow_mut() = false;
+                port_spin_clone.set_value(f64::from(template.port));
+
+                // Set username if present
+                if let Some(ref username) = &template.username {
+                    user_entry_clone.set_text(username);
+                }
+            }
+        });
+    }
 
     // Connect protocol change to port update
     let port_spin_clone = port_spin.clone();
@@ -682,17 +792,12 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
         *port_manually_changed_clone.borrow_mut() = false;
     });
 
-    // Connect cancel
-    let window_clone = quick_window.clone();
-    cancel_btn.connect_clicked(move |_| {
-        window_clone.close();
-    });
-
     // Connect quick connect button
     let window_clone = quick_window.clone();
     let host_clone = host_entry;
     let port_clone = port_spin;
     let user_clone = user_entry;
+    let password_clone = password_entry;
     let protocol_clone = protocol_dropdown;
     connect_btn.connect_clicked(move |_| {
         let host = host_clone.text().to_string();
@@ -704,6 +809,14 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
         let port = port_clone.value() as u16;
         let username = {
             let text = user_clone.text();
+            if text.trim().is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        };
+        let password = {
+            let text = password_clone.text();
             if text.trim().is_empty() {
                 None
             } else {
@@ -726,32 +839,117 @@ pub fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNot
                 notebook.spawn_ssh(session_id, &host, port, username.as_deref(), None, &[]);
             }
             1 => {
-                // RDP - native embedding not yet implemented, show placeholder
-                let _session_id = notebook.create_terminal_tab(
+                // RDP - use embedded RDP widget
+                let embedded_widget = EmbeddedRdpWidget::new();
+
+                let mut embedded_config = EmbeddedRdpConfig::new(&host)
+                    .with_port(port)
+                    .with_resolution(1920, 1080)
+                    .with_clipboard(true);
+
+                if let Some(ref user) = username {
+                    embedded_config = embedded_config.with_username(user);
+                }
+
+                if let Some(ref pass) = password {
+                    embedded_config = embedded_config.with_password(pass);
+                }
+
+                let embedded_widget = Rc::new(embedded_widget);
+                let session_id = Uuid::new_v4();
+
+                // Connect state change callback
+                let notebook_for_state = notebook.clone();
+                let sidebar_for_state = sidebar.clone();
+                let connection_id = Uuid::nil();
+                embedded_widget.connect_state_changed(move |rdp_state| match rdp_state {
+                    crate::embedded_rdp::RdpConnectionState::Disconnected => {
+                        notebook_for_state.mark_tab_disconnected(session_id);
+                        sidebar_for_state
+                            .decrement_session_count(&connection_id.to_string(), false);
+                    }
+                    crate::embedded_rdp::RdpConnectionState::Connected => {
+                        notebook_for_state.mark_tab_connected(session_id);
+                    }
+                    _ => {}
+                });
+
+                // Connect reconnect callback
+                let widget_for_reconnect = embedded_widget.clone();
+                embedded_widget.connect_reconnect(move || {
+                    if let Err(e) = widget_for_reconnect.reconnect() {
+                        tracing::error!("RDP reconnect failed: {}", e);
+                    }
+                });
+
+                // Start connection
+                if let Err(e) = embedded_widget.connect(&embedded_config) {
+                    tracing::error!("RDP connection failed for '{}': {}", host, e);
+                }
+
+                notebook.add_embedded_rdp_tab(
+                    session_id,
                     Uuid::nil(),
                     &format!("Quick: {host}"),
-                    "rdp",
-                    None,
+                    embedded_widget,
                 );
 
-                eprintln!(
-                    "Note: Native RDP embedding not yet implemented. \
-                     Quick connect to '{host}' shown as placeholder."
-                );
+                // Show notebook for RDP session
+                split_view.widget().set_visible(false);
+                split_view.widget().set_vexpand(false);
+                notebook.widget().set_vexpand(true);
+                notebook.notebook().set_vexpand(true);
             }
             2 => {
-                // VNC - native embedding not yet implemented, show placeholder
-                let _session_id = notebook.create_terminal_tab(
+                // VNC - use VNC session widget
+                let session_id = notebook.create_vnc_session_tab_with_host(
                     Uuid::nil(),
                     &format!("Quick: {host}"),
-                    "vnc",
-                    None,
+                    &host,
                 );
 
-                eprintln!(
-                    "Note: Native VNC embedding not yet implemented. \
-                     Quick connect to '{host}' shown as placeholder."
-                );
+                // Get the VNC widget and initiate connection
+                if let Some(vnc_widget) = notebook.get_vnc_widget(session_id) {
+                    let vnc_config = rustconn_core::models::VncConfig::default();
+
+                    // Connect state change callback
+                    let notebook_for_state = notebook.clone();
+                    let sidebar_for_state = sidebar.clone();
+                    let connection_id = Uuid::nil();
+                    vnc_widget.connect_state_changed(move |vnc_state| {
+                        if vnc_state == crate::session::SessionState::Disconnected {
+                            notebook_for_state.mark_tab_disconnected(session_id);
+                            sidebar_for_state
+                                .decrement_session_count(&connection_id.to_string(), false);
+                        } else if vnc_state == crate::session::SessionState::Connected {
+                            notebook_for_state.mark_tab_connected(session_id);
+                        }
+                    });
+
+                    // Connect reconnect callback
+                    let widget_for_reconnect = vnc_widget.clone();
+                    vnc_widget.connect_reconnect(move || {
+                        if let Err(e) = widget_for_reconnect.reconnect() {
+                            tracing::error!("VNC reconnect failed: {}", e);
+                        }
+                    });
+
+                    // Initiate connection with password if provided
+                    if let Err(e) = vnc_widget.connect_with_config(
+                        &host,
+                        port,
+                        password.as_deref(),
+                        &vnc_config,
+                    ) {
+                        tracing::error!("Failed to connect VNC session '{}': {}", host, e);
+                    }
+                }
+
+                // Show notebook for VNC session
+                split_view.widget().set_visible(false);
+                split_view.widget().set_vexpand(false);
+                notebook.widget().set_vexpand(true);
+                notebook.notebook().set_vexpand(true);
             }
             _ => {
                 // Default to SSH

@@ -1,4 +1,14 @@
 -------------------------------------------------------------------
+Wed Jan 01 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.3
+
+- Update to version 0.5.3
+  * Quick Connect now supports RDP and VNC protocols
+  * RDP Quick Connect uses embedded IronRDP widget
+  * VNC Quick Connect uses native VncSessionWidget
+  * Updated gtk4 dependency to 0.10.2
+  * Improved picky dependency documentation
+
+-------------------------------------------------------------------
 Sun Dec 29 2025 Anton Isaiev <totoshko88@gmail.com> - 0.5.2
 
 - Update to version 0.5.2

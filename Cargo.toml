@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 authors = ["RustConn Contributors"]
 license = "MIT"
@@ -25,7 +25,7 @@ serde_yaml = "0.9"
 toml = "0.8"
 
 # GTK4 and VTE
-gtk4 = "0.10"
+gtk4 = "0.10.2"
 vte4 = "0.9"
 
 # Utilities

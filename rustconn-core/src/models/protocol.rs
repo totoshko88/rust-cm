@@ -129,6 +129,10 @@ pub struct SshConfig {
     /// Enable SSH `ControlMaster` for connection multiplexing
     #[serde(default)]
     pub use_control_master: bool,
+    /// Enable SSH agent forwarding (`-A` flag)
+    /// Allows the remote host to use local SSH agent for authentication
+    #[serde(default)]
+    pub agent_forwarding: bool,
     /// Custom SSH options (key-value pairs)
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub custom_options: HashMap<String, String>,
@@ -201,6 +205,11 @@ impl SshConfig {
             args.push("ControlMaster=auto".to_string());
             args.push("-o".to_string());
             args.push("ControlPersist=10m".to_string());
+        }
+
+        // Add agent forwarding if enabled
+        if self.agent_forwarding {
+            args.push("-A".to_string());
         }
 
         // Add custom options

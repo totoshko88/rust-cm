@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.totoshko88.RustConn</id>
   <name>RustConn</name>
-  <summary>Modern connection manager for Linux (SSH, RDP, VNC, SPICE)</summary>
+  <summary>Modern connection manager for Linux (SSH, RDP, VNC, SPICE, Zero Trust)</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <developer id="io.github.totoshko88">
@@ -11,19 +11,22 @@
   <description>
     <p>
       RustConn is a modern connection manager for Linux desktops built with GTK4.
-      It provides a unified interface for managing SSH, RDP, VNC, and SPICE
+      It provides a unified interface for managing SSH, RDP, VNC, SPICE, and Zero Trust
       remote connections with support for both embedded and external clients.
+      Supports custom console-based connections and integrates with secret managers.
     </p>
     <p>Features:</p>
     <ul>
       <li>SSH connections with embedded terminal and split view</li>
-      <li>RDP support via FreeRDP (embedded and external)</li>
+      <li>RDP support via FreeRDP/IronRDP (embedded and external)</li>
       <li>VNC support via TigerVNC (embedded and external)</li>
       <li>SPICE support via virt-viewer (embedded and external)</li>
-      <li>Zero Trust providers: AWS SSM, GCP IAP, Azure Bastion, OCI Bastion</li>
-      <li>Connection groups and tags</li>
+      <li>Zero Trust providers: AWS SSM, GCP IAP, Azure Bastion, OCI Bastion, Cloudflare, Teleport, Tailscale, Boundary</li>
+      <li>Custom console-based connections</li>
+      <li>Connection groups, tags, and templates</li>
       <li>Import/export (Remmina, Asbru-CM, SSH config, Ansible)</li>
       <li>Secure credential storage (KeePassXC, libsecret)</li>
+      <li>Connection history and statistics</li>
       <li>Session logging</li>
       <li>Command snippets and cluster commands</li>
       <li>Wake-on-LAN</li>
@@ -49,6 +52,25 @@
   <url type="donation">https://ko-fi.com/totoshko88</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.3" date="2026-01-02">
+      <description>
+        <p>Version 0.5.3 - UI Unification and History:</p>
+        <ul>
+          <li>UI Unification: All dialogs now use consistent 750×500px dimensions</li>
+          <li>Connection history recording for all protocols (SSH, VNC, SPICE, RDP, ZeroTrust)</li>
+          <li>Connection history and statistics dialogs with search and visualization</li>
+          <li>Protocol-specific tabs in Template Dialog matching Connection Dialog</li>
+          <li>Common embedded widget trait for RDP/VNC/SPICE deduplication</li>
+          <li>Quick Connect now supports RDP and VNC protocols with templates</li>
+          <li>Refactored terminal.rs into modular structure</li>
+          <li>Removed duplicate Close/Cancel buttons from all dialogs</li>
+          <li>Renamed action buttons: "New X" → "Create", "Quick Connect" → "Connect"</li>
+          <li>Create Connection now always opens blank dialog (removed template picker)</li>
+          <li>Property tests for history and session restore models</li>
+          <li>Updated gtk4 dependency to 0.10.2</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.2" date="2025-12-29">
       <description>
         <p>Version 0.5.2 - Code refactoring and bug fixes:</p>

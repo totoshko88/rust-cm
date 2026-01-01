@@ -171,7 +171,17 @@ pub fn start_rdp_session_with_credentials(
         rustconn_core::models::RdpConfig::default()
     };
 
+    // Clone connection for history recording
+    let conn_for_history = conn.clone();
+
     drop(state_ref);
+
+    // Record connection start in history
+    let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
+        Some(state_mut.record_connection_start(&conn_for_history, Some(username)))
+    } else {
+        None
+    };
 
     // Check client mode - if Embedded, use EmbeddedRdpWidget with fallback to external
     if rdp_config.client_mode == RdpClientMode::Embedded {
@@ -189,6 +199,7 @@ pub fn start_rdp_session_with_credentials(
             domain,
             window_mode,
             &rdp_config,
+            history_entry_id,
         );
         return;
     }
@@ -207,6 +218,7 @@ pub fn start_rdp_session_with_credentials(
         password,
         domain,
         &rdp_config,
+        history_entry_id,
     );
 }
 
@@ -226,6 +238,7 @@ fn start_embedded_rdp_session(
     domain: &str,
     window_mode: rustconn_core::models::WindowMode,
     rdp_config: &rustconn_core::models::RdpConfig,
+    history_entry_id: Option<Uuid>,
 ) {
     use crate::embedded_rdp::{EmbeddedRdpWidget, RdpConfig as EmbeddedRdpConfig};
 
@@ -303,6 +316,7 @@ fn start_embedded_rdp_session(
     // Connect state change callback
     let notebook_for_state = notebook.clone();
     let sidebar_for_state = sidebar.clone();
+    let state_for_callback = state.clone();
     embedded_widget.connect_state_changed(move |rdp_state| match rdp_state {
         crate::embedded_rdp::RdpConnectionState::Disconnected => {
             notebook_for_state.mark_tab_disconnected(session_id);
@@ -310,12 +324,30 @@ fn start_embedded_rdp_session(
                 &connection_id.to_string(),
                 notebook_for_state.get_session_info(session_id).is_some(),
             );
+            // Record connection end in history
+            if let Some(info) = notebook_for_state.get_session_info(session_id) {
+                if let Some(entry_id) = info.history_entry_id {
+                    if let Ok(mut state_mut) = state_for_callback.try_borrow_mut() {
+                        state_mut.record_connection_end(entry_id);
+                    }
+                }
+            }
         }
         crate::embedded_rdp::RdpConnectionState::Connected => {
             notebook_for_state.mark_tab_connected(session_id);
             sidebar_for_state.increment_session_count(&connection_id.to_string());
         }
-        _ => {}
+        crate::embedded_rdp::RdpConnectionState::Error => {
+            // Record connection failure in history
+            if let Some(info) = notebook_for_state.get_session_info(session_id) {
+                if let Some(entry_id) = info.history_entry_id {
+                    if let Ok(mut state_mut) = state_for_callback.try_borrow_mut() {
+                        state_mut.record_connection_failed(entry_id, "RDP connection error");
+                    }
+                }
+            }
+        }
+        crate::embedded_rdp::RdpConnectionState::Connecting => {}
     });
 
     // Connect reconnect callback
@@ -327,6 +359,11 @@ fn start_embedded_rdp_session(
     });
 
     notebook.add_embedded_rdp_tab(session_id, connection_id, conn_name, embedded_widget);
+
+    // Store history entry ID in session for later use
+    if let Some(entry_id) = history_entry_id {
+        notebook.set_history_entry_id(session_id, entry_id);
+    }
 
     // Show notebook for RDP session tab
     split_view.widget().set_visible(false);
@@ -367,6 +404,7 @@ fn start_external_rdp_session(
     password: &str,
     domain: &str,
     rdp_config: &rustconn_core::models::RdpConfig,
+    history_entry_id: Option<Uuid>,
 ) {
     let (tab, _is_embedded) = EmbeddedSessionTab::new(connection_id, conn_name, "rdp");
     let session_id = tab.id();
@@ -392,7 +430,7 @@ fn start_external_rdp_session(
         .collect();
 
     // Start RDP connection using xfreerdp
-    if let Err(e) = RdpLauncher::start_with_geometry(
+    let connection_failed = if let Err(e) = RdpLauncher::start_with_geometry(
         &tab,
         host,
         port,
@@ -407,8 +445,27 @@ fn start_external_rdp_session(
     ) {
         eprintln!("Failed to start RDP session '{}': {}", conn_name, e);
         sidebar.update_connection_status(&connection_id.to_string(), "failed");
+        // Record connection failure in history
+        if let Some(entry_id) = history_entry_id {
+            if let Ok(mut state_mut) = state.try_borrow_mut() {
+                state_mut.record_connection_failed(entry_id, &e.to_string());
+            }
+        }
+        true
     } else {
         sidebar.increment_session_count(&connection_id.to_string());
+        // Record connection end when external process exits (we can't track this easily)
+        // For external sessions, we record end immediately as we don't have state tracking
+        if let Some(entry_id) = history_entry_id {
+            if let Ok(mut state_mut) = state.try_borrow_mut() {
+                state_mut.record_connection_end(entry_id);
+            }
+        }
+        false
+    };
+
+    if connection_failed {
+        return;
     }
 
     // Add tab widget to notebook
@@ -554,20 +611,47 @@ pub fn start_vnc_session_with_password(
         rustconn_core::models::VncConfig::default()
     };
 
+    // Clone connection for history recording
+    let conn_for_history = conn.clone();
+
     drop(state_ref);
+
+    // Record connection start in history
+    let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
+        Some(
+            state_mut
+                .record_connection_start(&conn_for_history, conn_for_history.username.as_deref()),
+        )
+    } else {
+        None
+    };
 
     // Create VNC session tab with native widget
     let session_id = notebook.create_vnc_session_tab(connection_id, &conn_name);
+
+    // Store history entry ID in session for later use
+    if let Some(entry_id) = history_entry_id {
+        notebook.set_history_entry_id(session_id, entry_id);
+    }
 
     // Get the VNC widget and initiate connection with config
     if let Some(vnc_widget) = notebook.get_vnc_widget(session_id) {
         // Connect state change callback
         let notebook_for_state = notebook.clone();
         let sidebar_for_state = sidebar.clone();
+        let state_for_callback = state.clone();
         vnc_widget.connect_state_changed(move |vnc_state| {
             if vnc_state == crate::session::SessionState::Disconnected {
                 notebook_for_state.mark_tab_disconnected(session_id);
                 sidebar_for_state.decrement_session_count(&connection_id.to_string(), false);
+                // Record connection end in history
+                if let Some(info) = notebook_for_state.get_session_info(session_id) {
+                    if let Some(entry_id) = info.history_entry_id {
+                        if let Ok(mut state_mut) = state_for_callback.try_borrow_mut() {
+                            state_mut.record_connection_end(entry_id);
+                        }
+                    }
+                }
             } else if vnc_state == crate::session::SessionState::Connected {
                 notebook_for_state.mark_tab_connected(session_id);
                 sidebar_for_state.increment_session_count(&connection_id.to_string());

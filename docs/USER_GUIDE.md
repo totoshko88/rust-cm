@@ -1,6 +1,6 @@
 # RustConn User Guide
 
-RustConn is a modern connection manager for Linux, designed to manage SSH, RDP, and VNC remote connections through a GTK4-based GUI with Wayland-native support.
+RustConn is a modern connection manager for Linux, designed to manage SSH, RDP, VNC, SPICE, and Zero Trust remote connections through a GTK4-based GUI with Wayland-native support. It supports custom console-based connections and integrates with secret managers (KeePassXC, libsecret). Import/export from Asbru-CM, Remmina, SSH config, and Ansible inventory.
 
 ## Table of Contents
 

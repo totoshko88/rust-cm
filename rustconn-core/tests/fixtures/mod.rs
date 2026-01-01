@@ -26,6 +26,7 @@ pub fn sample_ssh_connection_with_key() -> Connection {
         identities_only: false,
         proxy_jump: None,
         use_control_master: false,
+        agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
         startup_command: None,
     };
@@ -55,6 +56,7 @@ pub fn sample_ssh_connection_custom_port() -> Connection {
         identities_only: false,
         proxy_jump: None,
         use_control_master: false,
+        agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
         startup_command: None,
     };
@@ -82,6 +84,7 @@ pub fn sample_ssh_connection_with_proxy() -> Connection {
         identities_only: false,
         proxy_jump: Some("bastion.example.com".to_string()),
         use_control_master: false,
+        agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
         startup_command: None,
     };

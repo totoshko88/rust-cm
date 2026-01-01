@@ -92,6 +92,7 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
                     identities_only: false,
                     proxy_jump,
                     use_control_master,
+                    agent_forwarding: false,
                     custom_options,
                     startup_command,
                 }

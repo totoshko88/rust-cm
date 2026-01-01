@@ -389,6 +389,7 @@ proptest! {
             identities_only: false,
             proxy_jump: None,
             use_control_master: false,
+            agent_forwarding: false,
             custom_options: std::collections::HashMap::new(),
             startup_command: None,
         };
@@ -454,6 +455,7 @@ proptest! {
             identities_only: false,
             proxy_jump: None,
             use_control_master: false,
+            agent_forwarding: false,
             custom_options: std::collections::HashMap::new(),
             startup_command: None,
         };

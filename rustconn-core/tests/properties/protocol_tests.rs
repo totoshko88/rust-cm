@@ -48,6 +48,7 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
                     identities_only: false,
                     proxy_jump,
                     use_control_master,
+                    agent_forwarding: false,
                     custom_options,
                     startup_command,
                 }
@@ -777,6 +778,7 @@ fn arb_ssh_config_with_identities_only() -> impl Strategy<Value = SshConfig> {
                     identities_only,
                     proxy_jump,
                     use_control_master,
+                    agent_forwarding: false,
                     custom_options,
                     startup_command: None,
                 }
@@ -807,6 +809,7 @@ fn arb_ssh_config_with_agent_fingerprint() -> impl Strategy<Value = SshConfig> {
                 identities_only: false,
                 proxy_jump: None,
                 use_control_master: false,
+                agent_forwarding: false,
                 custom_options: HashMap::new(),
                 startup_command: None,
             }
@@ -958,6 +961,7 @@ fn arb_ssh_config_with_file_key_source() -> impl Strategy<Value = SshConfig> {
                     identities_only: false, // Should be auto-enabled for File auth
                     proxy_jump,
                     use_control_master,
+                    agent_forwarding: false,
                     custom_options,
                     startup_command: None,
                 }
@@ -987,6 +991,7 @@ fn arb_ssh_config_with_agent_key_source() -> impl Strategy<Value = SshConfig> {
                     identities_only: false, // Should NOT be enabled for Agent auth
                     proxy_jump,
                     use_control_master,
+                    agent_forwarding: false,
                     custom_options,
                     startup_command: None,
                 }

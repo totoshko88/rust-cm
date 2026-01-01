@@ -233,6 +233,8 @@ impl MainWindow {
         tools_section.append(Some("Clusters..."), Some("win.manage-clusters"));
         tools_section.append(Some("Templates..."), Some("win.manage-templates"));
         tools_section.append(Some("Active Sessions"), Some("win.show-sessions"));
+        tools_section.append(Some("Connection History..."), Some("win.show-history"));
+        tools_section.append(Some("Statistics..."), Some("win.show-statistics"));
         menu.append_section(None, &tools_section);
 
         // File section (import/export connections)
@@ -275,6 +277,7 @@ impl MainWindow {
         self.setup_template_actions(window, &state, &sidebar);
         self.setup_split_view_actions(window);
         self.setup_document_actions(window, &state, &sidebar);
+        self.setup_history_actions(window, &state);
         self.setup_misc_actions(window, &state, &sidebar, &terminal_notebook);
     }
 
@@ -521,9 +524,16 @@ impl MainWindow {
         let quick_connect_action = gio::SimpleAction::new("quick-connect", None);
         let window_weak = window.downgrade();
         let notebook_clone = terminal_notebook.clone();
+        let split_view_clone = self.split_view.clone();
+        let sidebar_clone = self.sidebar.clone();
         quick_connect_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_quick_connect_dialog(&win, notebook_clone.clone());
+                Self::show_quick_connect_dialog(
+                    &win,
+                    notebook_clone.clone(),
+                    split_view_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&quick_connect_action);
@@ -788,6 +798,83 @@ impl MainWindow {
             }
         });
         window.add_action(&manage_templates_action);
+    }
+
+    /// Sets up history and statistics actions
+    fn setup_history_actions(&self, window: &ApplicationWindow, state: &SharedAppState) {
+        use crate::dialogs::{HistoryDialog, StatisticsDialog};
+
+        // Show history action
+        let show_history_action = gio::SimpleAction::new("show-history", None);
+        let window_weak = window.downgrade();
+        let state_clone = state.clone();
+        let notebook_clone = self.terminal_notebook.clone();
+        let sidebar_clone = self.sidebar.clone();
+        let split_view_clone = self.split_view.clone();
+        show_history_action.connect_activate(move |_, _| {
+            if let Some(win) = window_weak.upgrade() {
+                let state_ref = state_clone.borrow();
+                let entries = state_ref.history_entries().to_vec();
+                drop(state_ref);
+
+                let dialog = HistoryDialog::new(Some(&win));
+                dialog.set_entries(entries);
+
+                // Connect callback for reconnecting from history
+                let state_for_connect = state_clone.clone();
+                let notebook_for_connect = notebook_clone.clone();
+                let sidebar_for_connect = sidebar_clone.clone();
+                let split_view_for_connect = split_view_clone.clone();
+                dialog.connect_on_connect(move |entry| {
+                    if entry.is_quick_connect() {
+                        tracing::warn!("Cannot reconnect to quick connect from history");
+                    } else {
+                        tracing::info!(
+                            "Reconnecting to {} (id: {}) from history",
+                            entry.connection_name,
+                            entry.connection_id
+                        );
+                        Self::start_connection_with_split(
+                            &state_for_connect,
+                            &notebook_for_connect,
+                            &split_view_for_connect,
+                            &sidebar_for_connect,
+                            entry.connection_id,
+                        );
+                    }
+                });
+
+                dialog.present();
+            }
+        });
+        window.add_action(&show_history_action);
+
+        // Show statistics action
+        let show_statistics_action = gio::SimpleAction::new("show-statistics", None);
+        let window_weak = window.downgrade();
+        let state_clone = state.clone();
+        show_statistics_action.connect_activate(move |_, _| {
+            if let Some(win) = window_weak.upgrade() {
+                let state_ref = state_clone.borrow();
+                let all_stats = state_ref.get_all_statistics();
+                drop(state_ref);
+
+                let dialog = StatisticsDialog::new(Some(&win));
+                dialog.set_overview_statistics(&all_stats);
+
+                // Connect clear statistics callback
+                let state_for_clear = state_clone.clone();
+                dialog.connect_on_clear(move || {
+                    if let Ok(mut state_mut) = state_for_clear.try_borrow_mut() {
+                        state_mut.clear_all_statistics();
+                        tracing::info!("All connection statistics cleared");
+                    }
+                });
+
+                dialog.present();
+            }
+        });
+        window.add_action(&show_statistics_action);
     }
 
     /// Sets up split view actions
@@ -1938,6 +2025,11 @@ impl MainWindow {
         let connection_id_str = connection_id.to_string();
 
         notebook.connect_child_exited(session_id, move |exit_status| {
+            // Get history entry ID before session info is removed
+            let history_entry_id = notebook_clone
+                .get_session_info(session_id)
+                .and_then(|info| info.history_entry_id);
+
             // Update session status in state manager
             // This also closes the session logger and finalizes the log file
             if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
@@ -1947,6 +2039,12 @@ impl MainWindow {
             // Check if session still exists in notebook
             // If it doesn't, the tab was closed by user
             if notebook_clone.get_session_info(session_id).is_none() {
+                // Record connection end in history (user closed tab)
+                if let Some(entry_id) = history_entry_id {
+                    if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
+                        state_mut.record_connection_end(entry_id);
+                    }
+                }
                 // Decrement session count - status changes only if no other sessions active
                 sidebar_clone.decrement_session_count(&connection_id_str, false);
                 return;
@@ -1970,6 +2068,19 @@ impl MainWindow {
             } else {
                 exit_code != 0 && !matches!(exit_code, 129 | 130 | 137 | 143)
             };
+
+            // Record connection end/failure in history
+            if let Some(entry_id) = history_entry_id {
+                if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
+                    if is_failure {
+                        let error_msg =
+                            format!("Exit status: {exit_status} (Signal: {term_sig}, Code: {exit_code})");
+                        state_mut.record_connection_failed(entry_id, &error_msg);
+                    } else {
+                        state_mut.record_connection_end(entry_id);
+                    }
+                }
+            }
 
             if is_failure {
                 eprintln!("Session {session_id} exited with status: {exit_status} (Signal: {term_sig}, Code: {exit_code})");
@@ -2316,8 +2427,13 @@ impl MainWindow {
     }
 
     /// Shows the quick connect dialog with protocol selection
-    fn show_quick_connect_dialog(window: &ApplicationWindow, notebook: SharedNotebook) {
-        edit_dialogs::show_quick_connect_dialog(window, notebook);
+    fn show_quick_connect_dialog(
+        window: &ApplicationWindow,
+        notebook: SharedNotebook,
+        split_view: SharedSplitView,
+        sidebar: SharedSidebar,
+    ) {
+        edit_dialogs::show_quick_connect_dialog(window, notebook, split_view, sidebar);
     }
 
     /// Toggles group operations mode for multi-select

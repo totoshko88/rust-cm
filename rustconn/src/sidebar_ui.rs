@@ -394,6 +394,13 @@ pub fn create_bulk_actions_bar() -> GtkBox {
     bar.set_margin_bottom(4);
     bar.add_css_class("bulk-actions-bar");
 
+    // New Group button
+    let new_group_button = Button::with_label("New Group");
+    new_group_button.set_tooltip_text(Some("Create a new group"));
+    new_group_button.set_action_name(Some("win.new-group"));
+    new_group_button.update_property(&[gtk4::accessible::Property::Label("Create new group")]);
+    bar.append(&new_group_button);
+
     // Delete Selected button
     let delete_button = Button::with_label("Delete Selected");
     delete_button.set_tooltip_text(Some("Delete all selected items"));

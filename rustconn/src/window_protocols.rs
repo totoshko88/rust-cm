@@ -36,6 +36,18 @@ pub fn start_ssh_connection(
     let session_id =
         notebook.create_terminal_tab(connection_id, &conn.name, "ssh", Some(&conn.automation));
 
+    // Record connection start in history
+    let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
+        Some(state_mut.record_connection_start(conn, conn.username.as_deref()))
+    } else {
+        None
+    };
+
+    // Store history entry ID in session for later use
+    if let Some(entry_id) = history_entry_id {
+        notebook.set_history_entry_id(session_id, entry_id);
+    }
+
     // Build and spawn SSH command
     let port = conn.port;
     let host = conn.host.clone();
@@ -58,6 +70,10 @@ pub fn start_ssh_connection(
             if ssh_config.use_control_master {
                 args.push("-o".to_string());
                 args.push("ControlMaster=auto".to_string());
+            }
+
+            if ssh_config.agent_forwarding {
+                args.push("-A".to_string());
             }
 
             for (k, v) in &ssh_config.custom_options {
@@ -164,15 +180,36 @@ pub fn start_vnc_connection(
     // Create VNC session tab with native widget
     let session_id = notebook.create_vnc_session_tab(connection_id, &conn_name);
 
+    // Record connection start in history
+    let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
+        Some(state_mut.record_connection_start(conn, conn.username.as_deref()))
+    } else {
+        None
+    };
+
+    // Store history entry ID in session for later use
+    if let Some(entry_id) = history_entry_id {
+        notebook.set_history_entry_id(session_id, entry_id);
+    }
+
     // Get the VNC widget and initiate connection with config
     if let Some(vnc_widget) = notebook.get_vnc_widget(session_id) {
         // Connect state change callback to mark tab as disconnected when session ends
         let notebook_for_state = notebook.clone();
         let sidebar_for_state = sidebar.clone();
+        let state_for_callback = state.clone();
         vnc_widget.connect_state_changed(move |vnc_state| {
             if vnc_state == crate::session::SessionState::Disconnected {
                 notebook_for_state.mark_tab_disconnected(session_id);
                 sidebar_for_state.decrement_session_count(&connection_id.to_string(), false);
+                // Record connection end in history
+                if let Some(info) = notebook_for_state.get_session_info(session_id) {
+                    if let Some(entry_id) = info.history_entry_id {
+                        if let Ok(mut state_mut) = state_for_callback.try_borrow_mut() {
+                            state_mut.record_connection_end(entry_id);
+                        }
+                    }
+                }
             } else if vnc_state == crate::session::SessionState::Connected {
                 notebook_for_state.mark_tab_connected(session_id);
                 sidebar_for_state.increment_session_count(&connection_id.to_string());
@@ -230,6 +267,18 @@ pub fn start_spice_connection(
     // Create SPICE session tab with native widget
     let session_id = notebook.create_spice_session_tab(connection_id, &conn_name);
 
+    // Record connection start in history
+    let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
+        Some(state_mut.record_connection_start(conn, conn.username.as_deref()))
+    } else {
+        None
+    };
+
+    // Store history entry ID in session for later use
+    if let Some(entry_id) = history_entry_id {
+        notebook.set_history_entry_id(session_id, entry_id);
+    }
+
     // Get the SPICE widget and initiate connection
     if let Some(spice_widget) = notebook.get_spice_widget(session_id) {
         // Build connection config using SpiceClientConfig from spice_client module
@@ -255,6 +304,7 @@ pub fn start_spice_connection(
         // Connect state change callback to mark tab as disconnected
         let notebook_for_state = notebook.clone();
         let sidebar_for_state = sidebar.clone();
+        let state_for_callback = state.clone();
         spice_widget.connect_state_changed(move |spice_state| {
             use crate::embedded_spice::SpiceConnectionState;
             if spice_state == SpiceConnectionState::Disconnected
@@ -265,6 +315,19 @@ pub fn start_spice_connection(
                     &connection_id.to_string(),
                     spice_state == SpiceConnectionState::Error,
                 );
+                // Record connection end/failure in history
+                if let Some(info) = notebook_for_state.get_session_info(session_id) {
+                    if let Some(entry_id) = info.history_entry_id {
+                        if let Ok(mut state_mut) = state_for_callback.try_borrow_mut() {
+                            if spice_state == SpiceConnectionState::Error {
+                                state_mut
+                                    .record_connection_failed(entry_id, "SPICE connection error");
+                            } else {
+                                state_mut.record_connection_end(entry_id);
+                            }
+                        }
+                    }
+                }
             } else if spice_state == SpiceConnectionState::Connected {
                 notebook_for_state.mark_tab_connected(session_id);
                 sidebar_for_state.increment_session_count(&connection_id.to_string());
@@ -343,6 +406,18 @@ pub fn start_zerotrust_connection(
         &tab_protocol,
         Some(&automation_config),
     );
+
+    // Record connection start in history
+    let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
+        Some(state_mut.record_connection_start(conn, conn.username.as_deref()))
+    } else {
+        None
+    };
+
+    // Store history entry ID in session for later use
+    if let Some(entry_id) = history_entry_id {
+        notebook.set_history_entry_id(session_id, entry_id);
+    }
 
     // Update last_connected timestamp
     if let Ok(mut state_mut) = state.try_borrow_mut() {

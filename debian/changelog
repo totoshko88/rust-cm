@@ -1,3 +1,21 @@
+rustconn (0.5.3-1) unstable; urgency=medium
+
+  * New upstream release
+  * UI Unification: All dialogs now use consistent 750×500px dimensions
+  * Connection history recording for all protocols (SSH, VNC, SPICE, RDP, ZeroTrust)
+  * Protocol-specific tabs in Template Dialog matching Connection Dialog
+  * Connection history and statistics dialogs with search and visualization
+  * Common embedded widget trait for RDP/VNC/SPICE deduplication
+  * Quick Connect now supports RDP and VNC protocols with templates
+  * Property tests for history and session restore models
+  * Refactored terminal.rs into modular structure
+  * Removed duplicate Close/Cancel buttons from all dialogs
+  * Renamed action buttons: "New X" → "Create", "Quick Connect" → "Connect"
+  * Create Connection now always opens blank dialog (removed template picker)
+  * Updated gtk4 dependency to 0.10.2
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Thu, 02 Jan 2026 12:00:00 +0200
+
 rustconn (0.5.2-1) unstable; urgency=medium
 
   * New upstream release

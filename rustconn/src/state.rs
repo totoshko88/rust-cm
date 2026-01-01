@@ -5,6 +5,7 @@
 
 use chrono::Utc;
 use rustconn_core::models::PasswordSource;
+use rustconn_core::models::{ConnectionHistoryEntry, ConnectionStatistics};
 use rustconn_core::{
     AppSettings, AsyncCredentialResolver, AsyncCredentialResult, CancellationToken, Cluster,
     ClusterManager, ConfigManager, Connection, ConnectionGroup, ConnectionManager,
@@ -158,6 +159,8 @@ pub struct AppState {
     password_cache: HashMap<Uuid, CachedCredentials>,
     /// Connection clipboard for copy/paste operations
     clipboard: ConnectionClipboard,
+    /// Connection history entries
+    history_entries: Vec<ConnectionHistoryEntry>,
 }
 
 impl AppState {
@@ -247,6 +250,9 @@ impl AppState {
             cluster_manager.load_clusters(clusters);
         }
 
+        // Load connection history
+        let history_entries = config_manager.load_history().unwrap_or_default();
+
         Ok(Self {
             connection_manager,
             session_manager,
@@ -260,6 +266,7 @@ impl AppState {
             settings,
             password_cache: HashMap::new(),
             clipboard: ConnectionClipboard::new(),
+            history_entries,
         })
     }
 
@@ -1688,6 +1695,147 @@ impl AppState {
         }
 
         templates
+    }
+
+    // ========== Connection History Operations ==========
+
+    /// Gets all history entries
+    #[must_use]
+    pub fn history_entries(&self) -> &[ConnectionHistoryEntry] {
+        &self.history_entries
+    }
+
+    /// Adds a new history entry for a connection start
+    pub fn record_connection_start(
+        &mut self,
+        connection: &Connection,
+        username: Option<&str>,
+    ) -> Uuid {
+        let entry = ConnectionHistoryEntry::new(
+            connection.id,
+            connection.name.clone(),
+            connection.host.clone(),
+            connection.port,
+            format!("{:?}", connection.protocol).to_lowercase(),
+            username.map(String::from),
+        );
+        let entry_id = entry.id;
+        self.history_entries.push(entry);
+        self.trim_history();
+        let _ = self.save_history();
+        entry_id
+    }
+
+    /// Adds a new history entry for a quick connect
+    #[allow(dead_code)]
+    pub fn record_quick_connect_start(
+        &mut self,
+        host: &str,
+        port: u16,
+        protocol: &str,
+        username: Option<&str>,
+    ) -> Uuid {
+        if !self.settings.history.track_quick_connect {
+            return Uuid::nil();
+        }
+        let entry = ConnectionHistoryEntry::new_quick_connect(
+            host.to_string(),
+            port,
+            protocol.to_string(),
+            username.map(String::from),
+        );
+        let entry_id = entry.id;
+        self.history_entries.push(entry);
+        self.trim_history();
+        let _ = self.save_history();
+        entry_id
+    }
+
+    /// Marks a history entry as ended (successful)
+    pub fn record_connection_end(&mut self, entry_id: Uuid) {
+        if let Some(entry) = self.history_entries.iter_mut().find(|e| e.id == entry_id) {
+            entry.end();
+            let _ = self.save_history();
+        }
+    }
+
+    /// Marks a history entry as failed
+    pub fn record_connection_failed(&mut self, entry_id: Uuid, error: &str) {
+        if let Some(entry) = self.history_entries.iter_mut().find(|e| e.id == entry_id) {
+            entry.fail(error);
+            let _ = self.save_history();
+        }
+    }
+
+    /// Clears all history entries
+    #[allow(dead_code)]
+    pub fn clear_history(&mut self) {
+        self.history_entries.clear();
+        let _ = self.save_history();
+    }
+
+    /// Gets statistics for a specific connection
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn get_connection_statistics(&self, connection_id: Uuid) -> ConnectionStatistics {
+        let mut stats = ConnectionStatistics::new(connection_id);
+        for entry in &self.history_entries {
+            if entry.connection_id == connection_id {
+                stats.update_from_entry(entry);
+            }
+        }
+        stats
+    }
+
+    /// Gets statistics for all connections
+    #[must_use]
+    pub fn get_all_statistics(&self) -> Vec<(String, ConnectionStatistics)> {
+        let mut stats_map: HashMap<Uuid, (String, ConnectionStatistics)> = HashMap::new();
+
+        for entry in &self.history_entries {
+            let stat_entry = stats_map.entry(entry.connection_id).or_insert_with(|| {
+                (
+                    entry.connection_name.clone(),
+                    ConnectionStatistics::new(entry.connection_id),
+                )
+            });
+            stat_entry.1.update_from_entry(entry);
+        }
+
+        stats_map.into_values().collect()
+    }
+
+    /// Clears all connection statistics by clearing history
+    pub fn clear_all_statistics(&mut self) {
+        self.history_entries.clear();
+        if let Err(e) = self.save_history() {
+            tracing::error!("Failed to save cleared history: {e}");
+        }
+    }
+
+    /// Trims history to max entries and retention period
+    #[allow(dead_code)]
+    fn trim_history(&mut self) {
+        let max_entries = self.settings.history.max_entries;
+        let retention_days = self.settings.history.retention_days;
+
+        // Remove old entries
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(i64::from(retention_days));
+        self.history_entries.retain(|e| e.started_at > cutoff);
+
+        // Trim to max entries (keep most recent)
+        if self.history_entries.len() > max_entries {
+            self.history_entries
+                .sort_by(|a, b| b.started_at.cmp(&a.started_at));
+            self.history_entries.truncate(max_entries);
+        }
+    }
+
+    /// Saves history to disk
+    fn save_history(&self) -> Result<(), String> {
+        self.config_manager
+            .save_history(&self.history_entries)
+            .map_err(|e| format!("Failed to save history: {e}"))
     }
 
     // ========== Clipboard Operations ==========

@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 
 use crate::cluster::Cluster;
 use crate::error::{ConfigError, ConfigResult};
-use crate::models::{Connection, ConnectionGroup, ConnectionTemplate, Snippet};
+use crate::models::{
+    Connection, ConnectionGroup, ConnectionHistoryEntry, ConnectionTemplate, Snippet,
+};
 
 use super::settings::AppSettings;
 
@@ -18,6 +20,7 @@ const GROUPS_FILE: &str = "groups.toml";
 const SNIPPETS_FILE: &str = "snippets.toml";
 const CLUSTERS_FILE: &str = "clusters.toml";
 const TEMPLATES_FILE: &str = "templates.toml";
+const HISTORY_FILE: &str = "history.toml";
 const CONFIG_FILE: &str = "config.toml";
 
 /// Wrapper for serializing a list of connections
@@ -53,6 +56,13 @@ struct ClustersFile {
 struct TemplatesFile {
     #[serde(default)]
     templates: Vec<ConnectionTemplate>,
+}
+
+/// Wrapper for serializing connection history
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct HistoryFile {
+    #[serde(default)]
+    entries: Vec<ConnectionHistoryEntry>,
 }
 
 /// Configuration manager for `RustConn`
@@ -279,6 +289,36 @@ impl ConfigManager {
         let path = self.config_dir.join(TEMPLATES_FILE);
         let file = TemplatesFile {
             templates: templates.to_vec(),
+        };
+        Self::save_toml_file(&path, &file)
+    }
+
+    // ========== Connection History ==========
+
+    /// Loads connection history from the configuration file
+    ///
+    /// Returns an empty list if the file doesn't exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file exists but cannot be parsed.
+    pub fn load_history(&self) -> ConfigResult<Vec<ConnectionHistoryEntry>> {
+        let path = self.config_dir.join(HISTORY_FILE);
+        Self::load_toml_file::<HistoryFile>(&path).map(|f| f.entries)
+    }
+
+    /// Saves connection history to the configuration file
+    ///
+    /// Creates the configuration directory if it doesn't exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written.
+    pub fn save_history(&self, entries: &[ConnectionHistoryEntry]) -> ConfigResult<()> {
+        self.ensure_config_dir()?;
+        let path = self.config_dir.join(HISTORY_FILE);
+        let file = HistoryFile {
+            entries: entries.to_vec(),
         };
         Self::save_toml_file(&path, &file)
     }

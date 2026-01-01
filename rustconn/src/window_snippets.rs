@@ -56,19 +56,17 @@ pub fn show_snippets_manager(
         .title("Manage Snippets")
         .transient_for(window)
         .modal(true)
-        .default_width(600)
+        .default_width(750)
         .default_height(500)
         .build();
 
-    // Create header bar
+    // Create header bar (no Close button - window X is sufficient)
     let header = HeaderBar::new();
-    let close_btn = Button::builder().label("Close").build();
     let new_btn = Button::builder()
-        .label("New Snippet")
+        .label("Create")
         .css_classes(["suggested-action"])
         .build();
-    header.pack_start(&close_btn);
-    header.pack_end(&new_btn);
+    header.pack_start(&new_btn);
     manager_window.set_titlebar(Some(&header));
 
     // Create main content
@@ -136,12 +134,6 @@ pub fn show_snippets_manager(
         edit_clone.set_sensitive(has_selection);
         delete_clone.set_sensitive(has_selection);
         execute_clone.set_sensitive(has_selection);
-    });
-
-    // Connect close button
-    let window_clone = manager_window.clone();
-    close_btn.connect_clicked(move |_| {
-        window_clone.close();
     });
 
     // Connect new button

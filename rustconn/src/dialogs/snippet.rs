@@ -59,7 +59,7 @@ impl SnippetDialog {
         let window = Window::builder()
             .title("New Snippet")
             .modal(true)
-            .default_width(550)
+            .default_width(750)
             .default_height(500)
             .build();
 
@@ -67,15 +67,13 @@ impl SnippetDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar with Cancel/Save buttons
+        // Create header bar (no Close button - window X is sufficient)
         let header = HeaderBar::new();
-        let cancel_btn = Button::builder().label("Cancel").build();
-        let save_btn = Button::builder()
-            .label("Save")
+        let new_btn = Button::builder()
+            .label("Create")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&cancel_btn);
-        header.pack_end(&save_btn);
+        header.pack_start(&new_btn);
         window.set_titlebar(Some(&header));
 
         // Create main content area
@@ -113,16 +111,6 @@ impl SnippetDialog {
 
         let on_save: super::SnippetCallback = Rc::new(RefCell::new(None));
 
-        // Connect cancel button
-        let window_clone = window.clone();
-        let on_save_clone = on_save.clone();
-        cancel_btn.connect_clicked(move |_| {
-            if let Some(ref cb) = *on_save_clone.borrow() {
-                cb(None);
-            }
-            window_clone.close();
-        });
-
         Self {
             window,
             name_entry,
@@ -132,7 +120,7 @@ impl SnippetDialog {
             command_view,
             variables_list,
             add_var_button,
-            save_btn,
+            save_btn: new_btn,
             editing_id: Rc::new(RefCell::new(None)),
             variables,
             on_save,
@@ -387,6 +375,7 @@ impl SnippetDialog {
     /// Populates the dialog with an existing snippet for editing
     pub fn set_snippet(&self, snippet: &Snippet) {
         self.window.set_title(Some("Edit Snippet"));
+        self.save_btn.set_label("Save");
         *self.editing_id.borrow_mut() = Some(snippet.id);
 
         self.name_entry.set_text(&snippet.name);

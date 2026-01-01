@@ -4,12 +4,14 @@ mod cluster;
 mod connection;
 mod document;
 mod export;
+mod history;
 mod import;
 mod log_viewer;
 mod password;
 mod progress;
 mod settings;
 mod snippet;
+mod statistics;
 mod template;
 mod variables;
 
@@ -20,12 +22,14 @@ pub use document::{
     NewDocumentDialog, OpenDocumentDialog, SaveDocumentDialog,
 };
 pub use export::{ExportCallback, ExportDialog};
+pub use history::HistoryDialog;
 pub use import::ImportDialog;
 pub use log_viewer::LogViewerDialog;
 pub use password::{PasswordDialog, PasswordDialogResult};
 pub use progress::ProgressDialog;
 pub use settings::SettingsDialog;
 pub use snippet::SnippetDialog;
+pub use statistics::{empty_statistics, StatisticsDialog};
 pub use template::{TemplateCallback, TemplateDialog, TemplateManagerDialog};
 pub use variables::VariablesDialog;
 

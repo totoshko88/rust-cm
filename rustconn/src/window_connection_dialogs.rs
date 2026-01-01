@@ -8,239 +8,21 @@ use crate::sidebar::ConnectionSidebar;
 use crate::state::SharedAppState;
 use crate::window::MainWindow;
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, Button, HeaderBar, Label, Orientation, ScrolledWindow};
+use gtk4::{ApplicationWindow, Label};
 use std::rc::Rc;
 use uuid::Uuid;
 
 /// Type alias for shared sidebar reference
 pub type SharedSidebar = Rc<ConnectionSidebar>;
 
-/// Shows the new connection dialog with optional template selection
+/// Shows the new connection dialog (always creates blank connection)
 pub fn show_new_connection_dialog(
     window: &ApplicationWindow,
     state: SharedAppState,
     sidebar: SharedSidebar,
 ) {
-    // Check if there are templates available
-    let templates = {
-        let state_ref = state.borrow();
-        state_ref.get_all_templates()
-    };
-
-    if templates.is_empty() {
-        // No templates, show regular connection dialog
-        show_new_connection_dialog_internal(window, state, sidebar, None);
-    } else {
-        // Show template picker first
-        show_template_picker_for_new_connection(window, state, sidebar, templates);
-    }
-}
-
-/// Shows a template picker dialog before creating a new connection
-#[allow(clippy::too_many_lines)]
-pub fn show_template_picker_for_new_connection(
-    window: &ApplicationWindow,
-    state: SharedAppState,
-    sidebar: SharedSidebar,
-    templates: Vec<rustconn_core::models::ConnectionTemplate>,
-) {
-    let picker_window = gtk4::Window::builder()
-        .title("Create Connection")
-        .transient_for(window)
-        .modal(true)
-        .default_width(400)
-        .default_height(350)
-        .build();
-
-    // Create header bar
-    let header = HeaderBar::new();
-    let cancel_btn = Button::builder().label("Cancel").build();
-    header.pack_start(&cancel_btn);
-    picker_window.set_titlebar(Some(&header));
-
-    // Create content
-    let content = gtk4::Box::new(Orientation::Vertical, 12);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(12);
-    content.set_margin_end(12);
-
-    let title_label = Label::builder()
-        .label("Choose how to create your connection:")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .build();
-    content.append(&title_label);
-
-    // Blank connection option
-    let blank_btn = Button::builder().label("Start from scratch").build();
-    let blank_box = gtk4::Box::new(Orientation::Vertical, 4);
-    blank_box.append(&blank_btn);
-    let blank_desc = Label::builder()
-        .label("Create a new connection with default settings")
-        .halign(gtk4::Align::Start)
-        .css_classes(["dim-label"])
-        .build();
-    blank_box.append(&blank_desc);
-    content.append(&blank_box);
-
-    // Separator
-    let separator = gtk4::Separator::new(Orientation::Horizontal);
-    separator.set_margin_top(8);
-    separator.set_margin_bottom(8);
-    content.append(&separator);
-
-    // Template section
-    let template_label = Label::builder()
-        .label("Or use a template:")
-        .halign(gtk4::Align::Start)
-        .build();
-    content.append(&template_label);
-
-    // Templates list
-    let scrolled = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk4::PolicyType::Never)
-        .vscrollbar_policy(gtk4::PolicyType::Automatic)
-        .vexpand(true)
-        .build();
-
-    let templates_list = gtk4::ListBox::builder()
-        .selection_mode(gtk4::SelectionMode::Single)
-        .css_classes(["boxed-list"])
-        .build();
-
-    for template in &templates {
-        let hbox = gtk4::Box::new(Orientation::Horizontal, 8);
-        hbox.set_margin_top(8);
-        hbox.set_margin_bottom(8);
-        hbox.set_margin_start(8);
-        hbox.set_margin_end(8);
-
-        // Protocol icon
-        let icon_name = match template.protocol {
-            rustconn_core::models::ProtocolType::Ssh => "utilities-terminal-symbolic",
-            rustconn_core::models::ProtocolType::Rdp => "computer-symbolic",
-            rustconn_core::models::ProtocolType::Vnc => "video-display-symbolic",
-            rustconn_core::models::ProtocolType::Spice => "video-display-symbolic",
-            rustconn_core::models::ProtocolType::ZeroTrust => "cloud-symbolic",
-        };
-        let icon = gtk4::Image::from_icon_name(icon_name);
-        hbox.append(&icon);
-
-        // Template info
-        let info_box = gtk4::Box::new(Orientation::Vertical, 2);
-        info_box.set_hexpand(true);
-
-        let name_label = Label::builder()
-            .label(&template.name)
-            .halign(gtk4::Align::Start)
-            .build();
-        info_box.append(&name_label);
-
-        if let Some(ref desc) = template.description {
-            let desc_label = Label::builder()
-                .label(desc)
-                .halign(gtk4::Align::Start)
-                .css_classes(["dim-label"])
-                .build();
-            info_box.append(&desc_label);
-        }
-
-        hbox.append(&info_box);
-
-        let row = gtk4::ListBoxRow::builder().child(&hbox).build();
-        row.set_widget_name(&format!("template-{}", template.id));
-        templates_list.append(&row);
-    }
-
-    scrolled.set_child(Some(&templates_list));
-    content.append(&scrolled);
-
-    // Use template button
-    let use_template_btn = Button::builder()
-        .label("Use Selected Template")
-        .sensitive(false)
-        .css_classes(["suggested-action"])
-        .build();
-    content.append(&use_template_btn);
-
-    picker_window.set_child(Some(&content));
-
-    // Connect selection changed
-    let use_btn_clone = use_template_btn.clone();
-    templates_list.connect_row_selected(move |_, row| {
-        use_btn_clone.set_sensitive(row.is_some());
-    });
-
-    // Connect cancel button
-    let picker_clone = picker_window.clone();
-    cancel_btn.connect_clicked(move |_| {
-        picker_clone.close();
-    });
-
-    // Connect blank button
-    let picker_clone = picker_window.clone();
-    let window_clone = window.clone();
-    let state_clone = state.clone();
-    let sidebar_clone = sidebar.clone();
-    blank_btn.connect_clicked(move |_| {
-        picker_clone.close();
-        show_new_connection_dialog_internal(
-            &window_clone,
-            state_clone.clone(),
-            sidebar_clone.clone(),
-            None,
-        );
-    });
-
-    // Connect use template button
-    let picker_clone = picker_window.clone();
-    let window_clone = window.clone();
-    let state_clone = state.clone();
-    let sidebar_clone = sidebar.clone();
-    let templates_clone = templates.clone();
-    let list_clone = templates_list.clone();
-    use_template_btn.connect_clicked(move |_| {
-        if let Some(row) = list_clone.selected_row() {
-            if let Some(id_str) = row.widget_name().as_str().strip_prefix("template-") {
-                if let Ok(id) = Uuid::parse_str(id_str) {
-                    if let Some(template) = templates_clone.iter().find(|t| t.id == id) {
-                        picker_clone.close();
-                        show_new_connection_dialog_internal(
-                            &window_clone,
-                            state_clone.clone(),
-                            sidebar_clone.clone(),
-                            Some(template.clone()),
-                        );
-                    }
-                }
-            }
-        }
-    });
-
-    // Double-click on template row
-    let picker_clone = picker_window.clone();
-    let window_clone = window.clone();
-    let state_clone = state;
-    let sidebar_clone = sidebar;
-    let templates_clone = templates;
-    templates_list.connect_row_activated(move |_, row| {
-        if let Some(id_str) = row.widget_name().as_str().strip_prefix("template-") {
-            if let Ok(id) = Uuid::parse_str(id_str) {
-                if let Some(template) = templates_clone.iter().find(|t| t.id == id) {
-                    picker_clone.close();
-                    show_new_connection_dialog_internal(
-                        &window_clone,
-                        state_clone.clone(),
-                        sidebar_clone.clone(),
-                        Some(template.clone()),
-                    );
-                }
-            }
-        }
-    });
-
-    picker_window.present();
+    // Always show regular connection dialog (no template picker)
+    show_new_connection_dialog_internal(window, state, sidebar, None);
 }
 
 /// Internal function to show the new connection dialog with optional template
@@ -451,18 +233,16 @@ pub fn show_new_group_dialog_with_parent(
         .title("New Group")
         .transient_for(window)
         .modal(true)
-        .default_width(350)
+        .default_width(750)
         .build();
 
-    // Create header bar with Cancel/Create buttons
+    // Create header bar (no Cancel button - window X is sufficient)
     let header = gtk4::HeaderBar::new();
-    let cancel_btn = gtk4::Button::builder().label("Cancel").build();
     let create_btn = gtk4::Button::builder()
         .label("Create")
         .css_classes(["suggested-action"])
         .build();
-    header.pack_start(&cancel_btn);
-    header.pack_end(&create_btn);
+    header.pack_start(&create_btn);
     group_window.set_titlebar(Some(&header));
 
     let content = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
@@ -527,12 +307,6 @@ pub fn show_new_group_dialog_with_parent(
 
     content.append(&parent_dropdown);
     group_window.set_child(Some(&content));
-
-    // Connect cancel button
-    let window_clone = group_window.clone();
-    cancel_btn.connect_clicked(move |_| {
-        window_clone.close();
-    });
 
     // Connect create button
     let state_clone = state.clone();

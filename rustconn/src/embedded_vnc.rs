@@ -1651,6 +1651,49 @@ impl Drop for EmbeddedVncWidget {
     }
 }
 
+impl crate::embedded_trait::EmbeddedWidget for EmbeddedVncWidget {
+    fn widget(&self) -> &gtk4::Box {
+        &self.container
+    }
+
+    fn state(&self) -> crate::embedded_trait::EmbeddedConnectionState {
+        match *self.state.borrow() {
+            VncConnectionState::Disconnected => {
+                crate::embedded_trait::EmbeddedConnectionState::Disconnected
+            }
+            VncConnectionState::Connecting => {
+                crate::embedded_trait::EmbeddedConnectionState::Connecting
+            }
+            VncConnectionState::Connected => {
+                crate::embedded_trait::EmbeddedConnectionState::Connected
+            }
+            VncConnectionState::Error => crate::embedded_trait::EmbeddedConnectionState::Error,
+        }
+    }
+
+    fn is_embedded(&self) -> bool {
+        *self.is_embedded.borrow()
+    }
+
+    fn disconnect(&self) -> Result<(), crate::embedded_trait::EmbeddedError> {
+        Self::disconnect(self);
+        Ok(())
+    }
+
+    fn reconnect(&self) -> Result<(), crate::embedded_trait::EmbeddedError> {
+        Self::reconnect(self)
+            .map_err(|e| crate::embedded_trait::EmbeddedError::ConnectionFailed(e.to_string()))
+    }
+
+    fn send_ctrl_alt_del(&self) {
+        Self::send_ctrl_alt_del(self);
+    }
+
+    fn protocol_name(&self) -> &'static str {
+        "VNC"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

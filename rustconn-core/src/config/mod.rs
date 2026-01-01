@@ -8,5 +8,6 @@ pub mod settings;
 
 pub use manager::ConfigManager;
 pub use settings::{
-    AppSettings, LoggingSettings, SecretBackendType, SecretSettings, TerminalSettings, UiSettings,
+    AppSettings, LoggingSettings, SavedSession, SecretBackendType, SecretSettings,
+    SessionRestoreSettings, TerminalSettings, UiSettings,
 };

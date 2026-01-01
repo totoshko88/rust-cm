@@ -66,6 +66,7 @@ pub struct ConnectionDialog {
     ssh_proxy_entry: Entry,
     ssh_identities_only: CheckButton,
     ssh_control_master: CheckButton,
+    ssh_agent_forwarding: CheckButton,
     ssh_startup_entry: Entry,
     ssh_options_entry: Entry,
     // RDP fields
@@ -250,7 +251,7 @@ impl ConnectionDialog {
     #[must_use]
     #[allow(clippy::too_many_lines)]
     pub fn new(parent: Option<&Window>) -> Self {
-        let (window, cancel_btn, save_btn) = Self::create_window_with_header(parent);
+        let (window, save_btn) = Self::create_window_with_header(parent);
         let notebook = Self::create_notebook(&window);
 
         // === Basic Tab ===
@@ -289,6 +290,7 @@ impl ConnectionDialog {
             ssh_proxy_entry,
             ssh_identities_only,
             ssh_control_master,
+            ssh_agent_forwarding,
             ssh_startup_entry,
             ssh_options_entry,
         ) = Self::create_ssh_options();
@@ -493,9 +495,6 @@ impl ConnectionDialog {
         let on_save: super::ConnectionCallback = Rc::new(RefCell::new(None));
         let editing_id: Rc<RefCell<Option<Uuid>>> = Rc::new(RefCell::new(None));
 
-        // Connect cancel button
-        Self::connect_cancel_button(&cancel_btn, &window, &on_save);
-
         // Connect save button handler
         Self::connect_save_button(
             &save_btn,
@@ -517,6 +516,7 @@ impl ConnectionDialog {
             &ssh_proxy_entry,
             &ssh_identities_only,
             &ssh_control_master,
+            &ssh_agent_forwarding,
             &ssh_startup_entry,
             &ssh_options_entry,
             &rdp_client_mode_dropdown,
@@ -614,6 +614,7 @@ impl ConnectionDialog {
             ssh_proxy_entry,
             ssh_identities_only,
             ssh_control_master,
+            ssh_agent_forwarding,
             ssh_startup_entry,
             ssh_options_entry,
             rdp_client_mode_dropdown,
@@ -704,12 +705,12 @@ impl ConnectionDialog {
         }
     }
 
-    /// Creates the main window with header bar containing Cancel/Save buttons
-    fn create_window_with_header(parent: Option<&Window>) -> (Window, Button, Button) {
+    /// Creates the main window with header bar containing Save button
+    fn create_window_with_header(parent: Option<&Window>) -> (Window, Button) {
         let window = Window::builder()
             .title("New Connection")
             .modal(true)
-            .default_width(550)
+            .default_width(750)
             .default_height(500)
             .build();
 
@@ -717,18 +718,17 @@ impl ConnectionDialog {
             window.set_transient_for(Some(p));
         }
 
+        // Create header bar (no Cancel button - window X is sufficient)
         let header = HeaderBar::new();
-        let cancel_btn = Button::builder().label("Cancel").build();
         let save_btn = Button::builder()
-            .label("Save")
+            .label("Create")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&cancel_btn);
-        header.pack_end(&save_btn);
+        header.pack_start(&save_btn);
         window.set_titlebar(Some(&header));
         window.set_default_widget(Some(&save_btn));
 
-        (window, cancel_btn, save_btn)
+        (window, save_btn)
     }
 
     /// Creates the notebook widget and adds it to the window
@@ -845,22 +845,6 @@ impl ConnectionDialog {
             || port.abs() < EPSILON
     }
 
-    /// Connects the cancel button to close the dialog
-    fn connect_cancel_button(
-        cancel_btn: &Button,
-        window: &Window,
-        on_save: &super::ConnectionCallback,
-    ) {
-        let window_clone = window.clone();
-        let on_save_clone = on_save.clone();
-        cancel_btn.connect_clicked(move |_| {
-            if let Some(ref cb) = *on_save_clone.borrow() {
-                cb(None);
-            }
-            window_clone.close();
-        });
-    }
-
     /// Connects the save button to validate and save the connection
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     fn connect_save_button(
@@ -883,6 +867,7 @@ impl ConnectionDialog {
         ssh_proxy_entry: &Entry,
         ssh_identities_only: &CheckButton,
         ssh_control_master: &CheckButton,
+        ssh_agent_forwarding: &CheckButton,
         ssh_startup_entry: &Entry,
         ssh_options_entry: &Entry,
         rdp_client_mode_dropdown: &DropDown,
@@ -973,6 +958,7 @@ impl ConnectionDialog {
         let ssh_proxy_entry = ssh_proxy_entry.clone();
         let ssh_identities_only = ssh_identities_only.clone();
         let ssh_control_master = ssh_control_master.clone();
+        let ssh_agent_forwarding = ssh_agent_forwarding.clone();
         let ssh_startup_entry = ssh_startup_entry.clone();
         let ssh_options_entry = ssh_options_entry.clone();
         let rdp_client_mode_dropdown = rdp_client_mode_dropdown.clone();
@@ -1067,6 +1053,7 @@ impl ConnectionDialog {
                 ssh_proxy_entry: &ssh_proxy_entry,
                 ssh_identities_only: &ssh_identities_only,
                 ssh_control_master: &ssh_control_master,
+                ssh_agent_forwarding: &ssh_agent_forwarding,
                 ssh_startup_entry: &ssh_startup_entry,
                 ssh_options_entry: &ssh_options_entry,
                 rdp_client_mode_dropdown: &rdp_client_mode_dropdown,
@@ -1387,6 +1374,7 @@ impl ConnectionDialog {
         Entry,
         CheckButton,
         CheckButton,
+        CheckButton,
         Entry,
         Entry,
     ) {
@@ -1522,6 +1510,14 @@ impl ConnectionDialog {
         grid.attach(&control_master, 1, row, 2, 1);
         row += 1;
 
+        // Agent Forwarding
+        let agent_forwarding = CheckButton::builder()
+            .label("Enable Agent Forwarding (-A)")
+            .tooltip_text("Forward local SSH agent to remote host for authentication")
+            .build();
+        grid.attach(&agent_forwarding, 1, row, 2, 1);
+        row += 1;
+
         // Startup command
         let startup_label = Label::builder()
             .label("Startup Command:")
@@ -1557,6 +1553,7 @@ impl ConnectionDialog {
             proxy_entry,
             identities_only,
             control_master,
+            agent_forwarding,
             startup_entry,
             options_entry,
         )
@@ -4389,6 +4386,7 @@ impl ConnectionDialog {
     /// Populates the dialog with an existing connection for editing
     pub fn set_connection(&self, conn: &Connection) {
         self.window.set_title(Some("Edit Connection"));
+        self.save_button.set_label("Save");
         *self.editing_id.borrow_mut() = Some(conn.id);
 
         // Basic fields
@@ -4799,6 +4797,7 @@ impl ConnectionDialog {
         }
         self.ssh_identities_only.set_active(ssh.identities_only);
         self.ssh_control_master.set_active(ssh.use_control_master);
+        self.ssh_agent_forwarding.set_active(ssh.agent_forwarding);
         if let Some(ref cmd) = ssh.startup_command {
             self.ssh_startup_entry.set_text(cmd);
         }
@@ -5277,6 +5276,7 @@ struct ConnectionDialogData<'a> {
     ssh_proxy_entry: &'a Entry,
     ssh_identities_only: &'a CheckButton,
     ssh_control_master: &'a CheckButton,
+    ssh_agent_forwarding: &'a CheckButton,
     ssh_startup_entry: &'a Entry,
     ssh_options_entry: &'a Entry,
     rdp_client_mode_dropdown: &'a DropDown,
@@ -5853,6 +5853,7 @@ impl ConnectionDialogData<'_> {
             identities_only: self.ssh_identities_only.is_active(),
             proxy_jump,
             use_control_master: self.ssh_control_master.is_active(),
+            agent_forwarding: self.ssh_agent_forwarding.is_active(),
             custom_options,
             startup_command,
         }

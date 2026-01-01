@@ -50,7 +50,7 @@ impl VariablesDialog {
         let window = Window::builder()
             .title("Global Variables")
             .modal(true)
-            .default_width(600)
+            .default_width(750)
             .default_height(500)
             .build();
 

@@ -95,10 +95,11 @@ pub use import::{
     BATCH_IMPORT_THRESHOLD, DEFAULT_IMPORT_BATCH_SIZE,
 };
 pub use models::{
-    group_templates_by_protocol, Connection, ConnectionGroup, ConnectionTemplate, Credentials,
-    CustomProperty, PasswordSource, PropertyType, ProtocolConfig, ProtocolType, RdpConfig,
-    RdpGateway, Resolution, Snippet, SnippetVariable, SpiceConfig, SpiceImageCompression,
-    SshAuthMethod, SshConfig, SshKeySource, TemplateError, VncConfig, WindowGeometry, WindowMode,
+    group_templates_by_protocol, Connection, ConnectionGroup, ConnectionHistoryEntry,
+    ConnectionStatistics, ConnectionTemplate, Credentials, CustomProperty, HistorySettings,
+    PasswordSource, PropertyType, ProtocolConfig, ProtocolType, RdpConfig, RdpGateway, Resolution,
+    Snippet, SnippetVariable, SpiceConfig, SpiceImageCompression, SshAuthMethod, SshConfig,
+    SshKeySource, TemplateError, VncConfig, WindowGeometry, WindowMode,
 };
 pub use performance::{
     format_bytes, memory_optimizer, metrics, AllocationStats, BatchProcessor, CompactString,
