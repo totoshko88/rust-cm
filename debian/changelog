@@ -1,3 +1,11 @@
+rustconn (0.5.5-1) unstable; urgency=medium
+
+  * New upstream release
+  * Added Kiro steering rules for commit and release checklists
+  * Fixed Flatpak manifest version references
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Fri, 02 Jan 2026 17:30:00 +0200
+
 rustconn (0.5.4-1) unstable; urgency=medium
 
   * New upstream release

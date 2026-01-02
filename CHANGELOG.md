@@ -5,6 +5,16 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-01-02
+
+### Added
+- Kiro steering rules for development workflow:
+  - `commit-checklist.md` - pre-commit cargo fmt/clippy checks
+  - `release-checklist.md` - version files and packaging verification
+
+### Fixed
+- Flatpak manifest version references updated correctly
+
 ## [0.5.4] - 2026-01-02
 
 ### Changed
@@ -381,7 +391,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/totoshko88/RustConn/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/totoshko88/RustConn/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/totoshko88/RustConn/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/totoshko88/RustConn/compare/v0.5.1...v0.5.2
