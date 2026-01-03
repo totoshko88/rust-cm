@@ -92,10 +92,21 @@ pub fn rebuild_sidebar_sorted(state: &SharedAppState, sidebar: &SharedSidebar) {
         other => other,
     });
 
+    // Check if there are any connections at all
+    let total_connections = state_ref.list_connections().len();
+
     drop(state_ref);
 
     // Rebuild store with sorted items (groups first, then ungrouped)
     store.remove_all();
+
+    // If no connections exist, the list will be empty
+    // The empty state is shown via CSS/placeholder in the list view
+    if total_connections == 0 && groups.is_empty() {
+        // Store is empty - list view will show nothing
+        // Empty state is handled by the main window layout
+        return;
+    }
 
     let state_ref = state.borrow();
 

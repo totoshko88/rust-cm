@@ -55,6 +55,7 @@ pub mod embedded_trait;
 pub mod embedded_vnc;
 pub mod embedded_vnc_types;
 pub mod embedded_vnc_ui;
+pub mod empty_state;
 pub mod external_window;
 pub mod floating_controls;
 pub mod session;
@@ -64,9 +65,16 @@ mod sidebar_ui;
 pub mod split_view;
 mod state;
 mod terminal;
+pub mod toast;
 pub mod tray;
+pub mod utils;
+pub mod validation;
 pub mod wayland_surface;
 mod window;
+
+// Error display utilities
+pub mod error;
+pub mod error_display;
 mod window_clusters;
 mod window_connection_dialogs;
 mod window_document_actions;

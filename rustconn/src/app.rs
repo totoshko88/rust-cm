@@ -324,14 +324,148 @@ fn load_css_styles() {
         .vnc-display {
             background-color: @view_bg_color;
         }
+
+        /* Toast notification styles */
+        .toast-container {
+            background-color: alpha(@theme_bg_color, 0.95);
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 2px 8px alpha(black, 0.3);
+            border: 1px solid alpha(@borders, 0.5);
+        }
+
+        .toast-label {
+            font-weight: 500;
+        }
+
+        .toast-info {
+            border-left: 4px solid @accent_bg_color;
+        }
+
+        .toast-success {
+            border-left: 4px solid #2ec27e;
+            background-color: alpha(#2ec27e, 0.1);
+        }
+
+        .toast-warning {
+            border-left: 4px solid #e5a50a;
+            background-color: alpha(#e5a50a, 0.1);
+        }
+
+        .toast-error {
+            border-left: 4px solid @error_color;
+            background-color: alpha(@error_color, 0.1);
+        }
+
+        /* Validation styles */
+        entry.error {
+            border-color: @error_color;
+            box-shadow: 0 0 0 1px @error_color;
+        }
+
+        entry.warning {
+            border-color: #e5a50a;
+            box-shadow: 0 0 0 1px #e5a50a;
+        }
+
+        entry.success {
+            border-color: #2ec27e;
+        }
+
+        label.error {
+            color: @error_color;
+            font-size: 0.9em;
+        }
+
+        label.warning {
+            color: #e5a50a;
+            font-size: 0.9em;
+        }
+
+        /* Monospace text for technical details */
+        .monospace {
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        /* Keyboard shortcuts dialog styles */
+        .keycap {
+            background-color: alpha(@theme_fg_color, 0.1);
+            border: 1px solid alpha(@borders, 0.5);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: monospace;
+            font-size: 0.9em;
+            min-width: 24px;
+        }
+
+        /* Empty state styles */
+        .empty-state {
+            padding: 48px;
+        }
+
+        .empty-state-icon {
+            opacity: 0.3;
+        }
+
+        .empty-state-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-top: 12px;
+        }
+
+        .empty-state-description {
+            opacity: 0.7;
+            margin-top: 6px;
+        }
+
+        /* Loading spinner styles */
+        .loading-spinner {
+            min-width: 32px;
+            min-height: 32px;
+        }
+
+        /* Connection status animations */
+        /* Note: GTK4 CSS doesn't support @keyframes, using opacity for visual feedback */
+        .status-connecting {
+            opacity: 0.6;
+        }
+
+        /* Enhanced drag-drop visual feedback */
+        .drag-source-active {
+            opacity: 0.6;
+            transform: scale(0.98);
+        }
+
+        .drop-zone-active {
+            background-color: alpha(@accent_bg_color, 0.1);
+            border: 2px dashed @accent_bg_color;
+            border-radius: 6px;
+        }
+
+        /* Form field hint styles */
+        .field-hint {
+            font-size: 0.85em;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+
+        /* Theme toggle button group */
+        .theme-toggle-group button {
+            min-width: 70px;
+        }
+
+        .theme-toggle-group button:checked {
+            background-color: @accent_bg_color;
+            color: @accent_fg_color;
+        }
         ",
     );
 
-    gtk4::style_context_add_provider_for_display(
-        &gtk4::gdk::Display::default().expect("Could not get default display"),
-        &provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-    );
+    // Use safe display access
+    if !crate::utils::add_css_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION) {
+        tracing::warn!("Failed to add CSS provider - no display available");
+    }
 }
 
 /// Sets up application-level actions
@@ -368,11 +502,21 @@ fn setup_app_actions(
     });
     app.add_action(&about_action);
 
+    // Keyboard shortcuts action
+    let shortcuts_action = gio::SimpleAction::new("shortcuts", None);
+    let window_weak = window.gtk_window().downgrade();
+    shortcuts_action.connect_activate(move |_, _| {
+        if let Some(window) = window_weak.upgrade() {
+            let dialog = crate::dialogs::ShortcutsDialog::new(Some(&window));
+            dialog.show();
+        }
+    });
+    app.add_action(&shortcuts_action);
+
     // Set up keyboard shortcuts
     // Application shortcuts
     app.set_accels_for_action("app.quit", &["<Control>q"]);
-    // Note: F1 is NOT bound to about to allow function keys in terminal
-    // About dialog is accessible via Help menu
+    app.set_accels_for_action("app.shortcuts", &["<Control>question", "F1"]);
 
     // Connection management shortcuts
     app.set_accels_for_action("win.new-connection", &["<Control>n"]);

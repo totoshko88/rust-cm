@@ -1193,11 +1193,72 @@ impl SettingsDialog {
         vbox.set_margin_start(12);
         vbox.set_margin_end(12);
 
+        // Theme settings section
+        let theme_label = Label::builder()
+            .label("<b>Appearance</b>")
+            .use_markup(true)
+            .halign(gtk4::Align::Start)
+            .build();
+        vbox.append(&theme_label);
+
+        let theme_box = GtkBox::new(Orientation::Horizontal, 12);
+        theme_box.set_margin_start(12);
+
+        let theme_desc = Label::builder()
+            .label("Color scheme:")
+            .halign(gtk4::Align::Start)
+            .build();
+        theme_box.append(&theme_desc);
+
+        // Theme toggle buttons
+        let theme_system = gtk4::ToggleButton::builder()
+            .label("System")
+            .active(true)
+            .tooltip_text("Follow system color scheme")
+            .build();
+        let theme_light = gtk4::ToggleButton::builder()
+            .label("Light")
+            .tooltip_text("Always use light theme")
+            .build();
+        let theme_dark = gtk4::ToggleButton::builder()
+            .label("Dark")
+            .tooltip_text("Always use dark theme")
+            .build();
+
+        // Group the toggle buttons
+        theme_light.set_group(Some(&theme_system));
+        theme_dark.set_group(Some(&theme_system));
+
+        theme_box.append(&theme_system);
+        theme_box.append(&theme_light);
+        theme_box.append(&theme_dark);
+        vbox.append(&theme_box);
+
+        // Connect theme toggles to apply theme
+        theme_system.connect_toggled(move |btn| {
+            if btn.is_active() {
+                Self::apply_color_scheme(0); // System default
+            }
+        });
+
+        theme_light.connect_toggled(move |btn| {
+            if btn.is_active() {
+                Self::apply_color_scheme(1); // Light
+            }
+        });
+
+        theme_dark.connect_toggled(move |btn| {
+            if btn.is_active() {
+                Self::apply_color_scheme(2); // Dark
+            }
+        });
+
         // Window settings section
         let window_label = Label::builder()
             .label("<b>Window</b>")
             .use_markup(true)
             .halign(gtk4::Align::Start)
+            .margin_top(12)
             .build();
         vbox.append(&window_label);
 
@@ -2551,5 +2612,86 @@ impl SettingsDialog {
     #[must_use]
     pub const fn window(&self) -> &Window {
         &self.window
+    }
+
+    /// Applies the selected color scheme
+    ///
+    /// 0 = System default, 1 = Light, 2 = Dark
+    fn apply_color_scheme(scheme: u32) {
+        // Get the default display and its settings
+        let Some(display) = gtk4::gdk::Display::default() else {
+            tracing::warn!("Could not get default display for theme change");
+            return;
+        };
+
+        let settings = gtk4::Settings::for_display(&display);
+
+        // Determine the theme name based on scheme
+        let (prefer_dark, theme_suffix) = match scheme {
+            0 => {
+                // System default - detect from GNOME settings
+                let prefer_dark = Self::detect_system_dark_preference();
+                (prefer_dark, if prefer_dark { "-dark" } else { "" })
+            }
+            1 => {
+                // Force light theme
+                (false, "")
+            }
+            2 => {
+                // Force dark theme
+                (true, "-dark")
+            }
+            _ => return,
+        };
+
+        // Set the prefer-dark-theme property
+        settings.set_gtk_application_prefer_dark_theme(prefer_dark);
+
+        // Also try to set the GTK theme name directly for better compatibility
+        // Get current theme and append/remove -dark suffix
+        let current_theme = settings.gtk_theme_name().map(|s| s.to_string());
+        if let Some(theme) = current_theme {
+            let base_theme = theme.trim_end_matches("-dark");
+            let new_theme = format!("{base_theme}{theme_suffix}");
+
+            // Only change if the theme actually exists (GTK will fall back gracefully)
+            settings.set_gtk_theme_name(Some(&new_theme));
+            tracing::debug!("Set GTK theme to: {new_theme}");
+        }
+
+        tracing::debug!(
+            "Applied color scheme: {} (prefer_dark={})",
+            match scheme {
+                0 => "System",
+                1 => "Light",
+                2 => "Dark",
+                _ => "Unknown",
+            },
+            prefer_dark
+        );
+    }
+
+    /// Detects system dark mode preference from GNOME settings
+    fn detect_system_dark_preference() -> bool {
+        // Try to read GNOME desktop interface settings
+        // This schema should exist on GNOME-based systems
+        let schema_source = gtk4::gio::SettingsSchemaSource::default();
+        let has_schema = schema_source
+            .map(|s| s.lookup("org.gnome.desktop.interface", true).is_some())
+            .unwrap_or(false);
+
+        if !has_schema {
+            tracing::debug!("GNOME settings schema not available, defaulting to light");
+            return false;
+        }
+
+        let gnome_settings = gtk4::gio::Settings::new("org.gnome.desktop.interface");
+
+        // color-scheme can be: "default", "prefer-dark", "prefer-light"
+        let color_scheme = gnome_settings.string("color-scheme");
+        let prefer_dark = color_scheme.as_str() == "prefer-dark";
+
+        tracing::debug!("System color-scheme: {color_scheme}, prefer_dark: {prefer_dark}");
+        prefer_dark
     }
 }

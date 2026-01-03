@@ -134,6 +134,15 @@ pub fn create_tab_label_with_protocol(
     let tab_box = GtkBox::new(Orientation::Horizontal, 4);
     tab_box.add_css_class("session-tab");
 
+    // Set accessible properties for screen readers
+    let accessible_label = format!("{title} - {protocol} session");
+    let accessible_desc = if host.is_empty() {
+        format!("{protocol} session tab. Drag to split pane or click close to end session.")
+    } else {
+        format!("{protocol} session to {host}. Drag to split pane or click close to end session.")
+    };
+    crate::utils::set_accessible_properties(&tab_box, &accessible_label, Some(&accessible_desc));
+
     // Protocol icon
     let icon_name = get_protocol_icon(protocol);
     let icon = Image::from_icon_name(icon_name);
@@ -155,6 +164,8 @@ pub fn create_tab_label_with_protocol(
     close_button.add_css_class("circular");
     close_button.add_css_class("tab-close-button");
     close_button.set_tooltip_text(Some("Close tab"));
+    // Set accessible label for close button
+    crate::utils::set_accessible_label(&close_button, &format!("Close {title} session"));
 
     // Connect close button
     let notebook_weak = notebook.downgrade();

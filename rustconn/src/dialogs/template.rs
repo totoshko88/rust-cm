@@ -1610,12 +1610,11 @@ impl TemplateDialog {
         save_btn.connect_clicked(move |_| {
             let name = name_entry.text();
             if name.trim().is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Validation Error")
-                    .detail("Template name is required")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Template name is required",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 

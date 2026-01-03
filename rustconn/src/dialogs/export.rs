@@ -706,13 +706,12 @@ impl ExportDialog {
             // Validate output path
             let output_text = output_path_entry.text();
             if output_text.is_empty() {
-                // Show error
-                let alert = gtk4::AlertDialog::builder()
-                    .message("No Output Path")
-                    .detail("Please select an output file or directory.")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                // Show error using toast instead of AlertDialog
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Please select an output file or directory",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 

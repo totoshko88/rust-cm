@@ -97,7 +97,11 @@ pub fn delete_selected_connection(
 }
 
 /// Duplicates the selected connection
-pub fn duplicate_selected_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
+pub fn duplicate_selected_connection(
+    window: &ApplicationWindow,
+    state: &SharedAppState,
+    sidebar: &SharedSidebar,
+) {
     // Get selected item using sidebar's method (works in both single and multi-selection modes)
     let Some(conn_item) = sidebar.get_selected_item() else {
         return;
@@ -139,16 +143,31 @@ pub fn duplicate_selected_connection(state: &SharedAppState, sidebar: &SharedSid
                 drop(state_mut);
                 // Preserve tree state when duplicating
                 MainWindow::reload_sidebar_preserving_state(state, sidebar);
+                // Show success toast
+                crate::toast::show_toast_on_window(
+                    window,
+                    "Connection duplicated",
+                    crate::toast::ToastType::Success,
+                );
             }
             Err(e) => {
-                eprintln!("Failed to duplicate connection: {e}");
+                tracing::error!("Failed to duplicate connection: {e}");
+                crate::toast::show_toast_on_window(
+                    window,
+                    "Failed to duplicate connection",
+                    crate::toast::ToastType::Error,
+                );
             }
         }
     }
 }
 
 /// Copies the selected connection to the internal clipboard
-pub fn copy_selected_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
+pub fn copy_selected_connection(
+    window: &ApplicationWindow,
+    state: &SharedAppState,
+    sidebar: &SharedSidebar,
+) {
     // Get selected item using sidebar's method
     let Some(conn_item) = sidebar.get_selected_item() else {
         return;
@@ -165,18 +184,41 @@ pub fn copy_selected_connection(state: &SharedAppState, sidebar: &SharedSidebar)
     };
 
     if let Ok(mut state_mut) = state.try_borrow_mut() {
-        if let Err(e) = state_mut.copy_connection(id) {
-            eprintln!("Failed to copy connection: {e}");
+        match state_mut.copy_connection(id) {
+            Ok(()) => {
+                crate::toast::show_toast_on_window(
+                    window,
+                    "Connection copied to clipboard",
+                    crate::toast::ToastType::Info,
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to copy connection: {e}");
+                crate::toast::show_toast_on_window(
+                    window,
+                    "Failed to copy connection",
+                    crate::toast::ToastType::Error,
+                );
+            }
         }
     }
 }
 
 /// Pastes a connection from the internal clipboard
-pub fn paste_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
+pub fn paste_connection(
+    window: &ApplicationWindow,
+    state: &SharedAppState,
+    sidebar: &SharedSidebar,
+) {
     // Check if clipboard has content
     {
         let state_ref = state.borrow();
         if !state_ref.has_clipboard_content() {
+            crate::toast::show_toast_on_window(
+                window,
+                "Nothing to paste - copy a connection first",
+                crate::toast::ToastType::Warning,
+            );
             return;
         }
     }
@@ -187,9 +229,19 @@ pub fn paste_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
                 drop(state_mut);
                 // Preserve tree state when pasting
                 MainWindow::reload_sidebar_preserving_state(state, sidebar);
+                crate::toast::show_toast_on_window(
+                    window,
+                    "Connection pasted",
+                    crate::toast::ToastType::Success,
+                );
             }
             Err(e) => {
-                eprintln!("Failed to paste connection: {e}");
+                tracing::error!("Failed to paste connection: {e}");
+                crate::toast::show_toast_on_window(
+                    window,
+                    "Failed to paste connection",
+                    crate::toast::ToastType::Error,
+                );
             }
         }
     }

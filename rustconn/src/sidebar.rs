@@ -585,6 +585,30 @@ impl ConnectionSidebar {
             return;
         };
 
+        // Set accessible properties for the item
+        let item_type = if item.is_document() {
+            "document"
+        } else if item.is_group() {
+            "group"
+        } else {
+            "connection"
+        };
+        let name = item.name();
+        let accessible_label = format!("{} {}", item_type, name);
+        let accessible_desc = if item.is_group() {
+            "Double-click to expand, right-click for options".to_string()
+        } else {
+            format!(
+                "Double-click to connect, right-click for options. Protocol: {}",
+                item.protocol()
+            )
+        };
+        crate::utils::set_accessible_properties(
+            &expander,
+            &accessible_label,
+            Some(&accessible_desc),
+        );
+
         // Update icon based on item type
         if let Some(icon) = content_box.first_child().and_downcast::<gtk4::Image>() {
             if item.is_document() {

@@ -10,7 +10,6 @@ use gtk4::{
     Box as GtkBox, Button, Entry, Frame, Grid, HeaderBar, Label, ListBox, ListBoxRow, Orientation,
     ScrolledWindow, TextView, Window,
 };
-use regex::Regex;
 use rustconn_core::models::{Snippet, SnippetVariable};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -283,16 +282,8 @@ impl SnippetDialog {
         list: &ListBox,
         variables: &Rc<RefCell<Vec<VariableRow>>>,
     ) {
-        // Extract variable names from ${var_name} patterns
-        let re = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}").unwrap();
-        let mut found_vars: Vec<String> = Vec::new();
-
-        for cap in re.captures_iter(command) {
-            let var_name = cap.get(1).unwrap().as_str().to_string();
-            if !found_vars.contains(&var_name) {
-                found_vars.push(var_name);
-            }
-        }
+        // Extract variable names from ${var_name} patterns using static regex
+        let found_vars = crate::utils::extract_variables(command);
 
         // Check existing variables and add new ones
         let mut vars = variables.borrow_mut();
@@ -440,16 +431,11 @@ impl SnippetDialog {
         Ok(())
     }
 
-    /// Shows an error message in an alert dialog
+    /// Shows an error message as a toast notification
     ///
-    /// Displays a modal alert dialog with the given error message.
+    /// Displays a warning toast with the given error message.
     pub fn show_error(&self, message: &str) {
-        let alert = gtk4::AlertDialog::builder()
-            .message("Validation Error")
-            .detail(message)
-            .modal(true)
-            .build();
-        alert.show(Some(&self.window));
+        crate::toast::show_toast_on_window(&self.window, message, crate::toast::ToastType::Warning);
     }
 
     /// Wires the add variable button to add new variable rows
@@ -532,12 +518,11 @@ impl SnippetDialog {
             // Validate
             let name = name_entry.text();
             if name.trim().is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Validation Error")
-                    .detail("Snippet name is required")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Snippet name is required",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 
@@ -545,12 +530,11 @@ impl SnippetDialog {
             let (start, end) = buffer.bounds();
             let command = buffer.text(&start, &end, false);
             if command.trim().is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Validation Error")
-                    .detail("Command is required")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Command is required",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 

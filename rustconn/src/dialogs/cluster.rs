@@ -130,12 +130,11 @@ impl ClusterDialog {
         save_btn.connect_clicked(move |_| {
             let name = name_entry_clone.text().trim().to_string();
             if name.is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Validation Error")
-                    .detail("Cluster name cannot be empty")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window_clone));
+                crate::toast::show_toast_on_window(
+                    &window_clone,
+                    "Cluster name cannot be empty",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 
@@ -148,12 +147,11 @@ impl ClusterDialog {
                 .collect();
 
             if selected_ids.is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Validation Error")
-                    .detail("Please select at least one connection for the cluster")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window_clone));
+                crate::toast::show_toast_on_window(
+                    &window_clone,
+                    "Please select at least one connection",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 

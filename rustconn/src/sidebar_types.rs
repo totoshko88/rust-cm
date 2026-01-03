@@ -4,7 +4,7 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    gdk, gio, CssProvider, MultiSelection, Orientation, Separator, SingleSelection, TreeListModel,
+    gio, CssProvider, MultiSelection, Orientation, Separator, SingleSelection, TreeListModel,
     Widget,
 };
 use std::cell::RefCell;
@@ -256,11 +256,8 @@ impl DropIndicator {
             ",
         );
 
-        gtk4::style_context_add_provider_for_display(
-            &gdk::Display::default().expect("Could not get default display"),
-            &provider,
-            gtk4::STYLE_PROVIDER_PRIORITY_USER + 1,
-        );
+        // Use safe display access
+        crate::utils::add_css_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_USER + 1);
     }
 
     /// Returns the indicator widget

@@ -602,7 +602,7 @@ impl ConnectionDialog {
             &wol_wait_spin,
         );
 
-        Self {
+        let result = Self {
             window,
             save_button: save_btn,
             name_entry,
@@ -716,7 +716,53 @@ impl ConnectionDialog {
             wol_wait_spin,
             editing_id,
             on_save,
-        }
+        };
+
+        // Wire up inline validation for required fields
+        Self::setup_inline_validation_for(&result);
+
+        result
+    }
+
+    /// Sets up inline validation for required fields
+    fn setup_inline_validation_for(dialog: &Self) {
+        // Name entry validation
+        dialog.name_entry.connect_changed(move |entry| {
+            let text = entry.text();
+            if text.trim().is_empty() {
+                entry.add_css_class(crate::validation::ERROR_CSS_CLASS);
+            } else {
+                entry.remove_css_class(crate::validation::ERROR_CSS_CLASS);
+            }
+        });
+
+        // Host entry validation (only when not Zero Trust)
+        let protocol_dropdown = dialog.protocol_dropdown.clone();
+        dialog.host_entry.connect_changed(move |entry| {
+            // Skip validation for Zero Trust (index 4)
+            if protocol_dropdown.selected() == 4 {
+                entry.remove_css_class(crate::validation::ERROR_CSS_CLASS);
+                return;
+            }
+
+            let text = entry.text();
+            let is_invalid = text.trim().is_empty() || text.contains(' ');
+            if is_invalid {
+                entry.add_css_class(crate::validation::ERROR_CSS_CLASS);
+            } else {
+                entry.remove_css_class(crate::validation::ERROR_CSS_CLASS);
+            }
+        });
+
+        // Clear host validation when switching to Zero Trust
+        let host_entry = dialog.host_entry.clone();
+        dialog
+            .protocol_dropdown
+            .connect_notify_local(Some("selected"), move |dropdown, _| {
+                if dropdown.selected() == 4 {
+                    host_entry.remove_css_class(crate::validation::ERROR_CSS_CLASS);
+                }
+            });
     }
 
     /// Creates the main window with header bar containing Save button
@@ -1162,12 +1208,7 @@ impl ConnectionDialog {
             };
 
             if let Err(err) = data.validate() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Validation Error")
-                    .detail(&err)
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(&window, &err, crate::toast::ToastType::Warning);
                 return;
             }
 
@@ -5323,22 +5364,20 @@ impl ConnectionDialog {
             };
 
             if password.is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("No Password")
-                    .detail("Please enter a password to save to KeePass.")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Please enter a password to save to KeePass",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 
             if name.trim().is_empty() && host.trim().is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Missing Information")
-                    .detail("Please enter a connection name or host before saving to KeePass.")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Please enter a connection name or host first",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 
@@ -5375,24 +5414,22 @@ impl ConnectionDialog {
             };
 
             if name.trim().is_empty() && host.trim().is_empty() {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Missing Information")
-                    .detail("Please enter a connection name or host to look up in KeePass.")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Please enter a connection name or host to look up",
+                    crate::toast::ToastType::Warning,
+                );
                 return;
             }
 
             if let Some(password) = callback(&name, &host, protocol) {
                 password_entry.set_text(&password);
             } else {
-                let alert = gtk4::AlertDialog::builder()
-                    .message("Not Found")
-                    .detail("No password found in KeePass for this connection.")
-                    .modal(true)
-                    .build();
-                alert.show(Some(&window));
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "No password found in KeePass for this connection",
+                    crate::toast::ToastType::Info,
+                );
             }
         });
     }

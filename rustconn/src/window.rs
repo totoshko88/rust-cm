@@ -11,6 +11,7 @@ use gtk4::{
 use std::rc::Rc;
 use uuid::Uuid;
 
+use crate::toast::ToastOverlay;
 use crate::window_clusters as clusters;
 use crate::window_document_actions as doc_actions;
 use crate::window_edit_dialogs as edit_dialogs;
@@ -33,6 +34,9 @@ use crate::split_view::{SplitDirection, SplitTerminalView};
 use crate::state::SharedAppState;
 use crate::terminal::TerminalNotebook;
 
+/// Shared toast overlay reference
+pub type SharedToastOverlay = Rc<ToastOverlay>;
+
 /// Main application window wrapper
 ///
 /// Provides access to the main window and its components.
@@ -45,6 +49,7 @@ pub struct MainWindow {
     state: SharedAppState,
     paned: Paned,
     external_window_manager: SharedExternalWindowManager,
+    toast_overlay: SharedToastOverlay,
 }
 
 impl MainWindow {
@@ -130,7 +135,11 @@ impl MainWindow {
 
         paned.set_end_child(Some(&terminal_container));
 
-        window.set_child(Some(&paned));
+        // Create toast overlay and wrap the paned container
+        let toast_overlay = Rc::new(ToastOverlay::new());
+        toast_overlay.set_child(Some(&paned));
+
+        window.set_child(Some(toast_overlay.widget()));
 
         // Create external window manager
         let external_window_manager = Rc::new(ExternalWindowManager::new());
@@ -143,6 +152,7 @@ impl MainWindow {
             state,
             paned,
             external_window_manager,
+            toast_overlay,
         };
 
         // Set up window actions
@@ -430,10 +440,13 @@ impl MainWindow {
 
         // Duplicate connection action
         let duplicate_action = gio::SimpleAction::new("duplicate-connection", None);
+        let window_weak = window.downgrade();
         let state_clone = state.clone();
         let sidebar_clone = sidebar.clone();
         duplicate_action.connect_activate(move |_, _| {
-            Self::duplicate_selected_connection(&state_clone, &sidebar_clone);
+            if let Some(win) = window_weak.upgrade() {
+                Self::duplicate_selected_connection(&win, &state_clone, &sidebar_clone);
+            }
         });
         window.add_action(&duplicate_action);
 
@@ -473,19 +486,25 @@ impl MainWindow {
 
         // Copy connection action
         let copy_connection_action = gio::SimpleAction::new("copy-connection", None);
+        let window_weak = window.downgrade();
         let state_clone = state.clone();
         let sidebar_clone = sidebar.clone();
         copy_connection_action.connect_activate(move |_, _| {
-            Self::copy_selected_connection(&state_clone, &sidebar_clone);
+            if let Some(win) = window_weak.upgrade() {
+                Self::copy_selected_connection(&win, &state_clone, &sidebar_clone);
+            }
         });
         window.add_action(&copy_connection_action);
 
         // Paste connection action
         let paste_connection_action = gio::SimpleAction::new("paste-connection", None);
+        let window_weak = window.downgrade();
         let state_clone = state.clone();
         let sidebar_clone = sidebar.clone();
         paste_connection_action.connect_activate(move |_, _| {
-            Self::paste_connection(&state_clone, &sidebar_clone);
+            if let Some(win) = window_weak.upgrade() {
+                Self::paste_connection(&win, &state_clone, &sidebar_clone);
+            }
         });
         window.add_action(&paste_connection_action);
     }
@@ -2438,18 +2457,30 @@ impl MainWindow {
     }
 
     /// Duplicates the selected connection
-    fn duplicate_selected_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
-        operations::duplicate_selected_connection(state, sidebar);
+    fn duplicate_selected_connection(
+        window: &ApplicationWindow,
+        state: &SharedAppState,
+        sidebar: &SharedSidebar,
+    ) {
+        operations::duplicate_selected_connection(window, state, sidebar);
     }
 
     /// Copies the selected connection to the internal clipboard
-    fn copy_selected_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
-        operations::copy_selected_connection(state, sidebar);
+    fn copy_selected_connection(
+        window: &ApplicationWindow,
+        state: &SharedAppState,
+        sidebar: &SharedSidebar,
+    ) {
+        operations::copy_selected_connection(window, state, sidebar);
     }
 
     /// Pastes a connection from the internal clipboard
-    fn paste_connection(state: &SharedAppState, sidebar: &SharedSidebar) {
-        operations::paste_connection(state, sidebar);
+    fn paste_connection(
+        window: &ApplicationWindow,
+        state: &SharedAppState,
+        sidebar: &SharedSidebar,
+    ) {
+        operations::paste_connection(window, state, sidebar);
     }
 
     /// Reloads the sidebar with current data (preserving hierarchy)
@@ -2482,6 +2513,37 @@ impl MainWindow {
     #[must_use]
     pub const fn gtk_window(&self) -> &ApplicationWindow {
         &self.window
+    }
+
+    /// Returns a reference to the toast overlay
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn toast_overlay(&self) -> &SharedToastOverlay {
+        &self.toast_overlay
+    }
+
+    /// Shows an info toast message
+    #[allow(dead_code)]
+    pub fn show_toast(&self, message: &str) {
+        self.toast_overlay.show_toast(message);
+    }
+
+    /// Shows a success toast message
+    #[allow(dead_code)]
+    pub fn show_success(&self, message: &str) {
+        self.toast_overlay.show_success(message);
+    }
+
+    /// Shows a warning toast message
+    #[allow(dead_code)]
+    pub fn show_warning(&self, message: &str) {
+        self.toast_overlay.show_warning(message);
+    }
+
+    /// Shows an error toast message
+    #[allow(dead_code)]
+    pub fn show_error(&self, message: &str) {
+        self.toast_overlay.show_error(message);
     }
 
     /// Registers the application icon in the icon theme
