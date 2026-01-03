@@ -11,9 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kiro steering rules for development workflow:
   - `commit-checklist.md` - pre-commit cargo fmt/clippy checks
   - `release-checklist.md` - version files and packaging verification
+- Rename action in sidebar context menu for both connections and groups
+- Double-click on import source to start import
+- Double-click on template to create connection from it
+- Group dropdown in Connection dialog Basic tab for selecting parent group
+- Info tab for viewing connection details (like Asbru-CM) - replaces popover with full tab view
+- Default alphabetical sorting for connections and groups with drag-drop reordering support
+
+### Changed
+- Manage Templates dialog: "Create" button now creates connection from template, "Create Template" button creates new template
+- View Details action now opens Info tab instead of popover
+- Sidebar now uses sorted rebuild for consistent alphabetical ordering
+- All dialogs now follow GNOME HIG button layout: Close/Cancel on left, Action on right
+- Removed window close button (X) from all dialogs - use explicit Close/Cancel buttons instead
 
 ### Fixed
 - Flatpak manifest version references updated correctly
+- Connection group_id preserved when editing connections (no longer falls to root)
+- Import dialog now returns to source selection when file chooser is cancelled
+- Drag-and-drop to groups now works correctly (connections can be dropped into groups)
 
 ## [0.5.4] - 2026-01-02
 

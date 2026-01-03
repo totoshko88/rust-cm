@@ -1429,6 +1429,292 @@ impl SplitTerminalView {
         *self.focused_pane.borrow_mut() = Some(pane_id);
         true
     }
+
+    /// Shows connection info content in the focused pane
+    ///
+    /// Displays detailed connection information in the main content area,
+    /// replacing the Welcome screen. The info view will be replaced when
+    /// switching to another session tab.
+    pub fn show_info_content(&self, connection: &rustconn_core::Connection) {
+        let focused_id = match *self.focused_pane.borrow() {
+            Some(id) => id,
+            None => return,
+        };
+
+        let mut panes = self.panes.borrow_mut();
+        let Some(pane) = panes.iter_mut().find(|p| p.id() == focused_id) else {
+            return;
+        };
+
+        let info_content = Self::create_info_content(connection);
+        pane.set_content(&info_content);
+        pane.set_current_session(None); // Info is not a session
+    }
+
+    /// Creates info content widget for a connection
+    fn create_info_content(connection: &rustconn_core::Connection) -> GtkBox {
+        let scroll = gtk4::ScrolledWindow::new();
+        scroll.set_hexpand(true);
+        scroll.set_vexpand(true);
+        scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(24);
+        content.set_margin_bottom(24);
+        content.set_margin_start(24);
+        content.set_margin_end(24);
+        content.set_halign(gtk4::Align::Center);
+        content.set_valign(gtk4::Align::Start);
+        content.set_width_request(600);
+
+        // Connection name header
+        let name_label = gtk4::Label::builder()
+            .label(&connection.name)
+            .css_classes(["title-1"])
+            .halign(gtk4::Align::Start)
+            .build();
+        content.append(&name_label);
+
+        // Basic info section
+        let basic_frame = Self::create_info_section("Basic Information");
+        let basic_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(16)
+            .build();
+
+        let mut row = 0;
+
+        // Protocol
+        Self::add_info_row(
+            &basic_grid,
+            row,
+            "Protocol",
+            &format!("{:?}", connection.protocol),
+        );
+        row += 1;
+
+        // Host
+        Self::add_info_row(
+            &basic_grid,
+            row,
+            "Host",
+            &format!("{}:{}", connection.host, connection.port),
+        );
+        row += 1;
+
+        // Username
+        if let Some(ref username) = connection.username {
+            Self::add_info_row(&basic_grid, row, "Username", username);
+            row += 1;
+        }
+
+        // Description - check both new field and legacy desc: tag
+        let description: Option<&str> = connection.description.as_deref().or_else(|| {
+            connection
+                .tags
+                .iter()
+                .find(|t| t.starts_with("desc:"))
+                .and_then(|t| t.strip_prefix("desc:"))
+        });
+        if let Some(desc) = description {
+            if !desc.trim().is_empty() {
+                Self::add_info_row(&basic_grid, row, "Description", desc);
+                row += 1;
+            }
+        }
+
+        // Tags (filter out desc: tags for backward compatibility)
+        let display_tags: Vec<&str> = connection
+            .tags
+            .iter()
+            .filter(|t| !t.starts_with("desc:"))
+            .map(String::as_str)
+            .collect();
+        if !display_tags.is_empty() {
+            Self::add_info_row(&basic_grid, row, "Tags", &display_tags.join(", "));
+        }
+
+        basic_frame.set_child(Some(&basic_grid));
+        content.append(&basic_frame);
+
+        // Protocol-specific section
+        let protocol_frame = Self::create_info_section("Protocol Settings");
+        let protocol_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(16)
+            .build();
+
+        Self::add_protocol_info(&protocol_grid, &connection.protocol_config);
+
+        protocol_frame.set_child(Some(&protocol_grid));
+        content.append(&protocol_frame);
+
+        // Custom properties section
+        if !connection.custom_properties.is_empty() {
+            let custom_frame = Self::create_info_section("Custom Properties");
+            let custom_grid = gtk4::Grid::builder()
+                .row_spacing(8)
+                .column_spacing(16)
+                .build();
+
+            for (idx, prop) in connection.custom_properties.iter().enumerate() {
+                #[allow(clippy::cast_possible_truncation)]
+                Self::add_info_row(&custom_grid, idx as i32, &prop.name, &prop.value);
+            }
+
+            custom_frame.set_child(Some(&custom_grid));
+            content.append(&custom_frame);
+        }
+
+        // Timestamps section
+        let time_frame = Self::create_info_section("Timestamps");
+        let time_grid = gtk4::Grid::builder()
+            .row_spacing(8)
+            .column_spacing(16)
+            .build();
+
+        Self::add_info_row(
+            &time_grid,
+            0,
+            "Created",
+            &connection
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        );
+        Self::add_info_row(
+            &time_grid,
+            1,
+            "Modified",
+            &connection
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        );
+        if let Some(last_connected) = connection.last_connected {
+            Self::add_info_row(
+                &time_grid,
+                2,
+                "Last Connected",
+                &last_connected.format("%Y-%m-%d %H:%M:%S").to_string(),
+            );
+        }
+
+        time_frame.set_child(Some(&time_grid));
+        content.append(&time_frame);
+
+        scroll.set_child(Some(&content));
+
+        let container = GtkBox::new(Orientation::Vertical, 0);
+        container.set_hexpand(true);
+        container.set_vexpand(true);
+        container.append(&scroll);
+        container
+    }
+
+    /// Creates a framed section for info display
+    fn create_info_section(title: &str) -> gtk4::Frame {
+        let frame = gtk4::Frame::new(Some(title));
+        frame.set_margin_top(8);
+        if let Some(label) = frame.label_widget().and_downcast::<gtk4::Label>() {
+            label.add_css_class("heading");
+        }
+        frame
+    }
+
+    /// Adds a label-value row to an info grid
+    fn add_info_row(grid: &gtk4::Grid, row: i32, label_text: &str, value_text: &str) {
+        let label = gtk4::Label::builder()
+            .label(&format!("{label_text}:"))
+            .halign(gtk4::Align::End)
+            .valign(gtk4::Align::Start)
+            .css_classes(["dim-label"])
+            .build();
+        let value = gtk4::Label::builder()
+            .label(value_text)
+            .halign(gtk4::Align::Start)
+            .selectable(true)
+            .wrap(true)
+            .build();
+        grid.attach(&label, 0, row, 1, 1);
+        grid.attach(&value, 1, row, 1, 1);
+    }
+
+    /// Adds protocol-specific information to the grid
+    fn add_protocol_info(grid: &gtk4::Grid, config: &rustconn_core::ProtocolConfig) {
+        use rustconn_core::ProtocolConfig;
+
+        let mut row = 0;
+
+        match config {
+            ProtocolConfig::Ssh(ssh) => {
+                Self::add_info_row(grid, row, "Auth Method", &format!("{:?}", ssh.auth_method));
+                row += 1;
+                if let Some(ref key_path) = ssh.key_path {
+                    Self::add_info_row(grid, row, "Key Path", &key_path.display().to_string());
+                    row += 1;
+                }
+                if let Some(ref proxy) = ssh.proxy_jump {
+                    Self::add_info_row(grid, row, "Proxy Jump", proxy);
+                    row += 1;
+                }
+                if ssh.agent_forwarding {
+                    Self::add_info_row(grid, row, "Agent Forwarding", "Enabled");
+                    row += 1;
+                }
+                if let Some(ref cmd) = ssh.startup_command {
+                    Self::add_info_row(grid, row, "Startup Command", cmd);
+                }
+            }
+            ProtocolConfig::Rdp(rdp) => {
+                Self::add_info_row(grid, row, "Client Mode", &format!("{:?}", rdp.client_mode));
+                row += 1;
+                if let Some(ref res) = rdp.resolution {
+                    Self::add_info_row(
+                        grid,
+                        row,
+                        "Resolution",
+                        &format!("{}x{}", res.width, res.height),
+                    );
+                    row += 1;
+                }
+                if let Some(depth) = rdp.color_depth {
+                    Self::add_info_row(grid, row, "Color Depth", &format!("{depth} bit"));
+                    row += 1;
+                }
+                if rdp.audio_redirect {
+                    Self::add_info_row(grid, row, "Audio", "Enabled");
+                }
+            }
+            ProtocolConfig::Vnc(vnc) => {
+                Self::add_info_row(grid, row, "Client Mode", &format!("{:?}", vnc.client_mode));
+                row += 1;
+                if vnc.view_only {
+                    Self::add_info_row(grid, row, "View Only", "Yes");
+                    row += 1;
+                }
+                if let Some(ref encoding) = vnc.encoding {
+                    Self::add_info_row(grid, row, "Encoding", encoding);
+                }
+            }
+            ProtocolConfig::Spice(spice) => {
+                if spice.tls_enabled {
+                    Self::add_info_row(grid, row, "TLS", "Enabled");
+                    row += 1;
+                }
+                if spice.usb_redirection {
+                    Self::add_info_row(grid, row, "USB Redirection", "Enabled");
+                    row += 1;
+                }
+                if spice.clipboard_enabled {
+                    Self::add_info_row(grid, row, "Clipboard", "Enabled");
+                }
+            }
+            ProtocolConfig::ZeroTrust(zt) => {
+                Self::add_info_row(grid, row, "Provider", &format!("{:?}", zt.provider));
+            }
+        }
+    }
 }
 
 impl Default for SplitTerminalView {

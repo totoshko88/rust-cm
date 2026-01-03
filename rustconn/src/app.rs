@@ -371,7 +371,8 @@ fn setup_app_actions(
     // Set up keyboard shortcuts
     // Application shortcuts
     app.set_accels_for_action("app.quit", &["<Control>q"]);
-    app.set_accels_for_action("app.about", &["F1"]);
+    // Note: F1 is NOT bound to about to allow function keys in terminal
+    // About dialog is accessible via Help menu
 
     // Connection management shortcuts
     app.set_accels_for_action("win.new-connection", &["<Control>n"]);

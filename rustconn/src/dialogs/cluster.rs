@@ -58,15 +58,24 @@ impl ClusterDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar (no Cancel - window X is sufficient)
+        // Create header bar with Close/Create buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let save_btn = Button::builder()
             .label("Create")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&save_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&save_btn);
         window.set_titlebar(Some(&header));
         window.set_default_widget(Some(&save_btn));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -397,14 +406,23 @@ impl ClusterListDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar (no Close button - window X is sufficient)
+        // Create header bar with Close/Create buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let new_btn = Button::builder()
             .label("Create")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&new_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&new_btn);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);

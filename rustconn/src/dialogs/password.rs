@@ -61,8 +61,9 @@ impl PasswordDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Header bar
+        // Header bar with Cancel/Connect buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let connect_btn = Button::builder()
             .label("Connect")

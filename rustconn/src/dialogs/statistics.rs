@@ -31,14 +31,23 @@ impl StatisticsDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Header bar with Reset button
+        // Header bar with Close/Reset buttons (GNOME HIG)
         let header = gtk4::HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let reset_btn = Button::builder()
             .label("Reset")
             .css_classes(["destructive-action"])
             .build();
-        header.pack_start(&reset_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&reset_btn);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Main layout with scrolled content
         let main_box = GtkBox::new(Orientation::Vertical, 0);

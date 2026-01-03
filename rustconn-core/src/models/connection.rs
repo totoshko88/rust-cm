@@ -142,6 +142,9 @@ pub struct Connection {
     pub id: Uuid,
     /// Human-readable name for the connection
     pub name: String,
+    /// Optional description for the connection
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// Protocol type (SSH, RDP, VNC)
     pub protocol: ProtocolType,
     /// Remote host address (hostname or IP)
@@ -218,6 +221,7 @@ impl Connection {
         Self {
             id: Uuid::new_v4(),
             name,
+            description: None,
             protocol: protocol_config.protocol_type(),
             host,
             port,
@@ -307,6 +311,13 @@ impl Connection {
     #[must_use]
     pub fn with_tags(mut self, tags: Vec<String>) -> Self {
         self.tags = tags;
+        self
+    }
+
+    /// Sets the description for this connection
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
         self
     }
 

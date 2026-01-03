@@ -362,17 +362,17 @@ impl ConnectionSidebar {
                 return false;
             }
 
-            // Determine effective target type based on drop position
-            // If dropping INTO a group, target is the group
-            // If dropping BEFORE/AFTER, target is a sibling (so treat as non-group for placement)
-            let effective_is_group = match position {
-                DropPosition::Into => target_is_group,
-                _ => false,
+            // Encode drop position for proper handling
+            let position_str = match position {
+                DropPosition::Before => "before",
+                DropPosition::After => "after",
+                DropPosition::Into => "into",
             };
 
             // Activate the drag-drop action with the data
-            // Format: "item_type:item_id:target_id:target_is_group"
-            let action_data = format!("{item_type}:{item_id}:{target_id}:{effective_is_group}");
+            // Format: "item_type:item_id:target_id:target_is_group:position"
+            let action_data =
+                format!("{item_type}:{item_id}:{target_id}:{target_is_group}:{position_str}");
 
             if let Some(widget) = target.widget() {
                 // Hide drop indicator before processing the drop

@@ -27,14 +27,23 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         window.set_transient_for(Some(p));
     }
 
-    // Header bar
+    // Header bar with Close/Copy buttons (GNOME HIG)
     let header = HeaderBar::new();
+    header.set_show_title_buttons(false);
+    let close_btn = Button::builder().label("Close").build();
     let copy_btn = Button::builder()
         .label("Copy")
         .css_classes(["suggested-action"])
         .build();
-    header.pack_start(&copy_btn);
+    header.pack_start(&close_btn);
+    header.pack_end(&copy_btn);
     window.set_titlebar(Some(&header));
+
+    // Close button handler
+    let window_clone = window.clone();
+    close_btn.connect_clicked(move |_| {
+        window_clone.close();
+    });
 
     // Content
     let content = GtkBox::new(Orientation::Vertical, 12);

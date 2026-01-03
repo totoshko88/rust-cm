@@ -63,8 +63,9 @@ impl NewDocumentDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Header bar with Cancel/Create buttons
+        // Header bar with Cancel/Create buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let create_btn = Button::builder()
             .label("Create")
@@ -304,6 +305,7 @@ impl OpenDocumentDialog {
         }
 
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let open_btn = Button::builder()
             .label("Open")
@@ -527,8 +529,9 @@ impl DocumentProtectionDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Header bar
+        // Header bar with Cancel/Apply buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let apply_btn = Button::builder()
             .label("Apply")

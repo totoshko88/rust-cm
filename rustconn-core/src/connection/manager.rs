@@ -143,9 +143,13 @@ impl ConnectionManager {
                 reason: format!("Connection with ID {id} not found"),
             })?;
 
-        // Preserve original ID and creation timestamp
+        // Preserve original ID, creation timestamp, and group_id (unless explicitly changed)
         updated.id = existing.id;
         updated.created_at = existing.created_at;
+        // Preserve group_id if not explicitly set in the update
+        if updated.group_id.is_none() {
+            updated.group_id = existing.group_id;
+        }
         updated.touch();
 
         ConfigManager::validate_connection(&updated)?;

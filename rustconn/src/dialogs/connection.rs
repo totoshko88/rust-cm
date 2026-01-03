@@ -13,7 +13,7 @@ use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, HeaderBar, Label,
     ListBox, ListBoxRow, Notebook, Orientation, PasswordEntry, ScrolledWindow, SpinButton, Stack,
-    StringList, Window,
+    StringList, TextView, Window, WrapMode,
 };
 use rustconn_core::automation::{ConnectionTask, ExpectRule, TaskCondition};
 use rustconn_core::models::{
@@ -44,6 +44,7 @@ pub struct ConnectionDialog {
     save_button: Button,
     // Basic fields
     name_entry: Entry,
+    description_view: TextView,
     host_entry: Entry,
     port_spin: SpinButton,
     username_entry: Entry,
@@ -56,6 +57,9 @@ pub struct ConnectionDialog {
     password_entry: Entry,
     save_to_keepass_button: Button,
     load_from_keepass_button: Button,
+    // Group selection
+    group_dropdown: DropDown,
+    groups_data: Rc<RefCell<Vec<(Option<Uuid>, String)>>>,
     // SSH fields
     ssh_auth_dropdown: DropDown,
     ssh_key_source_dropdown: DropDown,
@@ -258,6 +262,7 @@ impl ConnectionDialog {
         let (
             basic_grid,
             name_entry,
+            description_view,
             host_entry,
             host_label,
             port_spin,
@@ -273,6 +278,7 @@ impl ConnectionDialog {
             password_entry_label,
             load_from_keepass_button,
             save_to_keepass_button,
+            group_dropdown,
         ) = Self::create_basic_tab();
         notebook.append_page(&basic_grid, Some(&Label::new(Some("Basic"))));
 
@@ -494,6 +500,8 @@ impl ConnectionDialog {
 
         let on_save: super::ConnectionCallback = Rc::new(RefCell::new(None));
         let editing_id: Rc<RefCell<Option<Uuid>>> = Rc::new(RefCell::new(None));
+        let groups_data: Rc<RefCell<Vec<(Option<Uuid>, String)>>> =
+            Rc::new(RefCell::new(vec![(None, "(Root)".to_string())]));
 
         // Connect save button handler
         Self::connect_save_button(
@@ -502,12 +510,15 @@ impl ConnectionDialog {
             &on_save,
             &editing_id,
             &name_entry,
+            &description_view,
             &host_entry,
             &port_spin,
             &username_entry,
             &tags_entry,
             &protocol_dropdown,
             &password_source_dropdown,
+            &group_dropdown,
+            &groups_data,
             &ssh_auth_dropdown,
             &ssh_key_source_dropdown,
             &ssh_key_entry,
@@ -595,6 +606,7 @@ impl ConnectionDialog {
             window,
             save_button: save_btn,
             name_entry,
+            description_view,
             host_entry,
             port_spin,
             username_entry,
@@ -605,6 +617,8 @@ impl ConnectionDialog {
             password_entry,
             save_to_keepass_button,
             load_from_keepass_button,
+            group_dropdown,
+            groups_data: Rc::new(RefCell::new(vec![(None, "(Root)".to_string())])),
             ssh_auth_dropdown,
             ssh_key_source_dropdown,
             ssh_key_entry,
@@ -718,15 +732,24 @@ impl ConnectionDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar (no Cancel button - window X is sufficient)
+        // Create header bar with Close/Create buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let save_btn = Button::builder()
             .label("Create")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&save_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&save_btn);
         window.set_titlebar(Some(&header));
         window.set_default_widget(Some(&save_btn));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         (window, save_btn)
     }
@@ -853,12 +876,15 @@ impl ConnectionDialog {
         on_save: &super::ConnectionCallback,
         editing_id: &Rc<RefCell<Option<Uuid>>>,
         name_entry: &Entry,
+        description_view: &TextView,
         host_entry: &Entry,
         port_spin: &SpinButton,
         username_entry: &Entry,
         tags_entry: &Entry,
         protocol_dropdown: &DropDown,
         password_source_dropdown: &DropDown,
+        group_dropdown: &DropDown,
+        groups_data: &Rc<RefCell<Vec<(Option<Uuid>, String)>>>,
         ssh_auth_dropdown: &DropDown,
         ssh_key_source_dropdown: &DropDown,
         ssh_key_entry: &Entry,
@@ -944,12 +970,15 @@ impl ConnectionDialog {
         let window = window.clone();
         let on_save = on_save.clone();
         let name_entry = name_entry.clone();
+        let description_view = description_view.clone();
         let host_entry = host_entry.clone();
         let port_spin = port_spin.clone();
         let username_entry = username_entry.clone();
         let tags_entry = tags_entry.clone();
         let protocol_dropdown = protocol_dropdown.clone();
         let password_source_dropdown = password_source_dropdown.clone();
+        let group_dropdown = group_dropdown.clone();
+        let groups_data = groups_data.clone();
         let ssh_auth_dropdown = ssh_auth_dropdown.clone();
         let ssh_key_source_dropdown = ssh_key_source_dropdown.clone();
         let ssh_key_entry = ssh_key_entry.clone();
@@ -1039,12 +1068,15 @@ impl ConnectionDialog {
             let collected_custom_properties = custom_properties.borrow().clone();
             let data = ConnectionDialogData {
                 name_entry: &name_entry,
+                description_view: &description_view,
                 host_entry: &host_entry,
                 port_spin: &port_spin,
                 username_entry: &username_entry,
                 tags_entry: &tags_entry,
                 protocol_dropdown: &protocol_dropdown,
                 password_source_dropdown: &password_source_dropdown,
+                group_dropdown: &group_dropdown,
+                groups_data: &groups_data,
                 ssh_auth_dropdown: &ssh_auth_dropdown,
                 ssh_key_source_dropdown: &ssh_key_source_dropdown,
                 ssh_key_entry: &ssh_key_entry,
@@ -1194,6 +1226,7 @@ impl ConnectionDialog {
     fn create_basic_tab() -> (
         Grid,
         Entry,
+        TextView,
         Entry,
         Label,
         SpinButton,
@@ -1209,6 +1242,7 @@ impl ConnectionDialog {
         Label,
         Button,
         Button,
+        DropDown,
     ) {
         let grid = Grid::builder()
             .row_spacing(8)
@@ -1265,9 +1299,50 @@ impl ConnectionDialog {
         let (tags_entry, tags_label) =
             Self::create_labeled_entry(&grid, &mut row, "Tags:", "tag1, tag2, ...");
 
+        // Group
+        let group_label = Label::builder()
+            .label("Group:")
+            .halign(gtk4::Align::End)
+            .build();
+        let group_list = StringList::new(&["(Root)"]);
+        let group_dropdown = DropDown::builder().model(&group_list).hexpand(true).build();
+        grid.attach(&group_label, 0, row, 1, 1);
+        grid.attach(&group_dropdown, 1, row, 2, 1);
+        row += 1;
+
+        // Description (multiline TextView, 6 lines height, after Group)
+        let desc_label = Label::builder()
+            .label("Description:")
+            .halign(gtk4::Align::End)
+            .valign(gtk4::Align::Start)
+            .build();
+        let description_view = TextView::builder()
+            .hexpand(true)
+            .vexpand(false)
+            .wrap_mode(WrapMode::Word)
+            .accepts_tab(false)
+            .top_margin(6)
+            .bottom_margin(6)
+            .left_margin(6)
+            .right_margin(6)
+            .build();
+        // Match Entry widget styling
+        description_view.add_css_class("view");
+        let desc_scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .min_content_height(120) // ~6 lines
+            .hexpand(true)
+            .child(&description_view)
+            .build();
+        desc_scrolled.add_css_class("frame");
+        grid.attach(&desc_label, 0, row, 1, 1);
+        grid.attach(&desc_scrolled, 1, row, 2, 1);
+
         (
             grid,
             name_entry,
+            description_view,
             host_entry,
             host_label,
             port_spin,
@@ -1283,10 +1358,11 @@ impl ConnectionDialog {
             password_entry_label,
             load_from_keepass_button,
             save_to_keepass_button,
+            group_dropdown,
         )
     }
 
-    /// Creates the port spin button row
+    /// Creates the port spin button row with port range description
     fn create_port_spin(grid: &Grid, row: &mut i32) -> (SpinButton, Label) {
         let port_label = Label::builder()
             .label("Port:")
@@ -1297,11 +1373,79 @@ impl ConnectionDialog {
             .adjustment(&port_adj)
             .climb_rate(1.0)
             .digits(0)
+            .width_chars(6)
             .build();
+
+        // Port description label
+        let port_desc = Label::builder()
+            .halign(gtk4::Align::Start)
+            .css_classes(["dim-label"])
+            .build();
+
+        // Update description when port changes
+        let port_desc_clone = port_desc.clone();
+        port_spin.connect_value_changed(move |spin| {
+            let port = spin.value() as u16;
+            let desc = Self::get_port_description(port);
+            port_desc_clone.set_label(&desc);
+        });
+
+        // Set initial description
+        port_desc.set_label(&Self::get_port_description(22));
+
+        let port_box = GtkBox::new(Orientation::Horizontal, 8);
+        port_box.append(&port_spin);
+        port_box.append(&port_desc);
+
         grid.attach(&port_label, 0, *row, 1, 1);
-        grid.attach(&port_spin, 1, *row, 1, 1);
+        grid.attach(&port_box, 1, *row, 2, 1);
         *row += 1;
         (port_spin, port_label)
+    }
+
+    /// Returns a description for the given port number
+    fn get_port_description(port: u16) -> String {
+        // Well-known service ports
+        let service = match port {
+            22 => "SSH",
+            23 => "Telnet",
+            25 => "SMTP",
+            53 => "DNS",
+            80 => "HTTP",
+            110 => "POP3",
+            143 => "IMAP",
+            443 => "HTTPS",
+            445 => "SMB",
+            993 => "IMAPS",
+            995 => "POP3S",
+            3306 => "MySQL",
+            3389 => "RDP",
+            5432 => "PostgreSQL",
+            5900 => "VNC",
+            5901..=5909 => "VNC",
+            5985 => "WinRM HTTP",
+            5986 => "WinRM HTTPS",
+            6379 => "Redis",
+            8080 => "HTTP Alt",
+            8443 => "HTTPS Alt",
+            27017 => "MongoDB",
+            _ => "",
+        };
+
+        // Port range category
+        let range = if port <= 1023 {
+            "Well-Known"
+        } else if port <= 49151 {
+            "Registered"
+        } else {
+            "Dynamic"
+        };
+
+        if service.is_empty() {
+            range.to_string()
+        } else {
+            format!("{service}, {range}")
+        }
     }
 
     /// Creates the username entry with current user as placeholder
@@ -4391,12 +4535,43 @@ impl ConnectionDialog {
 
         // Basic fields
         self.name_entry.set_text(&conn.name);
+        if let Some(ref description) = conn.description {
+            self.description_view.buffer().set_text(description);
+        } else {
+            self.description_view.buffer().set_text("");
+        }
         self.host_entry.set_text(&conn.host);
         self.port_spin.set_value(f64::from(conn.port));
         if let Some(ref username) = conn.username {
             self.username_entry.set_text(username);
         }
-        self.tags_entry.set_text(&conn.tags.join(", "));
+        // Filter out desc: tags for backward compatibility with old imports
+        let display_tags: Vec<&str> = conn
+            .tags
+            .iter()
+            .filter(|t| !t.starts_with("desc:"))
+            .map(String::as_str)
+            .collect();
+        self.tags_entry.set_text(&display_tags.join(", "));
+
+        // If connection has desc: tag but no description field, extract it
+        if conn.description.is_none() {
+            if let Some(desc_tag) = conn.tags.iter().find(|t| t.starts_with("desc:")) {
+                self.description_view
+                    .buffer()
+                    .set_text(desc_tag.strip_prefix("desc:").unwrap_or(""));
+            }
+        }
+
+        // Set group selection
+        if let Some(group_id) = conn.group_id {
+            let groups_data = self.groups_data.borrow();
+            if let Some(idx) = groups_data.iter().position(|(id, _)| *id == Some(group_id)) {
+                self.group_dropdown.set_selected(idx as u32);
+            }
+        } else {
+            self.group_dropdown.set_selected(0); // Root
+        }
 
         // Password source - map enum to dropdown index
         // Dropdown order: Prompt(0), Stored(1), KeePass(2), Keyring(3), None(4)
@@ -4466,6 +4641,52 @@ impl ConnectionDialog {
 
         // Set WOL config
         self.set_wol_config(conn.wol_config.as_ref());
+    }
+
+    /// Sets the available groups for the group dropdown
+    ///
+    /// Groups are displayed in a flat list with hierarchy indicated by indentation.
+    /// The first item is always "(Root)" for connections without a group.
+    #[allow(clippy::items_after_statements)]
+    pub fn set_groups(&self, groups: &[rustconn_core::models::ConnectionGroup]) {
+        use rustconn_core::models::ConnectionGroup;
+
+        // Build hierarchical group list
+        let mut groups_data: Vec<(Option<Uuid>, String)> = vec![(None, "(Root)".to_string())];
+
+        // Helper to add groups recursively with indentation
+        fn add_group_recursive(
+            group: &ConnectionGroup,
+            all_groups: &[ConnectionGroup],
+            groups_data: &mut Vec<(Option<Uuid>, String)>,
+            depth: usize,
+        ) {
+            let indent = "  ".repeat(depth);
+            groups_data.push((Some(group.id), format!("{}{}", indent, group.name)));
+
+            // Find and add children
+            let children: Vec<_> = all_groups
+                .iter()
+                .filter(|g| g.parent_id == Some(group.id))
+                .collect();
+            for child in children {
+                add_group_recursive(child, all_groups, groups_data, depth + 1);
+            }
+        }
+
+        // Start with root groups (no parent)
+        let root_groups: Vec<_> = groups.iter().filter(|g| g.parent_id.is_none()).collect();
+        for group in root_groups {
+            add_group_recursive(group, groups, &mut groups_data, 0);
+        }
+
+        // Update dropdown model
+        let names: Vec<&str> = groups_data.iter().map(|(_, name)| name.as_str()).collect();
+        let string_list = StringList::new(&names);
+        self.group_dropdown.set_model(Some(&string_list));
+
+        // Store groups data for later lookup
+        *self.groups_data.borrow_mut() = groups_data;
     }
 
     /// Sets the WOL configuration fields
@@ -5262,12 +5483,15 @@ impl ConnectionDialog {
 /// Helper struct for validation and building in the response callback
 struct ConnectionDialogData<'a> {
     name_entry: &'a Entry,
+    description_view: &'a TextView,
     host_entry: &'a Entry,
     port_spin: &'a SpinButton,
     username_entry: &'a Entry,
     tags_entry: &'a Entry,
     protocol_dropdown: &'a DropDown,
     password_source_dropdown: &'a DropDown,
+    group_dropdown: &'a DropDown,
+    groups_data: &'a Rc<RefCell<Vec<(Option<Uuid>, String)>>>,
     ssh_auth_dropdown: &'a DropDown,
     ssh_key_source_dropdown: &'a DropDown,
     ssh_key_entry: &'a Entry,
@@ -5422,6 +5646,13 @@ impl ConnectionDialogData<'_> {
 
     fn build_connection(&self) -> Option<Connection> {
         let name = self.name_entry.text().trim().to_string();
+        let buffer = self.description_view.buffer();
+        let description_text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+        let description = if description_text.trim().is_empty() {
+            None
+        } else {
+            Some(description_text.trim().to_string())
+        };
         let host = self.host_entry.text().trim().to_string();
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let port = self.port_spin.value() as u16;
@@ -5429,6 +5660,7 @@ impl ConnectionDialogData<'_> {
         let protocol_config = self.build_protocol_config()?;
 
         let mut conn = Connection::new(name, host, port, protocol_config);
+        conn.description = description;
 
         let username = self.username_entry.text();
         if !username.trim().is_empty() {
@@ -5441,6 +5673,8 @@ impl ConnectionDialogData<'_> {
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
+                // Filter out desc: tags since we now have a dedicated description field
+                .filter(|s| !s.starts_with("desc:"))
                 .collect();
         }
 
@@ -5488,6 +5722,13 @@ impl ConnectionDialogData<'_> {
 
         // Set WOL config if enabled
         conn.wol_config = self.build_wol_config();
+
+        // Set group from dropdown
+        let selected_idx = self.group_dropdown.selected() as usize;
+        let groups_data = self.groups_data.borrow();
+        if selected_idx < groups_data.len() {
+            conn.group_id = groups_data[selected_idx].0;
+        }
 
         if let Some(id) = *self.editing_id.borrow() {
             conn.id = id;

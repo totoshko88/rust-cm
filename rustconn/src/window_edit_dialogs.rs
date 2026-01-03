@@ -54,6 +54,14 @@ pub fn edit_selected_connection(
 
         let dialog = ConnectionDialog::new(Some(&window.clone().upcast()));
         dialog.setup_key_file_chooser(Some(&window.clone().upcast()));
+
+        // Set available groups
+        {
+            let state_ref = state.borrow();
+            let groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+            dialog.set_groups(&groups);
+        }
+
         dialog.set_connection(&conn);
 
         // Set KeePass enabled state from settings
@@ -266,8 +274,8 @@ fn handle_load_from_keepass(state: &SharedAppState, name: &str, host: &str) -> O
     }
 }
 
-/// Shows connection details in a popover
-pub fn show_connection_details(
+/// Renames the selected connection or group with a simple inline dialog
+pub fn rename_selected_item(
     window: &ApplicationWindow,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
@@ -277,187 +285,151 @@ pub fn show_connection_details(
         return;
     };
 
-    // Only show details for connections, not groups
-    if conn_item.is_group() {
-        return;
-    }
-
     let id_str = conn_item.id();
     let Ok(id) = Uuid::parse_str(&id_str) else {
         return;
     };
 
-    let state_ref = state.borrow();
-    let Some(conn) = state_ref.get_connection(id).cloned() else {
-        return;
-    };
-    drop(state_ref);
+    let is_group = conn_item.is_group();
+    let current_name = conn_item.name();
 
-    // Create details popover
-    let popover = gtk4::Popover::new();
-    popover.set_autohide(true);
+    // Create rename dialog
+    let rename_window = gtk4::Window::builder()
+        .title(if is_group {
+            "Rename Group"
+        } else {
+            "Rename Connection"
+        })
+        .transient_for(window)
+        .modal(true)
+        .default_width(350)
+        .build();
 
-    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    let header = gtk4::HeaderBar::new();
+    let cancel_btn = gtk4::Button::builder().label("Cancel").build();
+    let save_btn = gtk4::Button::builder()
+        .label("Rename")
+        .css_classes(["suggested-action"])
+        .build();
+    header.pack_start(&cancel_btn);
+    header.pack_end(&save_btn);
+    rename_window.set_titlebar(Some(&header));
+
+    let content = gtk4::Box::new(Orientation::Vertical, 8);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
-    content.set_width_request(300);
 
-    // Connection name header
-    let name_label = Label::builder()
-        .label(&conn.name)
-        .css_classes(["title-2"])
-        .halign(gtk4::Align::Start)
-        .build();
-    content.append(&name_label);
+    let label = Label::new(Some("New name:"));
+    label.set_halign(gtk4::Align::Start);
+    content.append(&label);
 
-    // Basic info
-    let info_grid = gtk4::Grid::builder()
-        .row_spacing(4)
-        .column_spacing(8)
-        .build();
+    let entry = gtk4::Entry::new();
+    entry.set_text(&current_name);
+    entry.select_region(0, -1); // Select all text
+    content.append(&entry);
 
-    let mut row = 0;
+    rename_window.set_child(Some(&content));
 
-    // Protocol
-    let protocol_label = Label::builder()
-        .label("Protocol:")
-        .halign(gtk4::Align::End)
-        .css_classes(["dim-label"])
-        .build();
-    let protocol_value = Label::builder()
-        .label(&format!("{:?}", conn.protocol))
-        .halign(gtk4::Align::Start)
-        .build();
-    info_grid.attach(&protocol_label, 0, row, 1, 1);
-    info_grid.attach(&protocol_value, 1, row, 1, 1);
-    row += 1;
-
-    // Host
-    let host_label = Label::builder()
-        .label("Host:")
-        .halign(gtk4::Align::End)
-        .css_classes(["dim-label"])
-        .build();
-    let host_value = Label::builder()
-        .label(&format!("{}:{}", conn.host, conn.port))
-        .halign(gtk4::Align::Start)
-        .selectable(true)
-        .build();
-    info_grid.attach(&host_label, 0, row, 1, 1);
-    info_grid.attach(&host_value, 1, row, 1, 1);
-    row += 1;
-
-    // Username if present
-    if let Some(ref username) = conn.username {
-        let user_label = Label::builder()
-            .label("Username:")
-            .halign(gtk4::Align::End)
-            .css_classes(["dim-label"])
-            .build();
-        let user_value = Label::builder()
-            .label(username)
-            .halign(gtk4::Align::Start)
-            .selectable(true)
-            .build();
-        info_grid.attach(&user_label, 0, row, 1, 1);
-        info_grid.attach(&user_value, 1, row, 1, 1);
-        row += 1;
-    }
-
-    // Tags if present
-    if !conn.tags.is_empty() {
-        let tags_label = Label::builder()
-            .label("Tags:")
-            .halign(gtk4::Align::End)
-            .css_classes(["dim-label"])
-            .build();
-        let tags_value = Label::builder()
-            .label(&conn.tags.join(", "))
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .build();
-        info_grid.attach(&tags_label, 0, row, 1, 1);
-        info_grid.attach(&tags_value, 1, row, 1, 1);
-    }
-
-    content.append(&info_grid);
-
-    // Custom properties section
-    if !conn.custom_properties.is_empty() {
-        let separator = gtk4::Separator::new(gtk4::Orientation::Horizontal);
-        separator.set_margin_top(8);
-        separator.set_margin_bottom(8);
-        content.append(&separator);
-
-        let props_header = Label::builder()
-            .label("Custom Properties")
-            .css_classes(["title-4"])
-            .halign(gtk4::Align::Start)
-            .build();
-        content.append(&props_header);
-
-        let props_grid = gtk4::Grid::builder()
-            .row_spacing(4)
-            .column_spacing(8)
-            .build();
-
-        for (idx, prop) in conn.custom_properties.iter().enumerate() {
-            let prop_name = Label::builder()
-                .label(&format!("{}:", prop.name))
-                .halign(gtk4::Align::End)
-                .css_classes(["dim-label"])
-                .build();
-
-            #[allow(clippy::cast_possible_truncation)]
-            let row_idx = idx as i32;
-
-            if prop.is_protected() {
-                // Show masked value for protected properties
-                let prop_value = Label::builder()
-                    .label("••••••••")
-                    .halign(gtk4::Align::Start)
-                    .build();
-                props_grid.attach(&prop_name, 0, row_idx, 1, 1);
-                props_grid.attach(&prop_value, 1, row_idx, 1, 1);
-            } else if prop.is_url() {
-                // Create clickable link for URL properties
-                let link_button = gtk4::LinkButton::builder()
-                    .uri(&prop.value)
-                    .label(&prop.value)
-                    .halign(gtk4::Align::Start)
-                    .build();
-                props_grid.attach(&prop_name, 0, row_idx, 1, 1);
-                props_grid.attach(&link_button, 1, row_idx, 1, 1);
-            } else {
-                // Regular text property
-                let prop_value = Label::builder()
-                    .label(&prop.value)
-                    .halign(gtk4::Align::Start)
-                    .selectable(true)
-                    .wrap(true)
-                    .build();
-                props_grid.attach(&prop_name, 0, row_idx, 1, 1);
-                props_grid.attach(&prop_value, 1, row_idx, 1, 1);
-            }
-        }
-
-        content.append(&props_grid);
-    }
-
-    popover.set_child(Some(&content));
-    popover.set_parent(window);
-
-    // Position the popover near the sidebar
-    popover.set_position(gtk4::PositionType::Right);
-
-    // Connect to closed signal to unparent
-    popover.connect_closed(|p| {
-        p.unparent();
+    // Cancel button
+    let window_clone = rename_window.clone();
+    cancel_btn.connect_clicked(move |_| {
+        window_clone.close();
     });
 
-    popover.popup();
+    // Save button
+    let state_clone = state.clone();
+    let sidebar_clone = sidebar.clone();
+    let window_clone = rename_window.clone();
+    let entry_clone = entry.clone();
+    save_btn.connect_clicked(move |_| {
+        let new_name = entry_clone.text().trim().to_string();
+        if new_name.is_empty() {
+            let alert = gtk4::AlertDialog::builder()
+                .message("Validation Error")
+                .detail("Name cannot be empty")
+                .modal(true)
+                .build();
+            alert.show(Some(&window_clone));
+            return;
+        }
+
+        if new_name == current_name {
+            window_clone.close();
+            return;
+        }
+
+        if is_group {
+            // Rename group
+            let state_ref = state_clone.borrow();
+            if state_ref.group_exists_by_name(&new_name) {
+                drop(state_ref);
+                let alert = gtk4::AlertDialog::builder()
+                    .message("Validation Error")
+                    .detail(format!("Group with name '{new_name}' already exists"))
+                    .modal(true)
+                    .build();
+                alert.show(Some(&window_clone));
+                return;
+            }
+            drop(state_ref);
+
+            if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
+                if let Some(existing) = state_mut.get_group(id).cloned() {
+                    let mut updated = existing;
+                    updated.name = new_name;
+                    if let Err(e) = state_mut.connection_manager().update_group(id, updated) {
+                        let alert = gtk4::AlertDialog::builder()
+                            .message("Error")
+                            .detail(format!("{e}"))
+                            .modal(true)
+                            .build();
+                        alert.show(Some(&window_clone));
+                        return;
+                    }
+                }
+                drop(state_mut);
+                MainWindow::reload_sidebar_preserving_state(&state_clone, &sidebar_clone);
+                window_clone.close();
+            }
+        } else {
+            // Rename connection
+            if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
+                if let Some(existing) = state_mut.get_connection(id).cloned() {
+                    let mut updated = existing;
+                    updated.name = new_name;
+                    match state_mut.update_connection(id, updated) {
+                        Ok(()) => {
+                            drop(state_mut);
+                            MainWindow::reload_sidebar_preserving_state(
+                                &state_clone,
+                                &sidebar_clone,
+                            );
+                            window_clone.close();
+                        }
+                        Err(e) => {
+                            let alert = gtk4::AlertDialog::builder()
+                                .message("Error")
+                                .detail(&e)
+                                .modal(true)
+                                .build();
+                            alert.show(Some(&window_clone));
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Enter key triggers save
+    let save_btn_clone = save_btn.clone();
+    entry.connect_activate(move |_| {
+        save_btn_clone.emit_clicked();
+    });
+
+    rename_window.present();
+    entry.grab_focus();
 }
 
 /// Shows dialog to edit a group name
@@ -608,14 +580,23 @@ pub fn show_quick_connect_dialog_with_state(
         .default_height(550)
         .build();
 
-    // Create header bar (no Cancel button - window X is sufficient)
+    // Create header bar with Close/Connect buttons (GNOME HIG)
     let header = gtk4::HeaderBar::new();
+    header.set_show_title_buttons(false);
+    let close_btn = Button::builder().label("Close").build();
     let connect_btn = Button::builder()
         .label("Connect")
         .css_classes(["suggested-action"])
         .build();
-    header.pack_start(&connect_btn);
+    header.pack_start(&close_btn);
+    header.pack_end(&connect_btn);
     quick_window.set_titlebar(Some(&header));
+
+    // Close button handler
+    let window_clone = quick_window.clone();
+    close_btn.connect_clicked(move |_| {
+        window_clone.close();
+    });
 
     // Create content
     let content = gtk4::Box::new(Orientation::Vertical, 12);

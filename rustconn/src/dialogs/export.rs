@@ -68,14 +68,23 @@ impl ExportDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar (no Cancel button - window X is sufficient)
+        // Create header bar with Close/Export buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let export_button = Button::builder()
             .label("Export")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&export_button);
+        header.pack_start(&close_btn);
+        header.pack_end(&export_button);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 0);

@@ -40,14 +40,24 @@ impl HistoryDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Header bar (no Close button - window X is sufficient)
+        // Header bar with Close/Connect buttons (GNOME HIG)
         let header = gtk4::HeaderBar::new();
-        let reset_btn = Button::builder()
-            .label("Reset")
-            .css_classes(["destructive-action"])
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
+        let connect_btn = Button::builder()
+            .label("Connect")
+            .css_classes(["suggested-action"])
+            .sensitive(false)
             .build();
-        header.pack_start(&reset_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&connect_btn);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Main content
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -102,17 +112,16 @@ impl HistoryDialog {
         scrolled.set_child(Some(&list_box));
         content.append(&scrolled);
 
-        // Action buttons (only Connect button now)
+        // Action buttons (Reset at bottom left)
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
-        button_box.set_halign(gtk4::Align::End);
+        button_box.set_halign(gtk4::Align::Start);
 
-        let connect_btn = Button::builder()
-            .label("Connect")
-            .css_classes(["suggested-action"])
-            .sensitive(false)
+        let reset_btn = Button::builder()
+            .label("Reset")
+            .css_classes(["destructive-action"])
             .build();
 
-        button_box.append(&connect_btn);
+        button_box.append(&reset_btn);
         content.append(&button_box);
 
         window.set_child(Some(&content));

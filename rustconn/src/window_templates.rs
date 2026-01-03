@@ -358,6 +358,13 @@ pub fn show_new_connection_from_template(
     let dialog = ConnectionDialog::new(Some(window));
     dialog.setup_key_file_chooser(Some(window));
 
+    // Set available groups
+    {
+        let state_ref = state.borrow();
+        let groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+        dialog.set_groups(&groups);
+    }
+
     // Set KeePass enabled state from settings
     {
         let state_ref = state.borrow();

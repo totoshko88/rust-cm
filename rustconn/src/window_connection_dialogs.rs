@@ -36,6 +36,13 @@ pub fn show_new_connection_dialog_internal(
     let dialog = ConnectionDialog::new(Some(&window.clone().upcast()));
     dialog.setup_key_file_chooser(Some(&window.clone().upcast()));
 
+    // Set available groups
+    {
+        let state_ref = state.borrow();
+        let groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+        dialog.set_groups(&groups);
+    }
+
     // Set KeePass enabled state from settings
     {
         let state_ref = state.borrow();
@@ -236,14 +243,23 @@ pub fn show_new_group_dialog_with_parent(
         .default_width(750)
         .build();
 
-    // Create header bar (no Cancel button - window X is sufficient)
+    // Create header bar with Close/Create buttons (GNOME HIG)
     let header = gtk4::HeaderBar::new();
+    header.set_show_title_buttons(false);
+    let close_btn = gtk4::Button::builder().label("Close").build();
     let create_btn = gtk4::Button::builder()
         .label("Create")
         .css_classes(["suggested-action"])
         .build();
-    header.pack_start(&create_btn);
+    header.pack_start(&close_btn);
+    header.pack_end(&create_btn);
     group_window.set_titlebar(Some(&header));
+
+    // Close button handler
+    let window_clone = group_window.clone();
+    close_btn.connect_clicked(move |_| {
+        window_clone.close();
+    });
 
     let content = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
     content.set_margin_top(12);

@@ -54,14 +54,23 @@ impl ImportDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar (no Close button - window X is sufficient)
+        // Create header bar with Close/Import buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let import_button = Button::builder()
             .label("Import")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&import_button);
+        header.pack_start(&close_btn);
+        header.pack_end(&import_button);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -738,6 +747,25 @@ impl ImportDialog {
             }
         });
 
+        // Double-click on source row triggers import
+        let gesture = gtk4::GestureClick::new();
+        gesture.set_button(1); // Left mouse button
+        let import_button_dblclick = self.import_button.clone();
+        let source_list_dblclick = self.source_list.clone();
+        gesture.connect_pressed(move |gesture, n_press, _x, y| {
+            if n_press == 2 {
+                // Double-click
+                if let Some(row) = source_list_dblclick.row_at_y(y as i32) {
+                    // Only trigger if row is sensitive (available)
+                    if row.is_sensitive() {
+                        import_button_dblclick.emit_clicked();
+                    }
+                }
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
+            }
+        });
+        self.source_list.add_controller(gesture);
+
         self.window.present();
     }
 
@@ -825,6 +853,10 @@ impl ImportDialog {
                         btn_clone.set_label("Done");
                         btn_clone.set_sensitive(true);
                     }
+                } else {
+                    // User cancelled file selection - return to source page
+                    stack_clone.set_visible_child_name("source");
+                    btn_clone.set_sensitive(true);
                 }
             },
         );
@@ -906,6 +938,10 @@ impl ImportDialog {
                         btn_clone.set_label("Done");
                         btn_clone.set_sensitive(true);
                     }
+                } else {
+                    // User cancelled file selection - return to source page
+                    stack_clone.set_visible_child_name("source");
+                    btn_clone.set_sensitive(true);
                 }
             },
         );
@@ -991,6 +1027,10 @@ impl ImportDialog {
                         btn_clone.set_label("Done");
                         btn_clone.set_sensitive(true);
                     }
+                } else {
+                    // User cancelled file selection - return to source page
+                    stack_clone.set_visible_child_name("source");
+                    btn_clone.set_sensitive(true);
                 }
             },
         );
@@ -1240,6 +1280,10 @@ impl ImportDialog {
                             }
                         }
                     }
+                } else {
+                    // User cancelled file selection - return to source page
+                    stack_clone.set_visible_child_name("source");
+                    btn_clone.set_sensitive(true);
                 }
             },
         );
@@ -1319,6 +1363,10 @@ impl ImportDialog {
                         btn_clone.set_label("Done");
                         btn_clone.set_sensitive(true);
                     }
+                } else {
+                    // User cancelled file selection - return to source page
+                    stack_clone.set_visible_child_name("source");
+                    btn_clone.set_sensitive(true);
                 }
             },
         );

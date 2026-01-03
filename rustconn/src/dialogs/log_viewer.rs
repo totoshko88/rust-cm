@@ -39,16 +39,23 @@ impl LogViewerDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar with Close button
+        // Create header bar with Close/Refresh buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let refresh_btn = Button::builder()
             .icon_name("view-refresh-symbolic")
             .tooltip_text("Refresh log list")
             .build();
-        header.pack_start(&refresh_btn);
-        header.pack_end(&close_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&refresh_btn);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Create main content with paned view
         let paned = Paned::new(Orientation::Horizontal);

@@ -64,6 +64,7 @@ fn create_test_connection(id: Uuid, name: &str, host: &str) -> Connection {
     Connection {
         id,
         name: name.to_string(),
+        description: None,
         host: host.to_string(),
         port: 22,
         protocol: ProtocolType::Ssh,

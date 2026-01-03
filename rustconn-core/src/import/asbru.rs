@@ -369,10 +369,10 @@ impl AsbruImporter {
             }
         }
 
-        // Add description as tag if present
+        // Set description if present
         if let Some(desc) = &entry.description {
             if !desc.is_empty() {
-                connection.tags.push(format!("desc:{desc}"));
+                connection.description = Some(desc.clone());
             }
         }
 
@@ -699,8 +699,11 @@ dynamic-uuid:
         // Dynamic variables should be preserved as-is
         assert_eq!(conn.host, "${DB_HOST}");
         assert_eq!(conn.username, Some("${DB_USER}".to_string()));
-        // Description with variable should be in tags
-        assert!(conn.tags.iter().any(|t| t.contains("${ENV}")));
+        // Description with variable should be in description field (not tags)
+        assert!(conn
+            .description
+            .as_ref()
+            .is_some_and(|d| d.contains("${ENV}")));
     }
 
     #[test]

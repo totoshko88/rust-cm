@@ -123,14 +123,23 @@ impl TemplateDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar (no Cancel button - window X is sufficient)
+        // Create header bar with Close/Create buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
         let save_btn = Button::builder()
             .label("Create")
             .css_classes(["suggested-action"])
             .build();
-        header.pack_start(&save_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&save_btn);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -2459,12 +2468,22 @@ impl TemplateManagerDialog {
         }
 
         let header = HeaderBar::new();
-        let new_btn = Button::builder()
+        header.set_show_title_buttons(false);
+        let close_btn = Button::builder().label("Close").build();
+        let create_conn_btn = Button::builder()
             .label("Create")
             .css_classes(["suggested-action"])
+            .sensitive(false)
             .build();
-        header.pack_start(&new_btn);
+        header.pack_start(&close_btn);
+        header.pack_end(&create_conn_btn);
         window.set_titlebar(Some(&header));
+
+        // Close button handler
+        let window_clone = window.clone();
+        close_btn.connect_clicked(move |_| {
+            window_clone.close();
+        });
 
         let content = GtkBox::new(Orientation::Vertical, 8);
         content.set_margin_top(12);
@@ -2498,15 +2517,15 @@ impl TemplateManagerDialog {
 
         let edit_btn = Button::builder().label("Edit").sensitive(false).build();
         let delete_btn = Button::builder().label("Delete").sensitive(false).build();
-        let use_btn = Button::builder()
-            .label("Use Template")
-            .sensitive(false)
+        let new_template_btn = Button::builder()
+            .label("Create Template")
+            .sensitive(true)
             .css_classes(["suggested-action"])
             .build();
 
         button_box.append(&edit_btn);
         button_box.append(&delete_btn);
-        button_box.append(&use_btn);
+        button_box.append(&new_template_btn);
         content.append(&button_box);
 
         window.set_child(Some(&content));
@@ -2522,16 +2541,17 @@ impl TemplateManagerDialog {
 
         let edit_clone = edit_btn.clone();
         let delete_clone = delete_btn.clone();
-        let use_clone = use_btn.clone();
+        let create_conn_clone = create_conn_btn.clone();
         templates_list.connect_row_selected(move |_, row| {
             let has_selection = row.is_some();
             edit_clone.set_sensitive(has_selection);
             delete_clone.set_sensitive(has_selection);
-            use_clone.set_sensitive(has_selection);
+            create_conn_clone.set_sensitive(has_selection);
         });
 
+        // "Create Template" button - creates a new template
         let on_new_clone = on_new.clone();
-        new_btn.connect_clicked(move |_| {
+        new_template_btn.connect_clicked(move |_| {
             if let Some(ref cb) = *on_new_clone.borrow() {
                 cb();
             }
@@ -2569,11 +2589,12 @@ impl TemplateManagerDialog {
             }
         });
 
+        // "Create Connection" button in header - creates connection from selected template
         let on_selected_clone = on_template_selected.clone();
         let state_templates_use = state_templates.clone();
         let templates_list_use = templates_list.clone();
         let window_use = window.clone();
-        use_btn.connect_clicked(move |_| {
+        create_conn_btn.connect_clicked(move |_| {
             if let Some(row) = templates_list_use.selected_row() {
                 if let Some(id_str) = row.widget_name().as_str().strip_prefix("template-") {
                     if let Ok(id) = Uuid::parse_str(id_str) {
@@ -2588,6 +2609,34 @@ impl TemplateManagerDialog {
                 }
             }
         });
+
+        // Double-click on template row - creates connection from template
+        let gesture = gtk4::GestureClick::new();
+        gesture.set_button(1); // Left mouse button
+        let on_selected_dblclick = on_template_selected.clone();
+        let state_templates_dblclick = state_templates.clone();
+        let templates_list_dblclick = templates_list.clone();
+        let window_dblclick = window.clone();
+        gesture.connect_pressed(move |gesture, n_press, _x, y| {
+            if n_press == 2 {
+                // Double-click
+                if let Some(row) = templates_list_dblclick.row_at_y(y as i32) {
+                    if let Some(id_str) = row.widget_name().as_str().strip_prefix("template-") {
+                        if let Ok(id) = Uuid::parse_str(id_str) {
+                            let templates = state_templates_dblclick.borrow();
+                            if let Some(template) = templates.iter().find(|t| t.id == id) {
+                                if let Some(ref cb) = *on_selected_dblclick.borrow() {
+                                    cb(Some(template.clone()));
+                                }
+                                window_dblclick.close();
+                            }
+                        }
+                    }
+                }
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
+            }
+        });
+        templates_list.add_controller(gesture);
 
         Self {
             window,

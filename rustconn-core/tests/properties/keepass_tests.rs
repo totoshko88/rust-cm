@@ -372,6 +372,7 @@ fn create_test_connection(name: &str, host: &str) -> Connection {
     Connection {
         id: Uuid::new_v4(),
         name: name.to_string(),
+        description: None,
         host: host.to_string(),
         port: 22,
         protocol: ProtocolType::Ssh,
@@ -739,6 +740,7 @@ mod hierarchy_tests {
         Connection {
             id: Uuid::new_v4(),
             name: name.to_string(),
+            description: None,
             host: host.to_string(),
             port: 22,
             protocol: ProtocolType::Ssh,

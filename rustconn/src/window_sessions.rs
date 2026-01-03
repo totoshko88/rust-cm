@@ -34,14 +34,23 @@ pub fn show_sessions_manager(
         .default_height(500)
         .build();
 
-    // Create header bar (no Close button - window X is sufficient)
+    // Create header bar with Close/Refresh buttons (GNOME HIG)
     let header = HeaderBar::new();
+    header.set_show_title_buttons(false);
+    let close_btn = Button::builder().label("Close").build();
     let refresh_btn = Button::builder()
         .icon_name("view-refresh-symbolic")
         .tooltip_text("Refresh")
         .build();
-    header.pack_start(&refresh_btn);
+    header.pack_start(&close_btn);
+    header.pack_end(&refresh_btn);
     manager_window.set_titlebar(Some(&header));
+
+    // Close button handler
+    let window_clone = manager_window.clone();
+    close_btn.connect_clicked(move |_| {
+        window_clone.close();
+    });
 
     // Create main content
     let content = gtk4::Box::new(Orientation::Vertical, 8);

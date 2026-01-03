@@ -55,6 +55,7 @@ fn create_test_connection(
     Connection {
         id: uuid::Uuid::new_v4(),
         name,
+        description: None,
         host,
         port,
         protocol: ProtocolType::Ssh,

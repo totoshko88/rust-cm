@@ -451,15 +451,25 @@ impl MainWindow {
 
         // View details action
         let view_details_action = gio::SimpleAction::new("view-details", None);
+        let state_clone = state.clone();
+        let sidebar_clone = sidebar.clone();
+        let split_view_clone = self.split_view.clone();
+        view_details_action.connect_activate(move |_, _| {
+            Self::show_connection_details(&state_clone, &sidebar_clone, &split_view_clone);
+        });
+        window.add_action(&view_details_action);
+
+        // Rename item action (works for both connections and groups)
+        let rename_action = gio::SimpleAction::new("rename-item", None);
         let window_weak = window.downgrade();
         let state_clone = state.clone();
         let sidebar_clone = sidebar.clone();
-        view_details_action.connect_activate(move |_, _| {
+        rename_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_connection_details(&win, &state_clone, &sidebar_clone);
+                Self::rename_selected_item(&win, &state_clone, &sidebar_clone);
             }
         });
-        window.add_action(&view_details_action);
+        window.add_action(&rename_action);
 
         // Copy connection action
         let copy_connection_action = gio::SimpleAction::new("copy-connection", None);
@@ -1299,75 +1309,13 @@ impl MainWindow {
 
     /// Loads connections into the sidebar
     fn load_connections(&self) {
-        let state = self.state.borrow();
-        let store = self.sidebar.store();
-        let expanded_groups = state.expanded_groups().clone();
+        let expanded_groups = self.state.borrow().expanded_groups().clone();
 
-        // Clear existing items
-        store.remove_all();
-
-        // Add root groups
-        for group in state.get_root_groups() {
-            let group_item = ConnectionItem::new_group(&group.id.to_string(), &group.name);
-            self.add_group_children(&state, &group_item, group.id);
-            store.append(&group_item);
-        }
-
-        // Add ungrouped connections
-        for conn in state.get_ungrouped_connections() {
-            let protocol = get_protocol_string(&conn.protocol_config);
-            let status = self
-                .sidebar
-                .get_connection_status(&conn.id.to_string())
-                .unwrap_or_else(|| "disconnected".to_string());
-            let item = ConnectionItem::new_connection_with_status(
-                &conn.id.to_string(),
-                &conn.name,
-                &protocol,
-                &conn.host,
-                &status,
-            );
-            store.append(&item);
-        }
-
-        drop(state);
+        // Use sorted rebuild to ensure alphabetical order by default
+        crate::window_sorting::rebuild_sidebar_sorted(&self.state, &self.sidebar);
 
         // Apply expanded state after populating
         self.sidebar.apply_expanded_groups(&expanded_groups);
-    }
-
-    /// Recursively adds group children
-    #[allow(clippy::self_only_used_in_recursion)]
-    fn add_group_children(
-        &self,
-        state: &std::cell::Ref<crate::state::AppState>,
-        parent_item: &ConnectionItem,
-        group_id: Uuid,
-    ) {
-        // Add child groups
-        for child_group in state.get_child_groups(group_id) {
-            let child_item =
-                ConnectionItem::new_group(&child_group.id.to_string(), &child_group.name);
-            self.add_group_children(state, &child_item, child_group.id);
-            parent_item.add_child(&child_item);
-        }
-
-        // Add connections in this group
-        for conn in state.get_connections_by_group(group_id) {
-            let protocol = get_protocol_string(&conn.protocol_config);
-            let status = self
-                .sidebar
-                .get_connection_status(&conn.id.to_string())
-                .unwrap_or_else(|| "disconnected".to_string());
-            let item = ConnectionItem::new_connection_with_status(
-                &conn.id.to_string(),
-                &conn.name,
-                &protocol,
-                &conn.host,
-                &status,
-            );
-            parent_item.add_child(&item);
-        }
     }
 
     /// Filters connections based on search query
@@ -2422,13 +2370,44 @@ impl MainWindow {
         edit_dialogs::edit_selected_connection(window, state, sidebar);
     }
 
-    /// Shows connection details in a popover
+    /// Shows connection details in the main content area (Info view)
     fn show_connection_details(
+        state: &SharedAppState,
+        sidebar: &SharedSidebar,
+        split_view: &SharedSplitView,
+    ) {
+        // Get selected item
+        let Some(conn_item) = sidebar.get_selected_item() else {
+            return;
+        };
+
+        // Only show details for connections, not groups
+        if conn_item.is_group() {
+            return;
+        }
+
+        let id_str = conn_item.id();
+        let Ok(id) = uuid::Uuid::parse_str(&id_str) else {
+            return;
+        };
+
+        let state_ref = state.borrow();
+        let Some(conn) = state_ref.get_connection(id).cloned() else {
+            return;
+        };
+        drop(state_ref);
+
+        // Show Info content in split_view (replaces Welcome)
+        split_view.show_info_content(&conn);
+    }
+
+    /// Renames the selected connection or group
+    fn rename_selected_item(
         window: &ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        edit_dialogs::show_connection_details(window, state, sidebar);
+        edit_dialogs::rename_selected_item(window, state, sidebar);
     }
 
     /// Deletes the selected connection or group

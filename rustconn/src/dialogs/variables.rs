@@ -58,8 +58,9 @@ impl VariablesDialog {
             window.set_transient_for(Some(p));
         }
 
-        // Create header bar with Cancel/Save buttons
+        // Create header bar with Cancel/Save buttons (GNOME HIG)
         let header = HeaderBar::new();
+        header.set_show_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let save_btn = Button::builder()
             .label("Save")

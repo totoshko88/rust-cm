@@ -228,6 +228,7 @@ impl ConnectionTemplate {
         Connection {
             id: Uuid::new_v4(),
             name: connection_name,
+            description: None,
             protocol: self.protocol,
             host: self.host.clone(),
             port: self.port,

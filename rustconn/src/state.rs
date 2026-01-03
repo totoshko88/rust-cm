@@ -548,6 +548,17 @@ impl AppState {
             .map_err(|e| format!("Failed to delete group: {e}"))
     }
 
+    /// Moves a group to a new parent group
+    pub fn move_group_to_parent(
+        &mut self,
+        group_id: Uuid,
+        new_parent_id: Option<Uuid>,
+    ) -> Result<(), String> {
+        self.connection_manager
+            .move_group(group_id, new_parent_id)
+            .map_err(|e| format!("Failed to move group: {e}"))
+    }
+
     /// Counts connections in a group (including child groups)
     pub fn count_connections_in_group(&self, group_id: Uuid) -> usize {
         self.connection_manager.count_connections_in_group(group_id)

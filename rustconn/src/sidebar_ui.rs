@@ -253,6 +253,20 @@ pub fn show_context_menu_for_item(widget: &impl IsA<gtk4::Widget>, x: f64, y: f6
     });
     menu_box.append(&edit_btn);
 
+    // Rename option (for both connections and groups)
+    let rename_btn = create_menu_button("Rename");
+    let win = window_clone.clone();
+    let popover_c = popover_ref.clone();
+    rename_btn.connect_clicked(move |_| {
+        if let Some(p) = popover_c.upgrade() {
+            p.popdown();
+        }
+        if let Some(action) = win.lookup_action("rename-item") {
+            action.activate(None);
+        }
+    });
+    menu_box.append(&rename_btn);
+
     // View Details option (only for connections, not groups)
     if !is_group {
         let details_btn = create_menu_button("View Details");
@@ -380,6 +394,7 @@ pub fn get_protocol_icon(protocol: &str) -> &'static str {
         "vnc" => "video-display-symbolic",
         "spice" => "video-x-generic-symbolic",
         "zerotrust" => "folder-remote-symbolic",
+        "info" => "dialog-information-symbolic",
         _ => "network-server-symbolic",
     }
 }
@@ -394,24 +409,15 @@ pub fn create_bulk_actions_bar() -> GtkBox {
     bar.set_margin_bottom(4);
     bar.add_css_class("bulk-actions-bar");
 
-    // New Group button
+    // New Group button (highlighted as create action)
     let new_group_button = Button::with_label("New Group");
     new_group_button.set_tooltip_text(Some("Create a new group"));
     new_group_button.set_action_name(Some("win.new-group"));
+    new_group_button.add_css_class("suggested-action");
     new_group_button.update_property(&[gtk4::accessible::Property::Label("Create new group")]);
     bar.append(&new_group_button);
 
-    // Delete Selected button
-    let delete_button = Button::with_label("Delete Selected");
-    delete_button.set_tooltip_text(Some("Delete all selected items"));
-    delete_button.set_action_name(Some("win.delete-selected"));
-    delete_button.add_css_class("destructive-action");
-    delete_button.update_property(&[gtk4::accessible::Property::Label(
-        "Delete selected connections",
-    )]);
-    bar.append(&delete_button);
-
-    // Move to Group dropdown button
+    // Move to Group button
     let move_button = Button::with_label("Move to Group...");
     move_button.set_tooltip_text(Some("Move selected items to a group"));
     move_button.set_action_name(Some("win.move-selected-to-group"));
@@ -434,6 +440,16 @@ pub fn create_bulk_actions_bar() -> GtkBox {
     clear_button.set_action_name(Some("win.clear-selection"));
     clear_button.update_property(&[gtk4::accessible::Property::Label("Clear selection")]);
     bar.append(&clear_button);
+
+    // Delete button (rightmost, destructive)
+    let delete_button = Button::with_label("Delete");
+    delete_button.set_tooltip_text(Some("Delete all selected items"));
+    delete_button.set_action_name(Some("win.delete-selected"));
+    delete_button.add_css_class("destructive-action");
+    delete_button.update_property(&[gtk4::accessible::Property::Label(
+        "Delete selected connections",
+    )]);
+    bar.append(&delete_button);
 
     bar
 }

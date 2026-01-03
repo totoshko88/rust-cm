@@ -102,15 +102,23 @@ pub fn rebuild_sidebar_sorted(state: &SharedAppState, sidebar: &SharedSidebar) {
     // Add sorted groups with their sorted children
     for group in &groups {
         let group_item = ConnectionItem::new_group(&group.id.to_string(), &group.name);
-        add_sorted_group_children(&state_ref, &group_item, group.id);
+        add_sorted_group_children(&state_ref, sidebar, &group_item, group.id);
         store.append(&group_item);
     }
 
     // Add sorted ungrouped connections
     for conn in &ungrouped {
         let protocol = get_protocol_string(&conn.protocol_config);
-        let item =
-            ConnectionItem::new_connection(&conn.id.to_string(), &conn.name, &protocol, &conn.host);
+        let status = sidebar
+            .get_connection_status(&conn.id.to_string())
+            .unwrap_or_else(|| "disconnected".to_string());
+        let item = ConnectionItem::new_connection_with_status(
+            &conn.id.to_string(),
+            &conn.name,
+            &protocol,
+            &conn.host,
+            &status,
+        );
         store.append(&item);
     }
 }
@@ -118,6 +126,7 @@ pub fn rebuild_sidebar_sorted(state: &SharedAppState, sidebar: &SharedSidebar) {
 /// Recursively adds sorted group children
 pub fn add_sorted_group_children(
     state: &std::cell::Ref<crate::state::AppState>,
+    sidebar: &SharedSidebar,
     parent_item: &ConnectionItem,
     group_id: Uuid,
 ) {
@@ -134,7 +143,7 @@ pub fn add_sorted_group_children(
 
     for child_group in &child_groups {
         let child_item = ConnectionItem::new_group(&child_group.id.to_string(), &child_group.name);
-        add_sorted_group_children(state, &child_item, child_group.id);
+        add_sorted_group_children(state, sidebar, &child_item, child_group.id);
         parent_item.add_child(&child_item);
     }
 
@@ -151,18 +160,27 @@ pub fn add_sorted_group_children(
 
     for conn in &connections {
         let protocol = get_protocol_string(&conn.protocol_config);
-        let item =
-            ConnectionItem::new_connection(&conn.id.to_string(), &conn.name, &protocol, &conn.host);
+        let status = sidebar
+            .get_connection_status(&conn.id.to_string())
+            .unwrap_or_else(|| "disconnected".to_string());
+        let item = ConnectionItem::new_connection_with_status(
+            &conn.id.to_string(),
+            &conn.name,
+            &protocol,
+            &conn.host,
+            &status,
+        );
         parent_item.add_child(&item);
     }
 }
 
 /// Handles drag-drop operations for reordering connections
 ///
-/// Data format: "`item_type:item_id:target_id:target_is_group`"
+/// Data format: "`item_type:item_id:target_id:target_is_group:position`"
+/// where position is "before", "after", or "into"
 pub fn handle_drag_drop(state: &SharedAppState, sidebar: &SharedSidebar, data: &str) {
     let parts: Vec<&str> = data.split(':').collect();
-    if parts.len() != 4 {
+    if parts.len() != 5 {
         return;
     }
 
@@ -170,6 +188,7 @@ pub fn handle_drag_drop(state: &SharedAppState, sidebar: &SharedSidebar, data: &
     let item_id = parts[1];
     let target_id = parts[2];
     let target_is_group = parts[3] == "true";
+    let position = parts[4]; // "before", "after", or "into"
 
     // Parse UUIDs
     let Ok(item_uuid) = Uuid::parse_str(item_id) else {
@@ -184,17 +203,36 @@ pub fn handle_drag_drop(state: &SharedAppState, sidebar: &SharedSidebar, data: &
         "conn" => {
             // Moving a connection
             if target_is_group {
-                // Move connection to the target group
-                if let Ok(mut state_mut) = state.try_borrow_mut() {
-                    if let Err(e) = state_mut.move_connection_to_group(item_uuid, Some(target_uuid))
-                    {
-                        eprintln!("Failed to move connection to group: {e}");
-                        return;
+                // Target is a group - move connection into it
+                if position == "into" {
+                    // Drop INTO group - move to the group
+                    if let Ok(mut state_mut) = state.try_borrow_mut() {
+                        if let Err(e) =
+                            state_mut.move_connection_to_group(item_uuid, Some(target_uuid))
+                        {
+                            eprintln!("Failed to move connection to group: {e}");
+                            return;
+                        }
+                    }
+                } else {
+                    // Drop BEFORE/AFTER group - move to parent of that group (or root)
+                    let parent_group_id = {
+                        let state_ref = state.borrow();
+                        state_ref.get_group(target_uuid).and_then(|g| g.parent_id)
+                    };
+
+                    if let Ok(mut state_mut) = state.try_borrow_mut() {
+                        if let Err(e) =
+                            state_mut.move_connection_to_group(item_uuid, parent_group_id)
+                        {
+                            eprintln!("Failed to move connection: {e}");
+                            return;
+                        }
                     }
                 }
             } else {
-                // Reorder connection relative to target connection
-                // Get the target connection's group and position
+                // Target is a connection - reorder relative to it
+                // Get the target connection's group
                 let target_group_id = {
                     let state_ref = state.borrow();
                     state_ref
