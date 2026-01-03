@@ -6,7 +6,7 @@ inclusion: always
 
 Rust 2021 edition, MSRV 1.87, three-crate Cargo workspace.
 
-## Crate Overview
+## Crates
 
 | Crate | Purpose | Key Dependencies |
 |-------|---------|------------------|
@@ -14,19 +14,20 @@ Rust 2021 edition, MSRV 1.87, three-crate Cargo workspace.
 | `rustconn-core` | Business logic (GUI-free) | `tokio` 1.48, `serde`/`serde_json`/`serde_yaml`/`toml`, `uuid`, `chrono`, `thiserror`, `secrecy`, `ring`+`argon2`, `regex` |
 | `rustconn-cli` | CLI interface | `clap` 4.5 (derive) |
 
-## Enforced Code Style
+## Code Style (Enforced)
 
-- `unsafe_code = "forbid"` — no unsafe code
+- `unsafe_code = "forbid"` — no unsafe code allowed
 - Clippy lints: `all`, `pedantic`, `nursery`
 - Line width: 100 chars max
 - Indentation: 4 spaces
 - Line endings: LF only
 
-## Required Code Patterns
+## Required Patterns
 
-When writing code, use these patterns:
+Use these exact patterns when writing code:
 
-**Errors** — always `thiserror`:
+### Errors — `thiserror`
+
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum MyError {
@@ -35,23 +36,27 @@ pub enum MyError {
 }
 ```
 
-**Secrets** — always `SecretString`:
+### Secrets — `SecretString`
+
 ```rust
 use secrecy::SecretString;
 let password: SecretString = SecretString::new(value.into());
 ```
 
-**IDs** — UUID v4:
+### IDs — UUID v4
+
 ```rust
 let id = uuid::Uuid::new_v4();
 ```
 
-**Timestamps** — chrono UTC:
+### Timestamps — chrono UTC
+
 ```rust
 let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 ```
 
-**Async traits** — `async-trait` macro:
+### Async traits — `async-trait`
+
 ```rust
 #[async_trait::async_trait]
 impl MyTrait for MyStruct {
@@ -59,7 +64,7 @@ impl MyTrait for MyStruct {
 }
 ```
 
-## Do / Don't Rules
+## Rules
 
 | DO | DON'T |
 |----|-------|

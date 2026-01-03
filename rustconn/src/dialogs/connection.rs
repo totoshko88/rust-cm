@@ -1426,6 +1426,7 @@ impl ConnectionDialog {
         // Update description when port changes
         let port_desc_clone = port_desc.clone();
         port_spin.connect_value_changed(move |spin| {
+            #[allow(clippy::cast_sign_loss)]
             let port = spin.value() as u16;
             let desc = Self::get_port_description(port);
             port_desc_clone.set_label(&desc);

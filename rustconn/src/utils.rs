@@ -256,6 +256,6 @@ mod tests {
         assert_eq!(format_bytes(500), "500 B");
         assert_eq!(format_bytes(1024), "1.0 KB");
         assert_eq!(format_bytes(1536), "1.5 KB");
-        assert_eq!(format_bytes(1048576), "1.0 MB");
+        assert_eq!(format_bytes(1_048_576), "1.0 MB");
     }
 }

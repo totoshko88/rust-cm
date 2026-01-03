@@ -6,7 +6,7 @@
 #
 
 Name:           rustconn
-Version:        0.5.3
+Version:        0.5.5
 Release:        0
 Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
 License:        GPL-3.0-or-later
@@ -157,6 +157,26 @@ fi
 %{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
 
 %changelog
+* Sat Jan 03 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.5-0
+- Update to version 0.5.5
+- Added Kiro steering rules for development workflow
+- Rename action in sidebar context menu for connections and groups
+- Double-click on import source to start import
+- Double-click on template to create connection from it
+- Group dropdown in Connection dialog for selecting parent group
+- Info tab for viewing connection details (replaces popover)
+- Default alphabetical sorting with drag-drop reordering support
+- Toast notification system for non-blocking user feedback
+- User-friendly error display utilities
+- GUI utility module with safe display access
+- Form validation module with visual feedback
+- Accessibility improvements on sidebar and terminal tabs
+- Keyboard shortcuts help dialog (Ctrl+? or F1)
+- Empty state widgets for no connections/search results/sessions
+- Color scheme toggle in Settings dialog (System/Light/Dark)
+- CSS animations for connection status
+- Enhanced drag-drop visual feedback
+
 * Thu Jan 02 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.3-0
 - Update to version 0.5.3
 - UI Unification: All dialogs now use consistent 750×500px dimensions

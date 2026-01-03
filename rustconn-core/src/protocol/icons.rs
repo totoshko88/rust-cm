@@ -227,6 +227,12 @@ pub fn detect_provider(command: &str) -> CloudProvider {
         return CloudProvider::Tailscale;
     }
 
+    // Check for Boundary commands BEFORE Azure
+    // (boundary commands may contain "az" as arguments, e.g., "boundary az -")
+    if contains_tool("boundary") || cmd_lower.contains("hashicorp") {
+        return CloudProvider::Boundary;
+    }
+
     // Check for Azure commands - enhanced detection
     // Patterns: "az ", "azure", "bastion"
     if contains_tool("az")
@@ -251,11 +257,6 @@ pub fn detect_provider(command: &str) -> CloudProvider {
     // Check for Teleport commands
     if contains_tool("tsh") || cmd_lower.contains("teleport") {
         return CloudProvider::Teleport;
-    }
-
-    // Check for Boundary commands
-    if contains_tool("boundary") || cmd_lower.contains("hashicorp") {
-        return CloudProvider::Boundary;
     }
 
     CloudProvider::Generic

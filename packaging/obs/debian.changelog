@@ -1,3 +1,26 @@
+rustconn (0.5.5-1) unstable; urgency=medium
+
+  * Update to version 0.5.5
+    - Added Kiro steering rules for development workflow
+    - Rename action in sidebar context menu for connections and groups
+    - Double-click on import source to start import
+    - Double-click on template to create connection from it
+    - Group dropdown in Connection dialog for selecting parent group
+    - Info tab for viewing connection details (replaces popover)
+    - Default alphabetical sorting with drag-drop reordering support
+    - Toast notification system for non-blocking user feedback
+    - User-friendly error display utilities
+    - GUI utility module with safe display access
+    - Form validation module with visual feedback
+    - Accessibility improvements on sidebar and terminal tabs
+    - Keyboard shortcuts help dialog (Ctrl+? or F1)
+    - Empty state widgets for no connections/search results/sessions
+    - Color scheme toggle in Settings dialog (System/Light/Dark)
+    - CSS animations for connection status
+    - Enhanced drag-drop visual feedback
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Sat, 03 Jan 2026 12:00:00 +0200
+
 rustconn (0.5.0-1) unstable; urgency=medium
 
   * Update to version 0.5.0
