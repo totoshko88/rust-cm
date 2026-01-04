@@ -952,6 +952,17 @@ impl MainWindow {
             }
         });
         window.add_action(&password_generator_action);
+
+        // Screenshot capture action
+        let capture_screenshot_action = gio::SimpleAction::new("capture-screenshot", None);
+        let window_weak = window.downgrade();
+        let notebook_clone = self.terminal_notebook.clone();
+        capture_screenshot_action.connect_activate(move |_, _| {
+            if let Some(win) = window_weak.upgrade() {
+                Self::capture_screenshot_simple(&win, &notebook_clone);
+            }
+        });
+        window.add_action(&capture_screenshot_action);
     }
 
     /// Sets up split view actions
@@ -2393,6 +2404,34 @@ impl MainWindow {
             }
         });
     }
+
+    /// Captures a screenshot of the active terminal or session (placeholder implementation)
+    fn capture_screenshot_simple(window: &ApplicationWindow, notebook: &SharedNotebook) {
+        // Check if there's an active session
+        let has_active_session = notebook.get_active_terminal().is_some() 
+            || notebook.notebook().current_page().is_some();
+
+        if !has_active_session {
+            crate::toast::show_toast_on_window(
+                window,
+                "No active session to capture",
+                crate::toast::ToastType::Warning,
+            );
+            return;
+        }
+
+        // For now, show a placeholder message
+        // TODO: Implement actual screenshot capture using GTK4 snapshot API
+        crate::toast::show_toast_on_window(
+            window,
+            "Screenshot capture feature coming soon",
+            crate::toast::ToastType::Info,
+        );
+        
+        tracing::info!("Screenshot capture requested - feature not yet implemented");
+    }
+
+    /// Captures a screenshot of the active terminal or session
 
     /// Edits the selected connection or group
     fn edit_selected_connection(

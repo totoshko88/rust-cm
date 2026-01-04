@@ -577,6 +577,7 @@ fn setup_app_actions(
 
     // View shortcuts
     app.set_accels_for_action("win.toggle-fullscreen", &["F11"]);
+    app.set_accels_for_action("win.capture-screenshot", &["<Control><Shift>s"]);
 }
 
 /// Shows the about dialog
