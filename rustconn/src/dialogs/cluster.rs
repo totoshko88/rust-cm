@@ -4,14 +4,15 @@
 //! with connection selection and broadcast mode configuration.
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
+//! Migrated to libadwaita components for GNOME HIG compliance.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, Label, ListBox, ListBoxRow,
-    Orientation, ScrolledWindow,
+    Box as GtkBox, Button, CheckButton, Entry, Label, ListBox, ListBoxRow, Orientation,
+    ScrolledWindow, Switch,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::cluster::Cluster;
 use rustconn_core::models::Connection;
 use std::cell::RefCell;
@@ -25,7 +26,7 @@ pub type ClusterCallback = Rc<RefCell<Option<Box<dyn Fn(Option<Cluster>)>>>>;
 pub struct ClusterDialog {
     window: adw::Window,
     name_entry: Entry,
-    broadcast_check: CheckButton,
+    broadcast_switch: Switch,
     connections_list: ListBox,
     connection_rows: Rc<RefCell<Vec<ConnectionSelectionRow>>>,
     editing_id: Rc<RefCell<Option<Uuid>>>,
@@ -52,8 +53,8 @@ impl ClusterDialog {
         let window = adw::Window::builder()
             .title("New Cluster")
             .modal(true)
-            .default_width(750)
-            .default_height(500)
+            .default_width(550)
+            .default_height(550)
             .build();
 
         if let Some(p) = parent {
@@ -78,48 +79,66 @@ impl ClusterDialog {
             window_clone.close();
         });
 
-        // Create main content area
+        // Scrollable content with clamp
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
         let content = GtkBox::new(Orientation::Vertical, 12);
         content.set_margin_top(12);
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
 
-        // Use ToolbarView for adw::Window
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
         let main_box = GtkBox::new(Orientation::Vertical, 0);
         main_box.append(&header);
-        main_box.append(&content);
+        main_box.append(&scrolled);
         window.set_content(Some(&main_box));
 
-        // Basic info section
-        let basic_grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-
-        // Name entry
-        let name_label = Label::builder()
-            .label("Cluster Name:")
-            .halign(gtk4::Align::End)
+        // === Cluster Details ===
+        let details_group = adw::PreferencesGroup::builder()
+            .title("Cluster Details")
             .build();
+
+        // Name entry row
         let name_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .placeholder_text("Enter cluster name")
             .build();
-        basic_grid.attach(&name_label, 0, 0, 1, 1);
-        basic_grid.attach(&name_entry, 1, 0, 1, 1);
+        let name_row = adw::ActionRow::builder().title("Name").build();
+        name_row.add_suffix(&name_entry);
+        name_row.set_activatable_widget(Some(&name_entry));
+        details_group.add(&name_row);
 
-        // Broadcast mode checkbox
-        let broadcast_check = CheckButton::builder()
-            .label("Enable broadcast mode by default")
-            .tooltip_text(
-                "When enabled, keyboard input is sent to all cluster sessions simultaneously",
-            )
+        // Broadcast mode switch
+        let broadcast_switch = Switch::builder()
+            .active(false)
+            .valign(gtk4::Align::Center)
             .build();
-        basic_grid.attach(&broadcast_check, 1, 1, 1, 1);
+        let broadcast_row = adw::ActionRow::builder()
+            .title("Broadcast mode")
+            .subtitle("Send keyboard input to all cluster sessions simultaneously")
+            .build();
+        broadcast_row.add_suffix(&broadcast_switch);
+        broadcast_row.set_activatable_widget(Some(&broadcast_switch));
+        details_group.add(&broadcast_row);
 
-        content.append(&basic_grid);
+        content.append(&details_group);
 
         // Connections selection section
-        let (connections_frame, connections_list) = Self::create_connections_section();
-        content.append(&connections_frame);
+        let (connections_group, connections_list) = Self::create_connections_section();
+        content.append(&connections_group);
 
         let on_save: ClusterCallback = Rc::new(RefCell::new(None));
         let connection_rows: Rc<RefCell<Vec<ConnectionSelectionRow>>> =
@@ -130,7 +149,7 @@ impl ClusterDialog {
         let window_clone = window.clone();
         let on_save_clone = on_save.clone();
         let name_entry_clone = name_entry.clone();
-        let broadcast_check_clone = broadcast_check.clone();
+        let broadcast_switch_clone = broadcast_switch.clone();
         let connection_rows_clone = connection_rows.clone();
         let editing_id_clone = editing_id.clone();
         save_btn.connect_clicked(move |_| {
@@ -168,7 +187,7 @@ impl ClusterDialog {
                 Cluster::new(name)
             };
 
-            cluster.broadcast_enabled = broadcast_check_clone.is_active();
+            cluster.broadcast_enabled = broadcast_switch_clone.is_active();
             for conn_id in selected_ids {
                 cluster.add_connection(conn_id);
             }
@@ -182,7 +201,7 @@ impl ClusterDialog {
         Self {
             window,
             name_entry,
-            broadcast_check,
+            broadcast_switch,
             connections_list,
             connection_rows,
             editing_id,
@@ -191,25 +210,17 @@ impl ClusterDialog {
     }
 
     /// Creates the connections selection section
-    fn create_connections_section() -> (Frame, ListBox) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(8);
-        vbox.set_margin_bottom(8);
-        vbox.set_margin_start(8);
-        vbox.set_margin_end(8);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Select connections to include in this cluster:")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
+    fn create_connections_section() -> (adw::PreferencesGroup, ListBox) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Connections")
+            .description("Select connections to include in this cluster")
+            .vexpand(true)
             .build();
-        vbox.append(&info_label);
 
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
-            .min_content_height(250)
+            .min_content_height(200)
             .vexpand(true)
             .build();
 
@@ -219,7 +230,7 @@ impl ClusterDialog {
             .build();
         scrolled.set_child(Some(&connections_list));
 
-        vbox.append(&scrolled);
+        group.add(&scrolled);
 
         // Select all / Deselect all buttons
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
@@ -230,18 +241,9 @@ impl ClusterDialog {
         button_box.append(&select_all_btn);
         button_box.append(&deselect_all_btn);
 
-        vbox.append(&button_box);
+        group.add(&button_box);
 
-        let frame = Frame::builder()
-            .label("Connections")
-            .child(&vbox)
-            .vexpand(true)
-            .build();
-
-        // Wire up select/deselect buttons (will be connected after we have connection_rows)
-        // These are connected in set_connections method
-
-        (frame, connections_list)
+        (group, connections_list)
     }
 
     /// Creates a connection selection row widget
@@ -341,7 +343,7 @@ impl ClusterDialog {
         *self.editing_id.borrow_mut() = Some(cluster.id);
         self.window.set_title(Some("Edit Cluster"));
         self.name_entry.set_text(&cluster.name);
-        self.broadcast_check.set_active(cluster.broadcast_enabled);
+        self.broadcast_switch.set_active(cluster.broadcast_enabled);
 
         // Select the connections that are in the cluster
         for row in self.connection_rows.borrow().iter() {

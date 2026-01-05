@@ -1,18 +1,21 @@
-//! Secrets settings tab
+//! Secrets settings tab using libadwaita components
 
+use adw::prelude::*;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, Orientation, PasswordEntry,
-    ScrolledWindow, StringList, Switch,
+    StringList, Switch,
 };
+use libadwaita as adw;
 use rustconn_core::config::{SecretBackendType, SecretSettings};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Creates the secrets settings tab
+/// Creates the secrets settings page using AdwPreferencesPage
 #[allow(clippy::type_complexity)]
-pub fn create_secrets_tab() -> (
-    ScrolledWindow,
+pub fn create_secrets_page() -> (
+    adw::PreferencesPage,
     DropDown,
     CheckButton,
     Entry,
@@ -24,183 +27,170 @@ pub fn create_secrets_tab() -> (
     GtkBox,
     Entry,
     Button,
-    CheckButton,
-    CheckButton,
+    Switch, // kdbx_use_key_file_check changed to Switch
+    Switch, // kdbx_use_password_check changed to Switch
 ) {
-    let scrolled = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk4::PolicyType::Never)
-        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+    let page = adw::PreferencesPage::builder()
+        .title("Secrets")
+        .icon_name("dialog-password-symbolic")
         .build();
 
-    let main_vbox = GtkBox::new(Orientation::Vertical, 6);
-    main_vbox.set_margin_top(12);
-    main_vbox.set_margin_bottom(12);
-    main_vbox.set_margin_start(12);
-    main_vbox.set_margin_end(12);
-    main_vbox.set_valign(gtk4::Align::Start);
-
-    // === Secret Backend section ===
-    let backend_header = Label::builder()
-        .label("Secret Backend")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
+    // === Secret Backend Group ===
+    let backend_group = adw::PreferencesGroup::builder()
+        .title("Secret Backend")
+        .description("Choose how passwords are stored")
         .build();
-    main_vbox.append(&backend_header);
-
-    let backend_selection_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    backend_selection_hbox.set_margin_start(6);
-    backend_selection_hbox.set_margin_top(6);
-    backend_selection_hbox.append(&Label::new(Some("Backend:")));
 
     let backend_strings = StringList::new(&["KeePassXC", "libsecret", "KDBX File"]);
     let secret_backend_dropdown = DropDown::builder()
         .model(&backend_strings)
         .selected(0)
-        .hexpand(true)
+        .valign(gtk4::Align::Center)
         .build();
-    backend_selection_hbox.append(&secret_backend_dropdown);
-    main_vbox.append(&backend_selection_hbox);
-
-    let enable_fallback =
-        CheckButton::with_label("Enable fallback to libsecret if KeePassXC unavailable");
-    enable_fallback.set_active(true);
-    enable_fallback.set_margin_start(6);
-    main_vbox.append(&enable_fallback);
-
-    // === KeePass Database section ===
-    let kdbx_header = Label::builder()
-        .label("KeePass Database")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
+    let backend_row = adw::ActionRow::builder()
+        .title("Backend")
+        .subtitle("Primary password storage method")
         .build();
-    main_vbox.append(&kdbx_header);
+    backend_row.add_suffix(&secret_backend_dropdown);
+    backend_row.set_activatable_widget(Some(&secret_backend_dropdown));
+    backend_group.add(&backend_row);
 
-    // KeePass Integration switch
-    let kdbx_enabled_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    kdbx_enabled_hbox.set_margin_start(6);
-    kdbx_enabled_hbox.set_margin_top(6);
-    let kdbx_integration_label = Label::new(Some("KeePass Integration"));
-    kdbx_integration_label.set_halign(gtk4::Align::Start);
-    kdbx_integration_label.set_hexpand(true);
+    let enable_fallback = CheckButton::builder()
+        .valign(gtk4::Align::Center)
+        .active(true)
+        .build();
+    let fallback_row = adw::ActionRow::builder()
+        .title("Enable fallback")
+        .subtitle("Use libsecret if KeePassXC unavailable")
+        .activatable_widget(&enable_fallback)
+        .build();
+    fallback_row.add_prefix(&enable_fallback);
+    backend_group.add(&fallback_row);
 
-    let kdbx_enabled_switch = Switch::new();
-    kdbx_enabled_switch.set_halign(gtk4::Align::End);
+    page.add(&backend_group);
 
-    kdbx_enabled_hbox.append(&kdbx_integration_label);
-    kdbx_enabled_hbox.append(&kdbx_enabled_switch);
-    main_vbox.append(&kdbx_enabled_hbox);
+    // === KeePass Database Group ===
+    let kdbx_group = adw::PreferencesGroup::builder()
+        .title("KeePass Database")
+        .description("Configure KDBX file integration")
+        .build();
 
-    // Database path
-    let kdbx_path_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    kdbx_path_hbox.set_margin_start(6);
-    kdbx_path_hbox.set_margin_top(6);
-    let database_label = Label::new(Some("Database:"));
-    database_label.set_size_request(100, -1);
-    database_label.set_halign(gtk4::Align::Start);
+    let kdbx_enabled_switch = Switch::builder().valign(gtk4::Align::Center).build();
+    let kdbx_enabled_row = adw::ActionRow::builder()
+        .title("KeePass Integration")
+        .subtitle("Enable database connection")
+        .build();
+    kdbx_enabled_row.add_suffix(&kdbx_enabled_switch);
+    kdbx_enabled_row.set_activatable_widget(Some(&kdbx_enabled_switch));
+    kdbx_group.add(&kdbx_enabled_row);
 
+    // Database path with browse button
     let kdbx_path_entry = Entry::builder()
         .placeholder_text("Select .kdbx file")
         .hexpand(true)
+        .valign(gtk4::Align::Center)
         .build();
-    let kdbx_browse_button = Button::with_label("Browse");
-
-    kdbx_path_hbox.append(&database_label);
-    kdbx_path_hbox.append(&kdbx_path_entry);
-    kdbx_path_hbox.append(&kdbx_browse_button);
-    main_vbox.append(&kdbx_path_hbox);
-
-    // Authentication methods
-    let auth_label = Label::builder()
-        .label("Authentication:")
-        .halign(gtk4::Align::Start)
-        .margin_top(12)
-        .margin_start(6)
-        .css_classes(["dim-label"])
+    let kdbx_browse_button = Button::builder()
+        .icon_name("folder-open-symbolic")
+        .valign(gtk4::Align::Center)
+        .tooltip_text("Browse for database file")
         .build();
-    main_vbox.append(&auth_label);
+    let kdbx_path_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(6)
+        .valign(gtk4::Align::Center)
+        .build();
+    kdbx_path_box.append(&kdbx_path_entry);
+    kdbx_path_box.append(&kdbx_browse_button);
 
-    let kdbx_use_password_check = CheckButton::with_label("Use password");
-    kdbx_use_password_check.set_active(true);
-    kdbx_use_password_check.set_margin_start(6);
-    main_vbox.append(&kdbx_use_password_check);
+    let kdbx_path_row = adw::ActionRow::builder().title("Database File").build();
+    kdbx_path_row.add_suffix(&kdbx_path_box);
+    kdbx_group.add(&kdbx_path_row);
+
+    page.add(&kdbx_group);
+
+    // === Authentication Group ===
+    let auth_group = adw::PreferencesGroup::builder()
+        .title("Authentication")
+        .description("Database unlock methods")
+        .build();
+
+    // Use password switch
+    let kdbx_use_password_check = Switch::builder()
+        .active(true)
+        .valign(gtk4::Align::Center)
+        .build();
+    let use_password_row = adw::ActionRow::builder().title("Use password").build();
+    use_password_row.add_suffix(&kdbx_use_password_check);
+    use_password_row.set_activatable_widget(Some(&kdbx_use_password_check));
+    auth_group.add(&use_password_row);
 
     // Password entry
-    let kdbx_password_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    kdbx_password_hbox.set_margin_start(6);
-    let password_label = Label::new(Some("Password:"));
-    password_label.set_size_request(100, -1);
-    password_label.set_halign(gtk4::Align::Start);
-
     let kdbx_password_entry = PasswordEntry::builder()
         .placeholder_text("Database password")
         .hexpand(true)
         .show_peek_icon(true)
+        .valign(gtk4::Align::Center)
         .build();
+    let password_row = adw::ActionRow::builder().title("Password").build();
+    password_row.add_suffix(&kdbx_password_entry);
+    password_row.set_activatable_widget(Some(&kdbx_password_entry));
+    auth_group.add(&password_row);
 
-    kdbx_password_hbox.append(&password_label);
-    kdbx_password_hbox.append(&kdbx_password_entry);
-    main_vbox.append(&kdbx_password_hbox);
+    // Save password checkbox
+    let kdbx_save_password_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let save_password_row = adw::ActionRow::builder()
+        .title("Save password")
+        .subtitle("Encrypted storage")
+        .activatable_widget(&kdbx_save_password_check)
+        .build();
+    save_password_row.add_prefix(&kdbx_save_password_check);
+    auth_group.add(&save_password_row);
 
-    let kdbx_save_password_check = CheckButton::with_label("Save password (encrypted)");
-    kdbx_save_password_check.set_margin_start(6);
-    main_vbox.append(&kdbx_save_password_check);
+    // Use key file switch
+    let kdbx_use_key_file_check = Switch::builder().valign(gtk4::Align::Center).build();
+    let use_key_file_row = adw::ActionRow::builder().title("Use key file").build();
+    use_key_file_row.add_suffix(&kdbx_use_key_file_check);
+    use_key_file_row.set_activatable_widget(Some(&kdbx_use_key_file_check));
+    auth_group.add(&use_key_file_row);
 
-    let kdbx_use_key_file_check = CheckButton::with_label("Use key file");
-    kdbx_use_key_file_check.set_margin_start(6);
-    kdbx_use_key_file_check.set_margin_top(6);
-    main_vbox.append(&kdbx_use_key_file_check);
-
-    // Key file entry
-    let kdbx_key_file_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    kdbx_key_file_hbox.set_margin_start(6);
-    let key_file_label = Label::new(Some("Key file:"));
-    key_file_label.set_size_request(100, -1);
-    key_file_label.set_halign(gtk4::Align::Start);
-
+    // Key file path with browse button
     let kdbx_key_file_entry = Entry::builder()
         .placeholder_text("Select .keyx or .key file")
         .hexpand(true)
+        .valign(gtk4::Align::Center)
         .build();
-    let kdbx_key_file_browse_button = Button::with_label("Browse");
+    let kdbx_key_file_browse_button = Button::builder()
+        .icon_name("folder-open-symbolic")
+        .valign(gtk4::Align::Center)
+        .tooltip_text("Browse for key file")
+        .build();
+    let key_file_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(6)
+        .valign(gtk4::Align::Center)
+        .build();
+    key_file_box.append(&kdbx_key_file_entry);
+    key_file_box.append(&kdbx_key_file_browse_button);
 
-    kdbx_key_file_hbox.append(&key_file_label);
-    kdbx_key_file_hbox.append(&kdbx_key_file_entry);
-    kdbx_key_file_hbox.append(&kdbx_key_file_browse_button);
-    main_vbox.append(&kdbx_key_file_hbox);
+    let key_file_row = adw::ActionRow::builder().title("Key File").build();
+    key_file_row.add_suffix(&key_file_box);
+    auth_group.add(&key_file_row);
 
-    // Status display
-    let status_hbox = GtkBox::new(Orientation::Horizontal, 6);
-    status_hbox.set_margin_start(6);
-    status_hbox.set_margin_top(6);
-    let status_icon = Label::new(Some("●"));
-    status_icon.add_css_class("dim-label");
+    page.add(&auth_group);
+
+    // === Status Group ===
+    let status_group = adw::PreferencesGroup::builder().title("Status").build();
 
     let kdbx_status_label = Label::builder()
-        .label("Status: Not connected")
-        .halign(gtk4::Align::Start)
+        .label("Not connected")
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
+        .css_classes(["dim-label"])
         .build();
-
-    status_hbox.append(&status_icon);
-    status_hbox.append(&kdbx_status_label);
-    main_vbox.append(&status_hbox);
-
-    // Setup checkbox functionality
-    setup_checkbox_functionality(
-        &kdbx_use_password_check,
-        &kdbx_use_key_file_check,
-        &kdbx_password_hbox,
-        &kdbx_key_file_hbox,
-    );
-
-    // === KeePassXC Status section ===
-    let keepassxc_header = Label::builder()
-        .label("KeePassXC Status")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
-        .build();
-    main_vbox.append(&keepassxc_header);
+    let status_row = adw::ActionRow::builder().title("Connection Status").build();
+    status_row.add_suffix(&kdbx_status_label);
+    status_group.add(&status_row);
 
     // Check KeePassXC installation
     let keepassxc_installed = std::process::Command::new("which")
@@ -208,76 +198,61 @@ pub fn create_secrets_tab() -> (
         .output()
         .is_ok_and(|output| output.status.success());
 
-    let (status_text, status_icon_text, status_css_class) = if keepassxc_installed {
-        ("Installed", "✓", "success")
+    let (status_text, status_css) = if keepassxc_installed {
+        ("Installed", "success")
     } else {
-        ("Not installed", "✗", "error")
+        ("Not installed", "warning")
     };
 
-    let status_display_hbox = GtkBox::new(Orientation::Horizontal, 6);
-    status_display_hbox.set_margin_start(6);
-    status_display_hbox.set_margin_top(6);
-    let keepassxc_status_icon = Label::new(Some(status_icon_text));
-    keepassxc_status_icon.add_css_class(status_css_class);
-
-    let keepassxc_status_label = Label::builder()
-        .label(&format!("Status: {status_text}"))
-        .halign(gtk4::Align::Start)
+    let keepassxc_label = Label::builder()
+        .label(status_text)
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
+        .css_classes([status_css])
         .build();
+    let keepassxc_row = adw::ActionRow::builder()
+        .title("KeePassXC CLI")
+        .subtitle(if keepassxc_installed {
+            "Ready for use"
+        } else {
+            "Install for database integration"
+        })
+        .build();
+    keepassxc_row.add_suffix(&keepassxc_label);
+    status_group.add(&keepassxc_row);
 
-    status_display_hbox.append(&keepassxc_status_icon);
-    status_display_hbox.append(&keepassxc_status_label);
-    main_vbox.append(&status_display_hbox);
+    page.add(&status_group);
 
-    if keepassxc_installed {
-        if let Ok(output) = std::process::Command::new("keepassxc-cli")
-            .arg("--version")
-            .output()
-        {
-            if let Ok(version_str) = String::from_utf8(output.stdout) {
-                let version = version_str.lines().next().unwrap_or("Unknown version");
-                let version_label = Label::builder()
-                    .label(&format!("Version: {version}"))
-                    .halign(gtk4::Align::Start)
-                    .css_classes(["dim-label"])
-                    .margin_start(6)
-                    .build();
-                main_vbox.append(&version_label);
-            }
-        }
+    // Setup sensitivity connections
+    let password_row_clone = password_row.clone();
+    let kdbx_password_entry_clone = kdbx_password_entry.clone();
+    let kdbx_save_password_check_clone = kdbx_save_password_check.clone();
+    kdbx_use_password_check.connect_state_set(move |_, state| {
+        password_row_clone.set_sensitive(state);
+        kdbx_password_entry_clone.set_sensitive(state);
+        kdbx_save_password_check_clone.set_sensitive(state);
+        glib::Propagation::Proceed
+    });
 
-        if let Ok(output) = std::process::Command::new("which")
-            .arg("keepassxc-cli")
-            .output()
-        {
-            if let Ok(path_str) = String::from_utf8(output.stdout) {
-                let path = path_str.trim();
-                let path_label = Label::builder()
-                    .label(&format!("Path: {path}"))
-                    .halign(gtk4::Align::Start)
-                    .css_classes(["dim-label"])
-                    .margin_start(6)
-                    .build();
-                main_vbox.append(&path_label);
-            }
-        }
-    } else {
-        let help_label = Label::builder()
-            .label("Install KeePassXC package for database integration")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
-            .wrap(true)
-            .margin_start(6)
-            .build();
-        main_vbox.append(&help_label);
-    }
+    let key_file_row_clone = key_file_row.clone();
+    let kdbx_key_file_entry_clone = kdbx_key_file_entry.clone();
+    let kdbx_key_file_browse_button_clone = kdbx_key_file_browse_button.clone();
+    kdbx_use_key_file_check.connect_state_set(move |_, state| {
+        key_file_row_clone.set_sensitive(state);
+        kdbx_key_file_entry_clone.set_sensitive(state);
+        kdbx_key_file_browse_button_clone.set_sensitive(state);
+        glib::Propagation::Proceed
+    });
 
-    scrolled.set_child(Some(&main_vbox));
+    // Initial sensitivity
+    key_file_row.set_sensitive(false);
+    kdbx_key_file_entry.set_sensitive(false);
+    kdbx_key_file_browse_button.set_sensitive(false);
 
     let keepassxc_status_container = GtkBox::new(Orientation::Vertical, 6);
 
     (
-        scrolled,
+        page,
         secret_backend_dropdown,
         enable_fallback,
         kdbx_path_entry,
@@ -294,28 +269,6 @@ pub fn create_secrets_tab() -> (
     )
 }
 
-/// Sets up checkbox functionality to enable/disable related fields
-fn setup_checkbox_functionality(
-    password_check: &CheckButton,
-    key_file_check: &CheckButton,
-    password_hbox: &GtkBox,
-    key_file_hbox: &GtkBox,
-) {
-    let password_hbox_clone = password_hbox.clone();
-    let key_file_hbox_clone = key_file_hbox.clone();
-
-    password_check.connect_toggled(move |check| {
-        password_hbox_clone.set_sensitive(check.is_active());
-    });
-
-    key_file_check.connect_toggled(move |check| {
-        key_file_hbox_clone.set_sensitive(check.is_active());
-    });
-
-    password_hbox.set_sensitive(password_check.is_active());
-    key_file_hbox.set_sensitive(key_file_check.is_active());
-}
-
 /// Loads secret settings into UI controls
 #[allow(clippy::too_many_arguments)]
 pub fn load_secret_settings(
@@ -328,8 +281,8 @@ pub fn load_secret_settings(
     kdbx_status_label: &Label,
     _keepassxc_status_container: &GtkBox,
     kdbx_key_file_entry: &Entry,
-    kdbx_use_key_file_check: &CheckButton,
-    kdbx_use_password_check: &CheckButton,
+    kdbx_use_key_file_check: &Switch,
+    kdbx_use_password_check: &Switch,
     settings: &SecretSettings,
 ) {
     let backend_index = match settings.preferred_backend {
@@ -363,7 +316,7 @@ pub fn load_secret_settings(
         "Disabled"
     };
 
-    kdbx_status_label.set_text(&format!("Status: {status_text}"));
+    kdbx_status_label.set_text(status_text);
 
     kdbx_status_label.remove_css_class("success");
     kdbx_status_label.remove_css_class("warning");
@@ -392,8 +345,8 @@ pub fn collect_secret_settings(
     kdbx_enabled_switch: &Switch,
     kdbx_save_password_check: &CheckButton,
     kdbx_key_file_entry: &Entry,
-    kdbx_use_key_file_check: &CheckButton,
-    kdbx_use_password_check: &CheckButton,
+    kdbx_use_key_file_check: &Switch,
+    kdbx_use_password_check: &Switch,
     settings: &Rc<RefCell<rustconn_core::config::AppSettings>>,
 ) -> SecretSettings {
     let preferred_backend = match secret_backend_dropdown.selected() {

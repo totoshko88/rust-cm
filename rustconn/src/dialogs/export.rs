@@ -6,13 +6,13 @@
 //!
 //! Requirements: 3.1, 4.1, 5.1, 6.1
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, Label,
-    Orientation, ProgressBar, ScrolledWindow, Separator, Spinner, Stack, StringList,
+    Box as GtkBox, Button, DropDown, Entry, FileDialog, Frame, Grid, Label, Orientation,
+    ProgressBar, ScrolledWindow, Separator, Spinner, Stack, StringList, Switch,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::export::{
     AnsibleExporter, AsbruExporter, ExportFormat, ExportOptions, ExportResult, ExportTarget,
     NativeExport, RemminaExporter, RoyalTsExporter, SshConfigExporter,
@@ -36,8 +36,8 @@ pub struct ExportDialog {
     output_path_entry: Entry,
     browse_button: Button,
     // Options
-    include_passwords_check: CheckButton,
-    include_groups_check: CheckButton,
+    include_passwords_switch: Switch,
+    include_groups_switch: Switch,
     // Progress
     progress_bar: ProgressBar,
     progress_label: Label,
@@ -112,8 +112,8 @@ impl ExportDialog {
             format_dropdown,
             output_path_entry,
             browse_button,
-            include_passwords_check,
-            include_groups_check,
+            include_passwords_switch,
+            include_groups_switch,
         ) = Self::create_options_page();
         stack.add_named(&options_page, Some("options"));
 
@@ -137,8 +137,8 @@ impl ExportDialog {
             format_dropdown,
             output_path_entry,
             browse_button,
-            include_passwords_check,
-            include_groups_check,
+            include_passwords_switch,
+            include_groups_switch,
             progress_bar,
             progress_label,
             progress_spinner,
@@ -154,14 +154,7 @@ impl ExportDialog {
 
     /// Creates the options page with format selection and output path
     #[allow(clippy::type_complexity)]
-    fn create_options_page() -> (
-        ScrolledWindow,
-        DropDown,
-        Entry,
-        Button,
-        CheckButton,
-        CheckButton,
-    ) {
+    fn create_options_page() -> (ScrolledWindow, DropDown, Entry, Button, Switch, Switch) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
@@ -259,37 +252,47 @@ impl ExportDialog {
         output_frame.set_child(Some(&output_vbox));
         main_vbox.append(&output_frame);
 
-        // Options section
-        let options_frame = Frame::builder().label("Options").build();
-        let options_vbox = GtkBox::new(Orientation::Vertical, 8);
-        options_vbox.set_margin_top(8);
-        options_vbox.set_margin_bottom(8);
-        options_vbox.set_margin_start(8);
-        options_vbox.set_margin_end(8);
+        // Options section using AdwPreferencesGroup
+        let options_group = adw::PreferencesGroup::builder().title("Options").build();
 
-        let include_passwords_check = CheckButton::builder()
-            .label("Include passwords (if supported by format)")
+        // Include passwords switch
+        let include_passwords_switch = Switch::builder()
             .active(false)
+            .valign(gtk4::Align::Center)
             .build();
+        let passwords_row = adw::ActionRow::builder()
+            .title("Include passwords")
+            .subtitle("If supported by format")
+            .build();
+        passwords_row.add_suffix(&include_passwords_switch);
+        passwords_row.set_activatable_widget(Some(&include_passwords_switch));
+        options_group.add(&passwords_row);
 
-        let include_groups_check = CheckButton::builder()
-            .label("Include group hierarchy")
+        // Include groups switch
+        let include_groups_switch = Switch::builder()
             .active(true)
+            .valign(gtk4::Align::Center)
             .build();
-
-        let security_warning = Label::builder()
-            .label("⚠ Warning: Including passwords may expose sensitive data.\nOnly enable if you trust the destination.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .margin_top(8)
+        let groups_row = adw::ActionRow::builder()
+            .title("Include group hierarchy")
+            .subtitle("Preserve folder structure")
             .build();
+        groups_row.add_suffix(&include_groups_switch);
+        groups_row.set_activatable_widget(Some(&include_groups_switch));
+        options_group.add(&groups_row);
 
-        options_vbox.append(&include_passwords_check);
-        options_vbox.append(&include_groups_check);
-        options_vbox.append(&security_warning);
-        options_frame.set_child(Some(&options_vbox));
-        main_vbox.append(&options_frame);
+        // Security warning row
+        let warning_row = adw::ActionRow::builder()
+            .title("⚠ Security Warning")
+            .subtitle("Including passwords may expose sensitive data. Only enable if you trust the destination.")
+            .build();
+        let warning_icon = gtk4::Image::from_icon_name("dialog-warning-symbolic");
+        warning_icon.set_valign(gtk4::Align::Center);
+        warning_icon.add_css_class("warning");
+        warning_row.add_prefix(&warning_icon);
+        options_group.add(&warning_row);
+
+        main_vbox.append(&options_group);
 
         scrolled.set_child(Some(&main_vbox));
 
@@ -298,8 +301,8 @@ impl ExportDialog {
             format_dropdown,
             output_path_entry,
             browse_button,
-            include_passwords_check,
-            include_groups_check,
+            include_passwords_switch,
+            include_groups_switch,
         )
     }
 
@@ -415,8 +418,8 @@ impl ExportDialog {
     pub fn get_export_options(&self) -> Option<ExportOptions> {
         self.get_output_path().map(|output_path| {
             ExportOptions::new(self.get_selected_format(), output_path)
-                .with_passwords(self.include_passwords_check.is_active())
-                .with_groups(self.include_groups_check.is_active())
+                .with_passwords(self.include_passwords_switch.is_active())
+                .with_groups(self.include_groups_switch.is_active())
         })
     }
 
@@ -685,8 +688,8 @@ impl ExportDialog {
         let stack = self.stack.clone();
         let format_dropdown = self.format_dropdown.clone();
         let output_path_entry = self.output_path_entry.clone();
-        let include_passwords = self.include_passwords_check.clone();
-        let include_groups = self.include_groups_check.clone();
+        let include_passwords = self.include_passwords_switch.clone();
+        let include_groups = self.include_groups_switch.clone();
         let progress_bar = self.progress_bar.clone();
         let progress_label = self.progress_label.clone();
         let progress_spinner = self.progress_spinner.clone();

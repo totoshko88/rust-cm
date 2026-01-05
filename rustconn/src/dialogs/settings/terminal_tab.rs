@@ -1,249 +1,245 @@
-//! Terminal settings tab
+//! Terminal settings tab using libadwaita components
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, CheckButton, DropDown, Entry, Label, Orientation, ScrolledWindow, SpinButton,
-    StringList,
+    Box as GtkBox, CheckButton, DropDown, Entry, Orientation, SpinButton, StringList, ToggleButton,
 };
+use libadwaita as adw;
 use rustconn_core::config::TerminalSettings;
 use rustconn_core::terminal_themes::TerminalTheme;
 
-/// Creates the terminal settings tab
+/// Creates the terminal settings page using AdwPreferencesPage
 #[allow(clippy::type_complexity)]
-pub fn create_terminal_tab() -> (
-    ScrolledWindow,
+pub fn create_terminal_page() -> (
+    adw::PreferencesPage,
     Entry,
     SpinButton,
     SpinButton,
     DropDown,
-    DropDown,
-    DropDown,
+    GtkBox, // cursor shape buttons container
+    GtkBox, // cursor blink buttons container
     CheckButton,
     CheckButton,
     CheckButton,
     CheckButton,
     CheckButton,
 ) {
-    let scrolled = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk4::PolicyType::Never)
-        .vscrollbar_policy(gtk4::PolicyType::Automatic)
-        .vexpand(true)
+    let page = adw::PreferencesPage::builder()
+        .title("Terminal")
+        .icon_name("utilities-terminal-symbolic")
         .build();
 
-    let main_vbox = GtkBox::new(Orientation::Vertical, 6);
-    main_vbox.set_margin_top(12);
-    main_vbox.set_margin_bottom(12);
-    main_vbox.set_margin_start(12);
-    main_vbox.set_margin_end(12);
-    main_vbox.set_valign(gtk4::Align::Start);
+    // === Font Group ===
+    let font_group = adw::PreferencesGroup::builder().title("Font").build();
 
-    // === Font Settings ===
-    let font_header = Label::builder()
-        .label("Font")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
+    // Font family row - simplified title
+    let font_family_entry = Entry::builder()
+        .text("Monospace")
+        .hexpand(true)
+        .valign(gtk4::Align::Center)
         .build();
-    main_vbox.append(&font_header);
+    let font_family_row = adw::ActionRow::builder().title("Family").build();
+    font_family_row.add_suffix(&font_family_entry);
+    font_family_row.set_activatable_widget(Some(&font_family_entry));
+    font_group.add(&font_family_row);
 
-    // Font family row
-    let font_family_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    font_family_hbox.set_margin_start(6);
-    font_family_hbox.set_margin_top(6);
-    let font_family_label = Label::new(Some("Font Family:"));
-    font_family_label.set_size_request(120, -1);
-    font_family_label.set_halign(gtk4::Align::Start);
-
-    let font_family_entry = Entry::builder().hexpand(true).text("Monospace").build();
-
-    font_family_hbox.append(&font_family_label);
-    font_family_hbox.append(&font_family_entry);
-    main_vbox.append(&font_family_hbox);
-
-    // Font size row
-    let font_size_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    font_size_hbox.set_margin_start(6);
-    let font_size_label = Label::new(Some("Font Size:"));
-    font_size_label.set_size_request(120, -1);
-    font_size_label.set_halign(gtk4::Align::Start);
-
+    // Font size row - simplified title
     let size_adj = gtk4::Adjustment::new(12.0, 6.0, 72.0, 1.0, 2.0, 0.0);
     let font_size_spin = SpinButton::builder()
         .adjustment(&size_adj)
         .climb_rate(1.0)
         .digits(0)
+        .valign(gtk4::Align::Center)
         .build();
+    let font_size_row = adw::ActionRow::builder().title("Size").build();
+    font_size_row.add_suffix(&font_size_spin);
+    font_size_row.set_activatable_widget(Some(&font_size_spin));
+    font_group.add(&font_size_row);
 
-    font_size_hbox.append(&font_size_label);
-    font_size_hbox.append(&font_size_spin);
-    main_vbox.append(&font_size_hbox);
+    page.add(&font_group);
 
-    // === Color Theme ===
-    let color_header = Label::builder()
-        .label("Colors")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
-        .build();
-    main_vbox.append(&color_header);
-
-    // Color theme dropdown
-    let theme_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    theme_hbox.set_margin_start(6);
-    theme_hbox.set_margin_top(6);
-    let theme_label = Label::new(Some("Color Theme:"));
-    theme_label.set_size_request(120, -1);
-    theme_label.set_halign(gtk4::Align::Start);
+    // === Colors Group ===
+    let colors_group = adw::PreferencesGroup::builder().title("Colors").build();
 
     let theme_names = TerminalTheme::theme_names();
     let theme_list = StringList::new(&theme_names.iter().map(String::as_str).collect::<Vec<_>>());
     let color_theme_dropdown = DropDown::builder()
         .model(&theme_list)
         .selected(0)
+        .valign(gtk4::Align::Center)
+        .build();
+    let color_theme_row = adw::ActionRow::builder().title("Theme").build();
+    color_theme_row.add_suffix(&color_theme_dropdown);
+    color_theme_row.set_activatable_widget(Some(&color_theme_dropdown));
+    colors_group.add(&color_theme_row);
+
+    page.add(&colors_group);
+
+    // === Cursor Group ===
+    let cursor_group = adw::PreferencesGroup::builder().title("Cursor").build();
+
+    // Cursor shape - toggle buttons
+    let shape_buttons_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(0)
+        .valign(gtk4::Align::Center)
+        .css_classes(["linked"])
+        .width_request(255)
+        .build();
+
+    let shape_block_btn = ToggleButton::builder()
+        .label("Block")
+        .active(true)
+        .hexpand(true)
+        .build();
+    let shape_ibeam_btn = ToggleButton::builder()
+        .label("IBeam")
+        .group(&shape_block_btn)
+        .hexpand(true)
+        .build();
+    let shape_underline_btn = ToggleButton::builder()
+        .label("Underline")
+        .group(&shape_block_btn)
         .hexpand(true)
         .build();
 
-    theme_hbox.append(&theme_label);
-    theme_hbox.append(&color_theme_dropdown);
-    main_vbox.append(&theme_hbox);
+    shape_buttons_box.append(&shape_block_btn);
+    shape_buttons_box.append(&shape_ibeam_btn);
+    shape_buttons_box.append(&shape_underline_btn);
 
-    // === Cursor Settings ===
-    let cursor_header = Label::builder()
-        .label("Cursor")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
+    let cursor_shape_row = adw::ActionRow::builder().title("Shape").build();
+    cursor_shape_row.add_suffix(&shape_buttons_box);
+    cursor_group.add(&cursor_shape_row);
+
+    // Cursor blink - toggle buttons
+    let blink_buttons_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(0)
+        .valign(gtk4::Align::Center)
+        .css_classes(["linked"])
+        .width_request(255)
         .build();
-    main_vbox.append(&cursor_header);
 
-    // Cursor shape
-    let cursor_shape_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    cursor_shape_hbox.set_margin_start(6);
-    cursor_shape_hbox.set_margin_top(6);
-    let cursor_shape_label = Label::new(Some("Cursor Shape:"));
-    cursor_shape_label.set_size_request(120, -1);
-    cursor_shape_label.set_halign(gtk4::Align::Start);
-
-    let cursor_shapes = ["Block", "IBeam", "Underline"];
-    let cursor_shape_list = StringList::new(&cursor_shapes);
-    let cursor_shape_dropdown = DropDown::builder()
-        .model(&cursor_shape_list)
-        .selected(0)
+    let blink_on_btn = ToggleButton::builder()
+        .label("On")
+        .active(true)
+        .hexpand(true)
+        .build();
+    let blink_off_btn = ToggleButton::builder()
+        .label("Off")
+        .group(&blink_on_btn)
+        .hexpand(true)
+        .build();
+    let blink_system_btn = ToggleButton::builder()
+        .label("System")
+        .group(&blink_on_btn)
         .hexpand(true)
         .build();
 
-    cursor_shape_hbox.append(&cursor_shape_label);
-    cursor_shape_hbox.append(&cursor_shape_dropdown);
-    main_vbox.append(&cursor_shape_hbox);
+    blink_buttons_box.append(&blink_on_btn);
+    blink_buttons_box.append(&blink_off_btn);
+    blink_buttons_box.append(&blink_system_btn);
 
-    // Cursor blink
-    let cursor_blink_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    cursor_blink_hbox.set_margin_start(6);
-    let cursor_blink_label = Label::new(Some("Cursor Blink:"));
-    cursor_blink_label.set_size_request(120, -1);
-    cursor_blink_label.set_halign(gtk4::Align::Start);
+    let cursor_blink_row = adw::ActionRow::builder().title("Blink").build();
+    cursor_blink_row.add_suffix(&blink_buttons_box);
+    cursor_group.add(&cursor_blink_row);
 
-    let cursor_blink_modes = ["On", "Off", "System"];
-    let cursor_blink_list = StringList::new(&cursor_blink_modes);
-    let cursor_blink_dropdown = DropDown::builder()
-        .model(&cursor_blink_list)
-        .selected(0)
-        .hexpand(true)
-        .build();
+    page.add(&cursor_group);
 
-    cursor_blink_hbox.append(&cursor_blink_label);
-    cursor_blink_hbox.append(&cursor_blink_dropdown);
-    main_vbox.append(&cursor_blink_hbox);
+    // === Scrolling Group ===
+    let scrolling_group = adw::PreferencesGroup::builder().title("Scrolling").build();
 
-    // === Scrolling Settings ===
-    let scroll_header = Label::builder()
-        .label("Scrolling")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
-        .build();
-    main_vbox.append(&scroll_header);
-
-    // Scrollback lines
-    let scrollback_hbox = GtkBox::new(Orientation::Horizontal, 12);
-    scrollback_hbox.set_margin_start(6);
-    scrollback_hbox.set_margin_top(6);
-    let scrollback_label = Label::new(Some("Scrollback Lines:"));
-    scrollback_label.set_size_request(120, -1);
-    scrollback_label.set_halign(gtk4::Align::Start);
-
+    // Scrollback lines - simplified title
     let scrollback_adj = gtk4::Adjustment::new(10000.0, 100.0, 1_000_000.0, 100.0, 1000.0, 0.0);
     let scrollback_spin = SpinButton::builder()
         .adjustment(&scrollback_adj)
         .climb_rate(100.0)
         .digits(0)
+        .valign(gtk4::Align::Center)
         .build();
-
-    scrollback_hbox.append(&scrollback_label);
-    scrollback_hbox.append(&scrollback_spin);
-    main_vbox.append(&scrollback_hbox);
-
-    // Scroll checkboxes
-    let scroll_checks_box = GtkBox::new(Orientation::Vertical, 4);
-    scroll_checks_box.set_margin_start(6);
-    scroll_checks_box.set_margin_top(6);
-
-    let scroll_on_output_check = CheckButton::builder()
-        .label("Scroll on output")
-        .active(false)
+    let scrollback_row = adw::ActionRow::builder()
+        .title("History")
+        .subtitle("Number of lines to keep in scrollback")
         .build();
-    scroll_checks_box.append(&scroll_on_output_check);
+    scrollback_row.add_suffix(&scrollback_spin);
+    scrollback_row.set_activatable_widget(Some(&scrollback_spin));
+    scrolling_group.add(&scrollback_row);
 
+    // Scroll on output
+    let scroll_on_output_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let scroll_on_output_row = adw::ActionRow::builder()
+        .title("On output")
+        .subtitle("Scroll to bottom when new output appears")
+        .activatable_widget(&scroll_on_output_check)
+        .build();
+    scroll_on_output_row.add_prefix(&scroll_on_output_check);
+    scrolling_group.add(&scroll_on_output_row);
+
+    // Scroll on keystroke
     let scroll_on_keystroke_check = CheckButton::builder()
-        .label("Scroll on keystroke")
         .active(true)
+        .valign(gtk4::Align::Center)
         .build();
-    scroll_checks_box.append(&scroll_on_keystroke_check);
-
-    main_vbox.append(&scroll_checks_box);
-
-    // === Behavior Settings ===
-    let behavior_header = Label::builder()
-        .label("Behavior")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
+    let scroll_on_keystroke_row = adw::ActionRow::builder()
+        .title("On keystroke")
+        .subtitle("Scroll to bottom when typing")
+        .activatable_widget(&scroll_on_keystroke_check)
         .build();
-    main_vbox.append(&behavior_header);
+    scroll_on_keystroke_row.add_prefix(&scroll_on_keystroke_check);
+    scrolling_group.add(&scroll_on_keystroke_row);
 
-    let behavior_checks_box = GtkBox::new(Orientation::Vertical, 4);
-    behavior_checks_box.set_margin_start(6);
-    behavior_checks_box.set_margin_top(6);
+    page.add(&scrolling_group);
 
+    // === Behavior Group ===
+    let behavior_group = adw::PreferencesGroup::builder().title("Behavior").build();
+
+    // Allow hyperlinks
     let allow_hyperlinks_check = CheckButton::builder()
-        .label("Allow hyperlinks")
         .active(true)
+        .valign(gtk4::Align::Center)
         .build();
-    behavior_checks_box.append(&allow_hyperlinks_check);
+    let allow_hyperlinks_row = adw::ActionRow::builder()
+        .title("Hyperlinks")
+        .subtitle("Allow clickable URLs in terminal")
+        .activatable_widget(&allow_hyperlinks_check)
+        .build();
+    allow_hyperlinks_row.add_prefix(&allow_hyperlinks_check);
+    behavior_group.add(&allow_hyperlinks_row);
 
+    // Hide mouse when typing
     let mouse_autohide_check = CheckButton::builder()
-        .label("Hide mouse when typing")
         .active(true)
+        .valign(gtk4::Align::Center)
         .build();
-    behavior_checks_box.append(&mouse_autohide_check);
-
-    let audible_bell_check = CheckButton::builder()
-        .label("Audible bell")
-        .active(false)
+    let mouse_autohide_row = adw::ActionRow::builder()
+        .title("Hide pointer")
+        .subtitle("Hide mouse cursor when typing")
+        .activatable_widget(&mouse_autohide_check)
         .build();
-    behavior_checks_box.append(&audible_bell_check);
+    mouse_autohide_row.add_prefix(&mouse_autohide_check);
+    behavior_group.add(&mouse_autohide_row);
 
-    main_vbox.append(&behavior_checks_box);
+    // Audible bell
+    let audible_bell_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let audible_bell_row = adw::ActionRow::builder()
+        .title("Bell")
+        .subtitle("Play sound on terminal bell")
+        .activatable_widget(&audible_bell_check)
+        .build();
+    audible_bell_row.add_prefix(&audible_bell_check);
+    behavior_group.add(&audible_bell_row);
 
-    scrolled.set_child(Some(&main_vbox));
+    page.add(&behavior_group);
 
     (
-        scrolled,
+        page,
         font_family_entry,
         font_size_spin,
         scrollback_spin,
         color_theme_dropdown,
-        cursor_shape_dropdown,
-        cursor_blink_dropdown,
+        shape_buttons_box,
+        blink_buttons_box,
         scroll_on_output_check,
         scroll_on_keystroke_check,
         allow_hyperlinks_check,
@@ -259,8 +255,8 @@ pub fn load_terminal_settings(
     font_size_spin: &SpinButton,
     scrollback_spin: &SpinButton,
     color_theme_dropdown: &DropDown,
-    cursor_shape_dropdown: &DropDown,
-    cursor_blink_dropdown: &DropDown,
+    cursor_shape_buttons: &GtkBox,
+    cursor_blink_buttons: &GtkBox,
     scroll_on_output_check: &CheckButton,
     scroll_on_keystroke_check: &CheckButton,
     allow_hyperlinks_check: &CheckButton,
@@ -281,29 +277,63 @@ pub fn load_terminal_settings(
         color_theme_dropdown.set_selected(index as u32);
     }
 
-    // Set cursor shape
+    // Set cursor shape via toggle buttons
     let cursor_shape_index = match settings.cursor_shape.as_str() {
         "Block" => 0,
         "IBeam" => 1,
         "Underline" => 2,
         _ => 0,
     };
-    cursor_shape_dropdown.set_selected(cursor_shape_index);
+    if let Some(btn) = get_toggle_button_at_index(cursor_shape_buttons, cursor_shape_index) {
+        btn.set_active(true);
+    }
 
-    // Set cursor blink
+    // Set cursor blink via toggle buttons
     let cursor_blink_index = match settings.cursor_blink.as_str() {
         "On" => 0,
         "Off" => 1,
         "System" => 2,
         _ => 0,
     };
-    cursor_blink_dropdown.set_selected(cursor_blink_index);
+    if let Some(btn) = get_toggle_button_at_index(cursor_blink_buttons, cursor_blink_index) {
+        btn.set_active(true);
+    }
 
     scroll_on_output_check.set_active(settings.scroll_on_output);
     scroll_on_keystroke_check.set_active(settings.scroll_on_keystroke);
     allow_hyperlinks_check.set_active(settings.allow_hyperlinks);
     mouse_autohide_check.set_active(settings.mouse_autohide);
     audible_bell_check.set_active(settings.audible_bell);
+}
+
+/// Gets the toggle button at a specific index in a button box
+fn get_toggle_button_at_index(button_box: &GtkBox, index: usize) -> Option<ToggleButton> {
+    let mut child = button_box.first_child();
+    let mut i = 0;
+    while let Some(widget) = child {
+        if i == index {
+            return widget.downcast::<ToggleButton>().ok();
+        }
+        child = widget.next_sibling();
+        i += 1;
+    }
+    None
+}
+
+/// Gets the index of the active toggle button in a button box
+fn get_active_toggle_index(button_box: &GtkBox) -> usize {
+    let mut child = button_box.first_child();
+    let mut i = 0;
+    while let Some(widget) = child {
+        if let Ok(btn) = widget.clone().downcast::<ToggleButton>() {
+            if btn.is_active() {
+                return i;
+            }
+        }
+        child = widget.next_sibling();
+        i += 1;
+    }
+    0
 }
 
 /// Collects terminal settings from UI controls
@@ -313,8 +343,8 @@ pub fn collect_terminal_settings(
     font_size_spin: &SpinButton,
     scrollback_spin: &SpinButton,
     color_theme_dropdown: &DropDown,
-    cursor_shape_dropdown: &DropDown,
-    cursor_blink_dropdown: &DropDown,
+    cursor_shape_buttons: &GtkBox,
+    cursor_blink_buttons: &GtkBox,
     scroll_on_output_check: &CheckButton,
     scroll_on_keystroke_check: &CheckButton,
     allow_hyperlinks_check: &CheckButton,
@@ -329,13 +359,13 @@ pub fn collect_terminal_settings(
 
     let cursor_shapes = ["Block", "IBeam", "Underline"];
     let cursor_shape = cursor_shapes
-        .get(cursor_shape_dropdown.selected() as usize)
+        .get(get_active_toggle_index(cursor_shape_buttons))
         .unwrap_or(&"Block")
         .to_string();
 
     let cursor_blink_modes = ["On", "Off", "System"];
     let cursor_blink_mode = cursor_blink_modes
-        .get(cursor_blink_dropdown.selected() as usize)
+        .get(get_active_toggle_index(cursor_blink_buttons))
         .unwrap_or(&"On")
         .to_string();
 

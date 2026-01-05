@@ -2,13 +2,13 @@
 //!
 //! Provides dialogs for creating, opening, saving, and managing documents.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, FileDialog, FileFilter, Label,
-    Orientation, PasswordEntry,
+    Box as GtkBox, Button, CheckButton, Entry, FileDialog, FileFilter, Label, Orientation,
+    PasswordEntry,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;

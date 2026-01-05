@@ -9,14 +9,14 @@
 // OCI Bastion has target_id and target_ip fields which are semantically different
 #![allow(clippy::similar_names)]
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, Label,
-    ListBox, ListBoxRow, Notebook, Orientation, PasswordEntry, ScrolledWindow, SpinButton, Stack,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, Label, ListBox,
+    ListBoxRow, Notebook, Orientation, PasswordEntry, ScrolledWindow, SpinButton, Stack,
     StringList, TextView, WrapMode,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::automation::{ConnectionTask, ExpectRule, TaskCondition};
 use rustconn_core::models::{
     AwsSsmConfig, AzureBastionConfig, AzureSshConfig, BoundaryConfig, CloudflareAccessConfig,
@@ -284,7 +284,13 @@ impl ConnectionDialog {
             save_to_keepass_button,
             group_dropdown,
         ) = Self::create_basic_tab();
-        notebook.append_page(&basic_grid, Some(&Label::new(Some("Basic"))));
+        // Wrap basic grid in ScrolledWindow for consistent styling
+        let basic_scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .child(&basic_grid)
+            .build();
+        notebook.append_page(&basic_scrolled, Some(&Label::new(Some("Basic"))));
 
         // === Protocol-specific Tab ===
         let protocol_stack = Self::create_protocol_stack(&notebook);
@@ -904,19 +910,12 @@ impl ConnectionDialog {
 
     /// Creates the notebook widget and adds it to the window
     fn create_notebook(window: &adw::Window, header: &adw::HeaderBar) -> Notebook {
-        let content = GtkBox::new(Orientation::Vertical, 12);
-        content.set_margin_top(12);
-        content.set_margin_bottom(12);
-        content.set_margin_start(12);
-        content.set_margin_end(12);
-
         let notebook = Notebook::new();
-        content.append(&notebook);
 
         // Use GtkBox with HeaderBar for adw::Window (libadwaita 0.8)
         let main_box = GtkBox::new(Orientation::Vertical, 0);
         main_box.append(header);
-        main_box.append(&content);
+        main_box.append(&notebook);
         window.set_content(Some(&main_box));
 
         notebook
@@ -1328,51 +1327,9 @@ impl ConnectionDialog {
         });
     }
 
-    /// Creates a labeled entry row in a grid
-    fn create_labeled_entry(
-        grid: &Grid,
-        row: &mut i32,
-        label: &str,
-        placeholder: &str,
-    ) -> (Entry, Label) {
-        let label_widget = Label::builder()
-            .label(label)
-            .halign(gtk4::Align::End)
-            .build();
-        let entry = Entry::builder()
-            .hexpand(true)
-            .placeholder_text(placeholder)
-            .build();
-        grid.attach(&label_widget, 0, *row, 1, 1);
-        grid.attach(&entry, 1, *row, 2, 1);
-        *row += 1;
-        (entry, label_widget)
-    }
-
-    /// Creates a labeled dropdown row in a grid
-    fn create_labeled_dropdown(
-        grid: &Grid,
-        row: &mut i32,
-        label: &str,
-        options: &[&str],
-        default: u32,
-    ) -> (DropDown, Label) {
-        let label_widget = Label::builder()
-            .label(label)
-            .halign(gtk4::Align::End)
-            .build();
-        let list = StringList::new(options);
-        let dropdown = DropDown::new(Some(list), gtk4::Expression::NONE);
-        dropdown.set_selected(default);
-        grid.attach(&label_widget, 0, *row, 1, 1);
-        grid.attach(&dropdown, 1, *row, 2, 1);
-        *row += 1;
-        (dropdown, label_widget)
-    }
-
     #[allow(clippy::type_complexity)]
     fn create_basic_tab() -> (
-        Grid,
+        GtkBox,
         Entry,
         TextView,
         Entry,
@@ -1392,60 +1349,151 @@ impl ConnectionDialog {
         Button,
         DropDown,
     ) {
-        let grid = Grid::builder()
-            .row_spacing(8)
-            .column_spacing(12)
-            .margin_top(12)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
+        let vbox = GtkBox::new(Orientation::Vertical, 8);
+        vbox.set_margin_top(12);
+        vbox.set_margin_bottom(12);
+        vbox.set_margin_start(12);
+        vbox.set_margin_end(12);
+
+        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
+        vbox.append(&grid);
 
         let mut row = 0;
 
         // Name
-        let (name_entry, _) =
-            Self::create_labeled_entry(&grid, &mut row, "Name:", "Connection name");
+        let name_label = Label::builder()
+            .label("Name:")
+            .halign(gtk4::Align::End)
+            .build();
+        let name_entry = Entry::builder()
+            .placeholder_text("Connection name")
+            .hexpand(true)
+            .build();
+        grid.attach(&name_label, 0, row, 1, 1);
+        grid.attach(&name_entry, 1, row, 2, 1);
+        row += 1;
 
         // Protocol
-        let (protocol_dropdown, _) = Self::create_labeled_dropdown(
-            &grid,
-            &mut row,
-            "Protocol:",
-            &["SSH", "RDP", "VNC", "SPICE", "Zero Trust"],
-            0,
-        );
+        let protocol_label_grid = Label::builder()
+            .label("Protocol:")
+            .halign(gtk4::Align::End)
+            .build();
+        let protocol_list = StringList::new(&["SSH", "RDP", "VNC", "SPICE", "Zero Trust"]);
+        let protocol_dropdown = DropDown::builder().model(&protocol_list).build();
+        protocol_dropdown.set_selected(0);
+        grid.attach(&protocol_label_grid, 0, row, 1, 1);
+        grid.attach(&protocol_dropdown, 1, row, 2, 1);
+        row += 1;
 
         // Host
-        let (host_entry, host_label) =
-            Self::create_labeled_entry(&grid, &mut row, "Host:", "hostname or IP");
+        let host_label = Label::builder()
+            .label("Host:")
+            .halign(gtk4::Align::End)
+            .build();
+        let host_entry = Entry::builder()
+            .placeholder_text("hostname or IP")
+            .hexpand(true)
+            .build();
+        grid.attach(&host_label, 0, row, 1, 1);
+        grid.attach(&host_entry, 1, row, 2, 1);
+        row += 1;
 
-        // Port
-        let (port_spin, port_label) = Self::create_port_spin(&grid, &mut row);
+        // Port with description
+        let port_label = Label::builder()
+            .label("Port:")
+            .halign(gtk4::Align::End)
+            .build();
+        let port_adj = gtk4::Adjustment::new(22.0, 1.0, 65535.0, 1.0, 10.0, 0.0);
+        let port_spin = SpinButton::builder()
+            .adjustment(&port_adj)
+            .climb_rate(1.0)
+            .digits(0)
+            .build();
+        let port_desc = Label::builder()
+            .label("SSH, Well-Known")
+            .css_classes(["dim-label"])
+            .build();
+        let port_box = GtkBox::new(Orientation::Horizontal, 8);
+        port_box.append(&port_spin);
+        port_box.append(&port_desc);
+        grid.attach(&port_label, 0, row, 1, 1);
+        grid.attach(&port_box, 1, row, 2, 1);
+        row += 1;
+
+        // Update port description when port changes
+        let port_desc_clone = port_desc.clone();
+        port_spin.connect_value_changed(move |spin| {
+            #[allow(clippy::cast_sign_loss)]
+            let port = spin.value() as u16;
+            let desc = Self::get_port_description(port);
+            port_desc_clone.set_label(&desc);
+        });
 
         // Username
-        let (username_entry, username_label) = Self::create_username_entry(&grid, &mut row);
+        let username_label = Label::builder()
+            .label("Username:")
+            .halign(gtk4::Align::End)
+            .build();
+        let current_user = std::env::var("USER").unwrap_or_default();
+        let username_entry = Entry::builder()
+            .placeholder_text(&format!("(default: {current_user})"))
+            .hexpand(true)
+            .build();
+        grid.attach(&username_label, 0, row, 1, 1);
+        grid.attach(&username_entry, 1, row, 2, 1);
+        row += 1;
 
         // Password Source
-        let (password_source_dropdown, password_source_label) = Self::create_labeled_dropdown(
-            &grid,
-            &mut row,
-            "Password:",
-            &["Prompt", "Stored", "KeePass", "Keyring", "None"],
-            0,
-        );
+        let password_source_label = Label::builder()
+            .label("Password:")
+            .halign(gtk4::Align::End)
+            .build();
+        let password_source_list =
+            StringList::new(&["Prompt", "Stored", "KeePass", "Keyring", "None"]);
+        let password_source_dropdown = DropDown::builder().model(&password_source_list).build();
+        password_source_dropdown.set_selected(0);
+        grid.attach(&password_source_label, 0, row, 1, 1);
+        grid.attach(&password_source_dropdown, 1, row, 2, 1);
+        row += 1;
 
-        // Password entry with Load/Save to KeePass buttons
-        let (
-            password_entry,
-            load_from_keepass_button,
-            save_to_keepass_button,
-            password_entry_label,
-        ) = Self::create_password_entry_row(&grid, &mut row);
+        // Password Value with KeePass buttons
+        let password_entry_label = Label::builder()
+            .label("Password Value:")
+            .halign(gtk4::Align::End)
+            .build();
+        let password_entry = Entry::builder()
+            .placeholder_text("Enter password (for Stored or KeePass)")
+            .hexpand(true)
+            .visibility(false)
+            .build();
+        let save_to_keepass_button = Button::builder()
+            .icon_name("document-save-symbolic")
+            .tooltip_text("Save to KeePass")
+            .build();
+        let load_from_keepass_button = Button::builder()
+            .icon_name("document-open-symbolic")
+            .tooltip_text("Load from KeePass")
+            .build();
+        let password_box = GtkBox::new(Orientation::Horizontal, 4);
+        password_box.append(&password_entry);
+        password_box.append(&save_to_keepass_button);
+        password_box.append(&load_from_keepass_button);
+        grid.attach(&password_entry_label, 0, row, 1, 1);
+        grid.attach(&password_box, 1, row, 2, 1);
+        row += 1;
 
         // Tags
-        let (tags_entry, tags_label) =
-            Self::create_labeled_entry(&grid, &mut row, "Tags:", "tag1, tag2, ...");
+        let tags_label = Label::builder()
+            .label("Tags:")
+            .halign(gtk4::Align::End)
+            .build();
+        let tags_entry = Entry::builder()
+            .placeholder_text("tag1, tag2, ...")
+            .hexpand(true)
+            .build();
+        grid.attach(&tags_label, 0, row, 1, 1);
+        grid.attach(&tags_entry, 1, row, 2, 1);
+        row += 1;
 
         // Group
         let group_label = Label::builder()
@@ -1453,12 +1501,12 @@ impl ConnectionDialog {
             .halign(gtk4::Align::End)
             .build();
         let group_list = StringList::new(&["(Root)"]);
-        let group_dropdown = DropDown::builder().model(&group_list).hexpand(true).build();
+        let group_dropdown = DropDown::builder().model(&group_list).build();
         grid.attach(&group_label, 0, row, 1, 1);
         grid.attach(&group_dropdown, 1, row, 2, 1);
         row += 1;
 
-        // Description (multiline TextView, 6 lines height, after Group)
+        // Description
         let desc_label = Label::builder()
             .label("Description:")
             .halign(gtk4::Align::End)
@@ -1469,26 +1517,23 @@ impl ConnectionDialog {
             .vexpand(false)
             .wrap_mode(WrapMode::Word)
             .accepts_tab(false)
-            .top_margin(6)
-            .bottom_margin(6)
-            .left_margin(6)
-            .right_margin(6)
+            .top_margin(8)
+            .bottom_margin(8)
+            .left_margin(8)
+            .right_margin(8)
             .build();
-        // Match Entry widget styling
-        description_view.add_css_class("view");
         let desc_scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
-            .min_content_height(120) // ~6 lines
+            .min_content_height(60)
             .hexpand(true)
             .child(&description_view)
             .build();
-        desc_scrolled.add_css_class("frame");
         grid.attach(&desc_label, 0, row, 1, 1);
         grid.attach(&desc_scrolled, 1, row, 2, 1);
 
         (
-            grid,
+            vbox,
             name_entry,
             description_view,
             host_entry,
@@ -1508,48 +1553,6 @@ impl ConnectionDialog {
             save_to_keepass_button,
             group_dropdown,
         )
-    }
-
-    /// Creates the port spin button row with port range description
-    fn create_port_spin(grid: &Grid, row: &mut i32) -> (SpinButton, Label) {
-        let port_label = Label::builder()
-            .label("Port:")
-            .halign(gtk4::Align::End)
-            .build();
-        let port_adj = gtk4::Adjustment::new(22.0, 1.0, 65535.0, 1.0, 10.0, 0.0);
-        let port_spin = SpinButton::builder()
-            .adjustment(&port_adj)
-            .climb_rate(1.0)
-            .digits(0)
-            .width_chars(6)
-            .build();
-
-        // Port description label
-        let port_desc = Label::builder()
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
-            .build();
-
-        // Update description when port changes
-        let port_desc_clone = port_desc.clone();
-        port_spin.connect_value_changed(move |spin| {
-            #[allow(clippy::cast_sign_loss)]
-            let port = spin.value() as u16;
-            let desc = Self::get_port_description(port);
-            port_desc_clone.set_label(&desc);
-        });
-
-        // Set initial description
-        port_desc.set_label(&Self::get_port_description(22));
-
-        let port_box = GtkBox::new(Orientation::Horizontal, 8);
-        port_box.append(&port_spin);
-        port_box.append(&port_desc);
-
-        grid.attach(&port_label, 0, *row, 1, 1);
-        grid.attach(&port_box, 1, *row, 2, 1);
-        *row += 1;
-        (port_spin, port_label)
     }
 
     /// Returns a description for the given port number
@@ -1595,65 +1598,6 @@ impl ConnectionDialog {
         } else {
             format!("{service}, {range}")
         }
-    }
-
-    /// Creates the username entry with current user as placeholder
-    fn create_username_entry(grid: &Grid, row: &mut i32) -> (Entry, Label) {
-        let username_label = Label::builder()
-            .label("Username:")
-            .halign(gtk4::Align::End)
-            .build();
-        let current_user = std::env::var("USER").unwrap_or_default();
-        let placeholder = if current_user.is_empty() {
-            "(optional)".to_string()
-        } else {
-            format!("(default: {current_user})")
-        };
-        let username_entry = Entry::builder()
-            .hexpand(true)
-            .placeholder_text(&placeholder)
-            .build();
-        grid.attach(&username_label, 0, *row, 1, 1);
-        grid.attach(&username_entry, 1, *row, 2, 1);
-        *row += 1;
-        (username_entry, username_label)
-    }
-
-    /// Creates the password entry row with Load/Save `KeePass` buttons
-    fn create_password_entry_row(grid: &Grid, row: &mut i32) -> (Entry, Button, Button, Label) {
-        let password_entry_label = Label::builder()
-            .label("Password Value:")
-            .halign(gtk4::Align::End)
-            .build();
-        let password_hbox = GtkBox::new(Orientation::Horizontal, 4);
-        let password_entry = Entry::builder()
-            .hexpand(true)
-            .placeholder_text("Enter password (for Stored or KeePass)")
-            .visibility(false)
-            .input_purpose(gtk4::InputPurpose::Password)
-            .build();
-        let load_from_keepass_button = Button::builder()
-            .icon_name("document-open-symbolic")
-            .tooltip_text("Load password from KeePass database")
-            .sensitive(false)
-            .build();
-        let save_to_keepass_button = Button::builder()
-            .icon_name("document-save-symbolic")
-            .tooltip_text("Save password to KeePass database")
-            .sensitive(false)
-            .build();
-        password_hbox.append(&password_entry);
-        password_hbox.append(&load_from_keepass_button);
-        password_hbox.append(&save_to_keepass_button);
-        grid.attach(&password_entry_label, 0, *row, 1, 1);
-        grid.attach(&password_hbox, 1, *row, 2, 1);
-        *row += 1;
-        (
-            password_entry,
-            load_from_keepass_button,
-            save_to_keepass_button,
-            password_entry_label,
-        )
     }
 
     #[allow(clippy::type_complexity)]

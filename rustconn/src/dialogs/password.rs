@@ -3,13 +3,11 @@
 //! Provides a simple dialog for entering credentials when connecting
 //! to RDP/VNC sessions that require authentication.
 
+use adw::prelude::*;
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, Grid, Label, Orientation, Spinner,
-};
+use gtk4::{Box as GtkBox, Button, CheckButton, Entry, Grid, Label, Orientation, Spinner};
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::CancellationToken;
 use std::cell::RefCell;
 use std::rc::Rc;

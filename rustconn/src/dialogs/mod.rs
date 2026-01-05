@@ -1,5 +1,6 @@
 //! Dialog windows for `RustConn`
 
+mod adw_dialogs;
 mod cluster;
 mod connection;
 mod document;
@@ -17,6 +18,8 @@ mod statistics;
 mod template;
 mod terminal_search;
 mod variables;
+
+pub use adw_dialogs::*;
 
 pub use cluster::{ClusterCallback, ClusterDialog, ClusterListDialog};
 pub use connection::ConnectionDialog;

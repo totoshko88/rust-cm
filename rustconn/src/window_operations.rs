@@ -205,11 +205,7 @@ pub fn copy_selected_connection(
 }
 
 /// Pastes a connection from the internal clipboard
-pub fn paste_connection(
-    window: &gtk4::Window,
-    state: &SharedAppState,
-    sidebar: &SharedSidebar,
-) {
+pub fn paste_connection(window: &gtk4::Window, state: &SharedAppState, sidebar: &SharedSidebar) {
     // Check if clipboard has content
     {
         let state_ref = state.borrow();

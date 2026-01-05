@@ -1,29 +1,30 @@
-//! Clients detection tab
+//! Clients detection tab using libadwaita components
 
-use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Label, Orientation, ScrolledWindow};
+use adw::prelude::*;
+use gtk4::Label;
+use libadwaita as adw;
 use rustconn_core::protocol::ClientDetectionResult;
 use std::path::PathBuf;
 
-/// Creates the clients detection tab
-pub fn create_clients_tab() -> ScrolledWindow {
-    let scrolled = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk4::PolicyType::Never)
-        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+/// Creates the clients detection page using AdwPreferencesPage
+pub fn create_clients_page() -> adw::PreferencesPage {
+    let page = adw::PreferencesPage::builder()
+        .title("Clients")
+        .icon_name("preferences-system-symbolic")
         .build();
-
-    let main_vbox = GtkBox::new(Orientation::Vertical, 6);
-    main_vbox.set_margin_top(12);
-    main_vbox.set_margin_bottom(12);
-    main_vbox.set_margin_start(12);
-    main_vbox.set_margin_end(12);
-    main_vbox.set_valign(gtk4::Align::Start);
 
     // Detect all clients
     let detection_result = ClientDetectionResult::detect_all();
 
+    // === Core Clients Group ===
+    let core_group = adw::PreferencesGroup::builder()
+        .title("Core Clients")
+        .description("Essential connection clients")
+        .build();
+
     // SSH Client
-    let ssh_section = create_protocol_section(
+    add_client_row(
+        &core_group,
         "SSH Client",
         &detection_result.ssh.name,
         detection_result.ssh.installed,
@@ -38,7 +39,8 @@ pub fn create_clients_tab() -> ScrolledWindow {
     );
 
     // RDP Client
-    let rdp_section = create_protocol_section(
+    add_client_row(
+        &core_group,
         "RDP Client",
         &detection_result.rdp.name,
         detection_result.rdp.installed,
@@ -53,7 +55,8 @@ pub fn create_clients_tab() -> ScrolledWindow {
     );
 
     // VNC Client
-    let vnc_section = create_protocol_section(
+    add_client_row(
+        &core_group,
         "VNC Client",
         &detection_result.vnc.name,
         detection_result.vnc.installed,
@@ -68,191 +71,148 @@ pub fn create_clients_tab() -> ScrolledWindow {
     );
 
     // SPICE Client
-    let spice_section = create_spice_section();
+    let spice_installed = std::process::Command::new("which")
+        .arg("remote-viewer")
+        .output()
+        .is_ok_and(|output| output.status.success());
 
-    // Zero Trust Clients
-    let zerotrust_section = create_zerotrust_section();
+    let spice_path = if spice_installed {
+        std::process::Command::new("which")
+            .arg("remote-viewer")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+    } else {
+        None
+    };
 
-    main_vbox.append(&ssh_section);
-    main_vbox.append(&rdp_section);
-    main_vbox.append(&vnc_section);
-    main_vbox.append(&spice_section);
-    main_vbox.append(&zerotrust_section);
+    let spice_version = spice_path
+        .as_ref()
+        .and_then(|p| get_version(std::path::Path::new(p), "--version"));
 
-    scrolled.set_child(Some(&main_vbox));
-    scrolled
+    add_client_row(
+        &core_group,
+        "SPICE Client",
+        "remote-viewer",
+        spice_installed,
+        spice_version.as_deref(),
+        spice_path.as_deref(),
+        Some("Install virt-viewer package"),
+    );
+
+    page.add(&core_group);
+
+    // === Zero Trust Clients Group ===
+    let zerotrust_group = adw::PreferencesGroup::builder()
+        .title("Zero Trust Clients")
+        .description("Cloud provider CLI tools")
+        .build();
+
+    let zerotrust_clients = [
+        (
+            "AWS CLI (SSM)",
+            "aws",
+            "--version",
+            "Install awscli package",
+        ),
+        (
+            "Google Cloud CLI",
+            "gcloud",
+            "--version",
+            "Install google-cloud-cli package",
+        ),
+        ("Azure CLI", "az", "--version", "Install azure-cli package"),
+        ("OCI CLI", "oci", "--version", "Install oci-cli package"),
+        (
+            "Cloudflare CLI",
+            "cloudflared",
+            "--version",
+            "Install cloudflared package",
+        ),
+        (
+            "Teleport CLI",
+            "teleport",
+            "version",
+            "Install teleport package",
+        ),
+        (
+            "Tailscale CLI",
+            "tailscale",
+            "--version",
+            "Install tailscale package",
+        ),
+        ("Boundary CLI", "boundary", "-v", "Install boundary package"),
+    ];
+
+    for (name, command, version_arg, install_hint) in &zerotrust_clients {
+        let command_path = find_command(command);
+        let installed = command_path.is_some();
+
+        let version = command_path
+            .as_ref()
+            .and_then(|p| get_version(p, version_arg));
+        let path_str = command_path.as_ref().map(|p| p.display().to_string());
+
+        add_client_row(
+            &zerotrust_group,
+            name,
+            command,
+            installed,
+            version.as_deref(),
+            path_str.as_deref(),
+            Some(install_hint),
+        );
+    }
+
+    page.add(&zerotrust_group);
+
+    page
 }
 
-/// Creates a protocol client section with consistent layout
-fn create_protocol_section(
+/// Adds a client row to a preferences group
+fn add_client_row(
+    group: &adw::PreferencesGroup,
     title: &str,
     name: &str,
     installed: bool,
     version: Option<&str>,
     path: Option<&str>,
     install_hint: Option<&str>,
-) -> GtkBox {
-    let section = GtkBox::new(Orientation::Vertical, 2);
-    section.set_margin_bottom(12);
-
-    // Header
-    let header = Label::builder()
-        .label(title)
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .build();
-    section.append(&header);
-
-    if installed {
-        // Version row
-        if let Some(ver) = version {
-            let version_row = create_info_row("Version:", ver);
-            section.append(&version_row);
-        }
-
-        // Path row
-        if let Some(p) = path {
-            let path_row = create_info_row("Path:", p);
-            section.append(&path_row);
-        }
-
-        // Status
-        let status_label = Label::builder()
-            .label(&format!("✓ {name} detected"))
-            .halign(gtk4::Align::Start)
-            .css_classes(["success"])
-            .margin_start(6)
-            .margin_top(2)
-            .build();
-        section.append(&status_label);
+) {
+    // Path goes in subtitle (left-aligned), version goes in suffix (right-aligned)
+    let subtitle = if installed {
+        path.map(String::from).unwrap_or_else(|| name.to_string())
     } else {
-        // Not installed status with hint on the right
-        let status_row = GtkBox::new(Orientation::Horizontal, 6);
-        status_row.set_margin_start(6);
-        status_row.set_margin_top(4);
+        install_hint.unwrap_or("Not installed").to_string()
+    };
 
-        let status_label = Label::builder()
-            .label(&format!("✗ {title} not found"))
-            .halign(gtk4::Align::Start)
-            .hexpand(true)
-            .css_classes(["error"])
-            .build();
-        status_row.append(&status_label);
+    let row = adw::ActionRow::builder()
+        .title(title)
+        .subtitle(&subtitle)
+        .build();
 
-        if let Some(hint) = install_hint {
-            let hint_label = Label::builder()
-                .label(hint)
-                .halign(gtk4::Align::End)
+    // Status icon (checkmark or X)
+    let status_label = Label::builder()
+        .label(if installed { "✓" } else { "✗" })
+        .valign(gtk4::Align::Center)
+        .css_classes([if installed { "success" } else { "error" }])
+        .build();
+    row.add_prefix(&status_label);
+
+    // Version label on the right (suffix)
+    if installed {
+        if let Some(v) = version {
+            let version_label = Label::builder()
+                .label(&format!("v{v}"))
+                .valign(gtk4::Align::Center)
                 .css_classes(["dim-label"])
                 .build();
-            status_row.append(&hint_label);
+            row.add_suffix(&version_label);
         }
-
-        section.append(&status_row);
     }
 
-    section
-}
-
-/// Creates an info row with label on left and value on right
-fn create_info_row(label: &str, value: &str) -> GtkBox {
-    let row = GtkBox::new(Orientation::Horizontal, 12);
-    row.set_margin_start(6);
-
-    let label_widget = Label::builder()
-        .label(label)
-        .halign(gtk4::Align::Start)
-        .css_classes(["dim-label"])
-        .build();
-
-    let value_widget = Label::builder()
-        .label(value)
-        .halign(gtk4::Align::End)
-        .hexpand(true)
-        .selectable(true)
-        .ellipsize(gtk4::pango::EllipsizeMode::Start)
-        .build();
-
-    row.append(&label_widget);
-    row.append(&value_widget);
-    row
-}
-
-/// Creates the SPICE client section
-fn create_spice_section() -> GtkBox {
-    let section = GtkBox::new(Orientation::Vertical, 2);
-    section.set_margin_bottom(12);
-
-    let header = Label::builder()
-        .label("SPICE Client")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .build();
-    section.append(&header);
-
-    let spice_installed = std::process::Command::new("which")
-        .arg("remote-viewer")
-        .output()
-        .is_ok_and(|output| output.status.success());
-
-    if spice_installed {
-        // Path first
-        let spice_path = if let Ok(output) = std::process::Command::new("which")
-            .arg("remote-viewer")
-            .output()
-        {
-            String::from_utf8(output.stdout)
-                .ok()
-                .map(|s| s.trim().to_string())
-        } else {
-            None
-        };
-
-        if let Some(ref path) = spice_path {
-            let path_row = create_info_row("Path:", path);
-            section.append(&path_row);
-        }
-
-        // Version - use the common parser
-        if let Some(ref path) = spice_path {
-            if let Some(version) = get_version(std::path::Path::new(path), "--version") {
-                let version_row = create_info_row("Version:", &version);
-                section.append(&version_row);
-            }
-        }
-
-        let status_label = Label::builder()
-            .label("✓ remote-viewer detected")
-            .halign(gtk4::Align::Start)
-            .css_classes(["success"])
-            .margin_start(6)
-            .margin_top(2)
-            .build();
-        section.append(&status_label);
-    } else {
-        let status_row = GtkBox::new(Orientation::Horizontal, 6);
-        status_row.set_margin_start(6);
-        status_row.set_margin_top(4);
-
-        let status_label = Label::builder()
-            .label("✗ SPICE client not found")
-            .halign(gtk4::Align::Start)
-            .hexpand(true)
-            .css_classes(["error"])
-            .build();
-        status_row.append(&status_label);
-
-        let hint_label = Label::builder()
-            .label("Install virt-viewer package")
-            .halign(gtk4::Align::End)
-            .css_classes(["dim-label"])
-            .build();
-        status_row.append(&hint_label);
-
-        section.append(&status_row);
-    }
-
-    section
+    group.add(&row);
 }
 
 /// Finds a command in PATH or common user directories
@@ -297,14 +257,12 @@ fn get_version(command_path: &std::path::Path, version_arg: &str) -> Option<Stri
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Try stdout first, then stderr
     let version_str = if stdout.trim().is_empty() {
         stderr.to_string()
     } else {
         stdout.to_string()
     };
 
-    // Get command name for specific parsing
     let cmd_name = command_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -316,7 +274,6 @@ fn get_version(command_path: &std::path::Path, version_arg: &str) -> Option<Stri
 /// Parses version from command output based on command type
 fn parse_version_output(command: &str, output: &str) -> Option<String> {
     match command {
-        // aws-cli/2.32.28 Python/3.13.11 Linux/... -> 2.32.28
         "aws" => output
             .lines()
             .next()
@@ -324,13 +281,11 @@ fn parse_version_output(command: &str, output: &str) -> Option<String> {
             .and_then(|part| part.strip_prefix("aws-cli/"))
             .map(String::from),
 
-        // Google Cloud SDK 550.0.0 -> 550.0.0
         "gcloud" => output.lines().find_map(|line| {
             line.strip_prefix("Google Cloud SDK ")
                 .map(|v| v.trim().to_string())
         }),
 
-        // azure-cli                         2.81.0 -> 2.81.0
         "az" => output.lines().find_map(|line| {
             let trimmed = line.trim();
             if trimmed.starts_with("azure-cli") {
@@ -340,21 +295,18 @@ fn parse_version_output(command: &str, output: &str) -> Option<String> {
             }
         }),
 
-        // cloudflared version 2025.11.1 (built ...) -> 2025.11.1
         "cloudflared" => output.lines().next().and_then(|line| {
             line.split_whitespace()
                 .nth(2)
                 .map(|v| v.trim_end_matches(['(', ' ']).to_string())
         }),
 
-        // Teleport vX.X.X git:... -> vX.X.X
         "teleport" => output.lines().next().and_then(|line| {
             line.split_whitespace()
                 .nth(1)
                 .map(|v| v.trim_start_matches('v').to_string())
         }),
 
-        // Version Number:      0.21.0 -> 0.21.0
         "boundary" => output.lines().find_map(|line| {
             let trimmed = line.trim();
             if trimmed.starts_with("Version Number:") {
@@ -364,149 +316,28 @@ fn parse_version_output(command: &str, output: &str) -> Option<String> {
             }
         }),
 
-        // tailscale --version outputs just version number: "1.92.3"
         "tailscale" => output
             .lines()
             .next()
             .map(|line| line.trim().to_string())
             .filter(|s| !s.is_empty()),
 
-        // oci --version outputs just version number: "3.71.4"
         "oci" => output
             .lines()
             .next()
             .map(|line| line.trim().to_string())
             .filter(|s| !s.is_empty()),
 
-        // remote-viewer, версія 11.0 -> 11.0
         "remote-viewer" => output.lines().next().and_then(|line| {
-            // Try to find version number after comma
             line.split(',')
                 .nth(1)
                 .and_then(|part| part.split_whitespace().last())
                 .map(String::from)
         }),
 
-        // Default: return first non-empty line
         _ => output
             .lines()
             .find(|line| !line.trim().is_empty())
             .map(|s| s.trim().to_string()),
     }
-}
-
-/// Creates the Zero Trust clients section
-fn create_zerotrust_section() -> GtkBox {
-    let section = GtkBox::new(Orientation::Vertical, 4);
-    section.set_margin_bottom(12);
-
-    let header = Label::builder()
-        .label("Zero Trust Clients")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .build();
-    section.append(&header);
-
-    let zerotrust_clients = [
-        (
-            "AWS CLI (SSM)",
-            "aws",
-            "--version",
-            "Install awscli package",
-        ),
-        (
-            "Google Cloud CLI",
-            "gcloud",
-            "--version",
-            "Install google-cloud-cli package",
-        ),
-        ("Azure CLI", "az", "--version", "Install azure-cli package"),
-        ("OCI CLI", "oci", "--version", "Install oci-cli package"),
-        (
-            "Cloudflare CLI",
-            "cloudflared",
-            "--version",
-            "Install cloudflared package",
-        ),
-        (
-            "Teleport CLI",
-            "teleport",
-            "version",
-            "Install teleport package",
-        ),
-        (
-            "Tailscale CLI",
-            "tailscale",
-            "--version",
-            "Install tailscale package",
-        ),
-        ("Boundary CLI", "boundary", "-v", "Install boundary package"),
-    ];
-
-    for (name, command, version_arg, install_hint) in &zerotrust_clients {
-        let client_row = create_zerotrust_client_row(name, command, version_arg, install_hint);
-        section.append(&client_row);
-    }
-
-    section
-}
-
-/// Creates a row for a Zero Trust client
-fn create_zerotrust_client_row(
-    name: &str,
-    command: &str,
-    version_arg: &str,
-    install_hint: &str,
-) -> GtkBox {
-    let row = GtkBox::new(Orientation::Vertical, 2);
-    row.set_margin_top(6);
-    row.set_margin_start(6);
-
-    // Try to find the command
-    let command_path = find_command(command);
-    let installed = command_path.is_some();
-
-    if installed {
-        let path = command_path.as_ref().expect("checked above");
-
-        // Status line with name
-        let status_label = Label::builder()
-            .label(&format!("✓ {name}"))
-            .halign(gtk4::Align::Start)
-            .css_classes(["success"])
-            .build();
-        row.append(&status_label);
-
-        // Path row
-        let path_row = create_info_row("Path:", &path.display().to_string());
-        row.append(&path_row);
-
-        // Version row
-        if let Some(version) = get_version(path, version_arg) {
-            let version_row = create_info_row("Version:", &version);
-            row.append(&version_row);
-        }
-    } else {
-        // Not installed - status with hint on right
-        let status_row = GtkBox::new(Orientation::Horizontal, 6);
-
-        let status_label = Label::builder()
-            .label(&format!("✗ {name}"))
-            .halign(gtk4::Align::Start)
-            .hexpand(true)
-            .css_classes(["error"])
-            .build();
-        status_row.append(&status_label);
-
-        let hint_label = Label::builder()
-            .label(install_hint)
-            .halign(gtk4::Align::End)
-            .css_classes(["dim-label"])
-            .build();
-        status_row.append(&hint_label);
-
-        row.append(&status_row);
-    }
-
-    row
 }

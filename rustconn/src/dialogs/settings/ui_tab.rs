@@ -1,15 +1,15 @@
-//! UI settings tab
+//! UI settings tab using libadwaita components
 
+use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{
-    Box as GtkBox, CheckButton, Label, Orientation, ScrolledWindow, SpinButton, ToggleButton,
-};
+use gtk4::{Box as GtkBox, CheckButton, SpinButton, ToggleButton};
+use libadwaita as adw;
 use rustconn_core::config::{ColorScheme, SessionRestoreSettings, UiSettings};
 
-/// Creates the UI settings tab
+/// Creates the UI settings page using AdwPreferencesPage
 #[allow(clippy::type_complexity)]
-pub fn create_ui_tab() -> (
-    ScrolledWindow,
+pub fn create_ui_page() -> (
+    adw::PreferencesPage,
     GtkBox,
     CheckButton,
     CheckButton,
@@ -18,62 +18,47 @@ pub fn create_ui_tab() -> (
     CheckButton,
     SpinButton,
 ) {
-    let scrolled = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk4::PolicyType::Never)
-        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+    let page = adw::PreferencesPage::builder()
+        .title("Interface")
+        .icon_name("preferences-desktop-appearance-symbolic")
         .build();
 
-    let main_vbox = GtkBox::new(Orientation::Vertical, 6);
-    main_vbox.set_margin_top(12);
-    main_vbox.set_margin_bottom(12);
-    main_vbox.set_margin_start(12);
-    main_vbox.set_margin_end(12);
-    main_vbox.set_valign(gtk4::Align::Start);
+    // === Appearance Group ===
+    let appearance_group = adw::PreferencesGroup::builder().title("Appearance").build();
 
-    // === Appearance section ===
-    let appearance_header = Label::builder()
-        .label("Appearance")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
+    // Color scheme row with toggle buttons
+    let color_scheme_box = GtkBox::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(0)
+        .valign(gtk4::Align::Center)
+        .css_classes(["linked"])
+        .width_request(255)
         .build();
-    main_vbox.append(&appearance_header);
 
-    let color_scheme_label = Label::builder()
-        .label("Color scheme:")
-        .halign(gtk4::Align::Start)
-        .margin_start(6)
-        .margin_top(6)
+    let system_btn = ToggleButton::builder()
+        .label("System")
+        .hexpand(true)
         .build();
-    main_vbox.append(&color_scheme_label);
-
-    // Button group for color scheme selection
-    let color_scheme_box = GtkBox::new(Orientation::Horizontal, 0);
-    color_scheme_box.add_css_class("linked");
-    color_scheme_box.set_halign(gtk4::Align::Start);
-    color_scheme_box.set_margin_start(6);
-    color_scheme_box.set_margin_top(6);
-
-    let system_btn = ToggleButton::with_label("System");
-    let light_btn = ToggleButton::with_label("Light");
-    let dark_btn = ToggleButton::with_label("Dark");
+    let light_btn = ToggleButton::builder().label("Light").hexpand(true).build();
+    let dark_btn = ToggleButton::builder().label("Dark").hexpand(true).build();
 
     light_btn.set_group(Some(&system_btn));
     dark_btn.set_group(Some(&system_btn));
     system_btn.set_active(true);
 
-    system_btn.connect_toggled(move |btn| {
+    system_btn.connect_toggled(|btn| {
         if btn.is_active() {
             crate::app::apply_color_scheme(ColorScheme::System);
         }
     });
 
-    light_btn.connect_toggled(move |btn| {
+    light_btn.connect_toggled(|btn| {
         if btn.is_active() {
             crate::app::apply_color_scheme(ColorScheme::Light);
         }
     });
 
-    dark_btn.connect_toggled(move |btn| {
+    dark_btn.connect_toggled(|btn| {
         if btn.is_active() {
             crate::app::apply_color_scheme(ColorScheme::Dark);
         }
@@ -82,94 +67,110 @@ pub fn create_ui_tab() -> (
     color_scheme_box.append(&system_btn);
     color_scheme_box.append(&light_btn);
     color_scheme_box.append(&dark_btn);
-    main_vbox.append(&color_scheme_box);
 
-    // === Window section ===
-    let window_header = Label::builder()
-        .label("Window")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
+    let color_scheme_row = adw::ActionRow::builder().title("Theme").build();
+    color_scheme_row.add_suffix(&color_scheme_box);
+    appearance_group.add(&color_scheme_row);
+
+    page.add(&appearance_group);
+
+    // === Window Group ===
+    let window_group = adw::PreferencesGroup::builder().title("Window").build();
+
+    let remember_geometry = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let remember_geometry_row = adw::ActionRow::builder()
+        .title("Remember size")
+        .subtitle("Restore window geometry on startup")
+        .activatable_widget(&remember_geometry)
         .build();
-    main_vbox.append(&window_header);
+    remember_geometry_row.add_prefix(&remember_geometry);
+    window_group.add(&remember_geometry_row);
 
-    let remember_geometry = CheckButton::with_label("Remember window size and position");
-    remember_geometry.set_margin_start(6);
-    remember_geometry.set_margin_top(6);
-    main_vbox.append(&remember_geometry);
+    page.add(&window_group);
 
-    // === System Tray section ===
-    let tray_header = Label::builder()
-        .label("System Tray")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
+    // === System Tray Group ===
+    let tray_group = adw::PreferencesGroup::builder()
+        .title("System Tray")
+        .description("Requires desktop environment with tray support")
         .build();
-    main_vbox.append(&tray_header);
 
-    let enable_tray_icon = CheckButton::with_label("Show icon in system tray");
-    enable_tray_icon.set_margin_start(6);
-    enable_tray_icon.set_margin_top(6);
-    main_vbox.append(&enable_tray_icon);
-
-    let minimize_to_tray = CheckButton::with_label("Minimize to tray when closing window");
-    minimize_to_tray.set_margin_start(6);
-    main_vbox.append(&minimize_to_tray);
-
-    let tray_note = Label::builder()
-        .label("Note: Tray icon requires desktop environment with system tray support.")
-        .wrap(true)
-        .css_classes(["dim-label"])
-        .halign(gtk4::Align::Start)
-        .margin_start(6)
-        .margin_top(6)
+    let enable_tray_icon = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let enable_tray_row = adw::ActionRow::builder()
+        .title("Show icon")
+        .subtitle("Display icon in system tray")
+        .activatable_widget(&enable_tray_icon)
         .build();
-    main_vbox.append(&tray_note);
+    enable_tray_row.add_prefix(&enable_tray_icon);
+    tray_group.add(&enable_tray_row);
 
-    // === Session Restore section ===
-    let session_header = Label::builder()
-        .label("Session Restore")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(18)
+    let minimize_to_tray = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let minimize_to_tray_row = adw::ActionRow::builder()
+        .title("Minimize to tray")
+        .subtitle("Hide window instead of closing")
+        .activatable_widget(&minimize_to_tray)
         .build();
-    main_vbox.append(&session_header);
+    minimize_to_tray_row.add_prefix(&minimize_to_tray);
+    tray_group.add(&minimize_to_tray_row);
 
-    let session_restore_enabled = CheckButton::with_label("Restore sessions on start-up");
-    session_restore_enabled.set_margin_start(6);
-    session_restore_enabled.set_margin_top(6);
-    main_vbox.append(&session_restore_enabled);
+    // Make minimize_to_tray sensitive based on enable_tray_icon
+    let minimize_to_tray_clone = minimize_to_tray.clone();
+    enable_tray_icon.connect_toggled(move |check| {
+        minimize_to_tray_clone.set_sensitive(check.is_active());
+    });
 
-    let prompt_on_restore = CheckButton::with_label("Ask before restoring sessions");
-    prompt_on_restore.set_margin_start(6);
-    main_vbox.append(&prompt_on_restore);
+    page.add(&tray_group);
 
-    let max_age_hbox = GtkBox::new(Orientation::Horizontal, 6);
-    max_age_hbox.set_margin_start(6);
-    max_age_hbox.set_margin_top(6);
-    max_age_hbox.append(&Label::new(Some("Maximum session age (hours):")));
+    // === Session Restore Group ===
+    let session_group = adw::PreferencesGroup::builder()
+        .title("Session Restore")
+        .description("Restore previous connections on startup")
+        .build();
+
+    let session_restore_enabled = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let session_restore_row = adw::ActionRow::builder()
+        .title("Enabled")
+        .subtitle("Reconnect to previous sessions on startup")
+        .activatable_widget(&session_restore_enabled)
+        .build();
+    session_restore_row.add_prefix(&session_restore_enabled);
+    session_group.add(&session_restore_row);
+
+    let prompt_on_restore = CheckButton::builder().valign(gtk4::Align::Center).build();
+    let prompt_on_restore_row = adw::ActionRow::builder()
+        .title("Ask first")
+        .subtitle("Prompt before restoring sessions")
+        .activatable_widget(&prompt_on_restore)
+        .build();
+    prompt_on_restore_row.add_prefix(&prompt_on_restore);
+    session_group.add(&prompt_on_restore_row);
+
     let max_age_spin = SpinButton::new(
         Some(&gtk4::Adjustment::new(24.0, 1.0, 168.0, 1.0, 24.0, 0.0)),
         1.0,
         0,
     );
-    max_age_hbox.append(&max_age_spin);
-    main_vbox.append(&max_age_hbox);
-
-    let session_note = Label::builder()
-        .label("Sessions older than the specified age will be discarded.")
-        .wrap(true)
-        .css_classes(["dim-label"])
-        .halign(gtk4::Align::Start)
-        .margin_start(6)
-        .margin_top(6)
+    max_age_spin.set_valign(gtk4::Align::Center);
+    let max_age_row = adw::ActionRow::builder()
+        .title("Max age")
+        .subtitle("Hours before sessions expire")
         .build();
-    main_vbox.append(&session_note);
+    max_age_row.add_suffix(&max_age_spin);
+    max_age_row.set_activatable_widget(Some(&max_age_spin));
+    session_group.add(&max_age_row);
 
-    scrolled.set_child(Some(&main_vbox));
+    // Make session options sensitive based on session_restore_enabled
+    let prompt_on_restore_clone = prompt_on_restore.clone();
+    let max_age_spin_clone = max_age_spin.clone();
+    session_restore_enabled.connect_toggled(move |check| {
+        let active = check.is_active();
+        prompt_on_restore_clone.set_sensitive(active);
+        max_age_spin_clone.set_sensitive(active);
+    });
+
+    page.add(&session_group);
 
     (
-        scrolled,
+        page,
         color_scheme_box,
         remember_geometry,
         enable_tray_icon,
@@ -215,9 +216,14 @@ pub fn load_ui_settings(
     remember_geometry.set_active(settings.remember_window_geometry);
     enable_tray_icon.set_active(settings.enable_tray_icon);
     minimize_to_tray.set_active(settings.minimize_to_tray);
+    minimize_to_tray.set_sensitive(settings.enable_tray_icon);
+
     session_restore_enabled.set_active(settings.session_restore.enabled);
     prompt_on_restore.set_active(settings.session_restore.prompt_on_restore);
     max_age_spin.set_value(f64::from(settings.session_restore.max_age_hours));
+
+    prompt_on_restore.set_sensitive(settings.session_restore.enabled);
+    max_age_spin.set_sensitive(settings.session_restore.enabled);
 }
 
 /// Collects UI settings from UI controls

@@ -315,11 +315,7 @@ pub fn populate_snippets_list(state: &SharedAppState, list: &gtk4::ListBox, quer
 }
 
 /// Shows a snippet picker for quick execution
-pub fn show_snippet_picker(
-    window: &gtk4::Window,
-    state: SharedAppState,
-    notebook: SharedNotebook,
-) {
+pub fn show_snippet_picker(window: &gtk4::Window, state: SharedAppState, notebook: SharedNotebook) {
     let picker_window = gtk4::Window::builder()
         .title("Execute Snippet")
         .transient_for(window)

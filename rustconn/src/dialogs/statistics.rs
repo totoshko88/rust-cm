@@ -1,12 +1,13 @@
 //! Connection statistics dialog
 //!
 //! This module provides a dialog for viewing detailed connection statistics.
+//! Migrated to libadwaita components for GNOME HIG compliance.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::Box as GtkBox;
-use gtk4::{Button, Grid, Label, Orientation, ScrolledWindow};
+use gtk4::{Button, Label, Orientation, ScrolledWindow};
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::models::ConnectionStatistics;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -25,8 +26,8 @@ impl StatisticsDialog {
     pub fn new(parent: Option<&impl IsA<gtk4::Window>>) -> Self {
         let window = adw::Window::builder()
             .title("Connection Statistics")
-            .default_width(750)
-            .default_height(500)
+            .default_width(550)
+            .default_height(600)
             .modal(true)
             .build();
 
@@ -52,21 +53,27 @@ impl StatisticsDialog {
             window_clone.close();
         });
 
-        // Scrolled content
+        // Scrolled content with clamp
         let scrolled = ScrolledWindow::builder()
-            .hexpand(true)
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .vexpand(true)
             .build();
 
-        let content_box = GtkBox::new(Orientation::Vertical, 16);
-        content_box.set_margin_top(16);
-        content_box.set_margin_bottom(16);
-        content_box.set_margin_start(16);
-        content_box.set_margin_end(16);
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
 
-        scrolled.set_child(Some(&content_box));
+        let content_box = GtkBox::new(Orientation::Vertical, 12);
+        content_box.set_margin_top(12);
+        content_box.set_margin_bottom(12);
+        content_box.set_margin_start(12);
+        content_box.set_margin_end(12);
 
-        // Use GtkBox with HeaderBar for adw::Window (libadwaita 0.8)
+        clamp.set_child(Some(&content_box));
+        scrolled.set_child(Some(&clamp));
+
         let main_box = GtkBox::new(Orientation::Vertical, 0);
         main_box.append(&header);
         main_box.append(&scrolled);
@@ -106,17 +113,80 @@ impl StatisticsDialog {
             self.content_box.remove(&child);
         }
 
-        // Connection name header
-        let header = Label::builder()
-            .label(name)
-            .css_classes(["title-1"])
-            .halign(gtk4::Align::Start)
+        // Connection name header in PreferencesGroup
+        let stats_group = adw::PreferencesGroup::builder()
+            .title(name)
+            .description("Connection Statistics")
             .build();
-        self.content_box.append(&header);
 
-        // Statistics grid
-        let grid = self.create_stats_grid(stats);
-        self.content_box.append(&grid);
+        // Statistics rows
+        let total_row = adw::ActionRow::builder().title("Total connections").build();
+        let total_label = Label::builder()
+            .label(&stats.total_connections.to_string())
+            .css_classes(["dim-label"])
+            .build();
+        total_row.add_suffix(&total_label);
+        stats_group.add(&total_row);
+
+        let success_row = adw::ActionRow::builder().title("Successful").build();
+        let success_label = Label::builder()
+            .label(&stats.successful_connections.to_string())
+            .css_classes(["success"])
+            .build();
+        success_row.add_suffix(&success_label);
+        stats_group.add(&success_row);
+
+        let failed_row = adw::ActionRow::builder().title("Failed").build();
+        let failed_label = Label::builder()
+            .label(&stats.failed_connections.to_string())
+            .css_classes(["error"])
+            .build();
+        failed_row.add_suffix(&failed_label);
+        stats_group.add(&failed_row);
+
+        let rate_row = adw::ActionRow::builder().title("Success rate").build();
+        let rate_label = Label::builder()
+            .label(&format!("{:.1}%", stats.success_rate()))
+            .css_classes(["dim-label"])
+            .build();
+        rate_row.add_suffix(&rate_label);
+        stats_group.add(&rate_row);
+
+        let duration_row = adw::ActionRow::builder()
+            .title("Total time connected")
+            .build();
+        let duration_label = Label::builder()
+            .label(&ConnectionStatistics::format_duration(
+                stats.total_duration_seconds,
+            ))
+            .css_classes(["dim-label"])
+            .build();
+        duration_row.add_suffix(&duration_label);
+        stats_group.add(&duration_row);
+
+        if let Some(last) = &stats.last_connected {
+            let last_row = adw::ActionRow::builder().title("Last connected").build();
+            let last_label = Label::builder()
+                .label(&last.format("%Y-%m-%d %H:%M").to_string())
+                .css_classes(["dim-label"])
+                .build();
+            last_row.add_suffix(&last_label);
+            stats_group.add(&last_row);
+        }
+
+        // Average session duration
+        let avg = stats.average_duration();
+        if avg.num_seconds() > 0 {
+            let avg_row = adw::ActionRow::builder().title("Average session").build();
+            let avg_label = Label::builder()
+                .label(&ConnectionStatistics::format_duration(avg.num_seconds()))
+                .css_classes(["dim-label"])
+                .build();
+            avg_row.add_suffix(&avg_label);
+            stats_group.add(&avg_row);
+        }
+
+        self.content_box.append(&stats_group);
 
         // Success rate visualization
         let rate_box = self.create_success_rate_box(stats);
@@ -130,124 +200,81 @@ impl StatisticsDialog {
             self.content_box.remove(&child);
         }
 
-        // Overview header
-        let header = Label::builder()
-            .label("Connection Statistics Overview")
-            .css_classes(["title-1"])
-            .halign(gtk4::Align::Start)
-            .build();
-        self.content_box.append(&header);
-
         // Calculate totals
         let total_connections: u32 = stats.iter().map(|(_, s)| s.total_connections).sum();
         let total_successful: u32 = stats.iter().map(|(_, s)| s.successful_connections).sum();
         let total_failed: u32 = stats.iter().map(|(_, s)| s.failed_connections).sum();
         let total_duration: i64 = stats.iter().map(|(_, s)| s.total_duration_seconds).sum();
 
-        // Summary box
-        let summary = GtkBox::new(Orientation::Horizontal, 24);
-        summary.set_halign(gtk4::Align::Center);
-        summary.set_margin_top(16);
-        summary.set_margin_bottom(16);
+        // Summary group
+        let summary_group = adw::PreferencesGroup::builder()
+            .title("Overview")
+            .description("All connections summary")
+            .build();
 
-        let total_box = self.create_stat_card("Total Sessions", &total_connections.to_string());
-        let success_box = self.create_stat_card("Successful", &total_successful.to_string());
-        let failed_box = self.create_stat_card("Failed", &total_failed.to_string());
-        let duration_box = self.create_stat_card(
-            "Total Time",
-            &ConnectionStatistics::format_duration(total_duration),
-        );
+        let total_row = adw::ActionRow::builder().title("Total sessions").build();
+        let total_label = Label::builder()
+            .label(&total_connections.to_string())
+            .css_classes(["dim-label"])
+            .build();
+        total_row.add_suffix(&total_label);
+        summary_group.add(&total_row);
 
-        summary.append(&total_box);
-        summary.append(&success_box);
-        summary.append(&failed_box);
-        summary.append(&duration_box);
-        self.content_box.append(&summary);
+        let success_row = adw::ActionRow::builder().title("Successful").build();
+        let success_label = Label::builder()
+            .label(&total_successful.to_string())
+            .css_classes(["success"])
+            .build();
+        success_row.add_suffix(&success_label);
+        summary_group.add(&success_row);
+
+        let failed_row = adw::ActionRow::builder().title("Failed").build();
+        let failed_label = Label::builder()
+            .label(&total_failed.to_string())
+            .css_classes(["error"])
+            .build();
+        failed_row.add_suffix(&failed_label);
+        summary_group.add(&failed_row);
+
+        let duration_row = adw::ActionRow::builder().title("Total time").build();
+        let duration_label = Label::builder()
+            .label(&ConnectionStatistics::format_duration(total_duration))
+            .css_classes(["dim-label"])
+            .build();
+        duration_row.add_suffix(&duration_label);
+        summary_group.add(&duration_row);
+
+        self.content_box.append(&summary_group);
 
         // Per-connection breakdown
         if !stats.is_empty() {
-            let breakdown_header = Label::builder()
-                .label("Per-Connection Breakdown")
-                .css_classes(["title-3"])
-                .halign(gtk4::Align::Start)
-                .margin_top(16)
+            let breakdown_group = adw::PreferencesGroup::builder()
+                .title("Per-Connection")
                 .build();
-            self.content_box.append(&breakdown_header);
 
             for (name, stat) in stats {
-                let row = self.create_connection_row(name, stat);
-                self.content_box.append(&row);
+                let row = adw::ActionRow::builder()
+                    .title(name)
+                    .subtitle(&format!(
+                        "{} sessions • {:.0}% success",
+                        stat.total_connections,
+                        stat.success_rate()
+                    ))
+                    .build();
+
+                let duration_label = Label::builder()
+                    .label(&ConnectionStatistics::format_duration(
+                        stat.total_duration_seconds,
+                    ))
+                    .css_classes(["dim-label"])
+                    .build();
+                row.add_suffix(&duration_label);
+
+                breakdown_group.add(&row);
             }
+
+            self.content_box.append(&breakdown_group);
         }
-    }
-
-    /// Creates a statistics grid for a single connection
-    fn create_stats_grid(&self, stats: &ConnectionStatistics) -> Grid {
-        let grid = Grid::builder()
-            .row_spacing(8)
-            .column_spacing(16)
-            .margin_top(16)
-            .build();
-
-        let rows = [
-            ("Total Connections:", stats.total_connections.to_string()),
-            ("Successful:", stats.successful_connections.to_string()),
-            ("Failed:", stats.failed_connections.to_string()),
-            ("Success Rate:", format!("{:.1}%", stats.success_rate())),
-            (
-                "Total Time Connected:",
-                ConnectionStatistics::format_duration(stats.total_duration_seconds),
-            ),
-            (
-                "Average Session:",
-                ConnectionStatistics::format_duration(stats.average_duration_seconds),
-            ),
-            (
-                "Longest Session:",
-                ConnectionStatistics::format_duration(stats.longest_session_seconds),
-            ),
-            (
-                "Shortest Session:",
-                stats
-                    .shortest_session_seconds
-                    .map_or_else(|| "N/A".to_string(), ConnectionStatistics::format_duration),
-            ),
-            (
-                "First Connected:",
-                stats.first_connected.map_or_else(
-                    || "Never".to_string(),
-                    |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
-                ),
-            ),
-            (
-                "Last Connected:",
-                stats.last_connected.map_or_else(
-                    || "Never".to_string(),
-                    |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
-                ),
-            ),
-        ];
-
-        for (i, (label, value)) in rows.iter().enumerate() {
-            let label_widget = Label::builder()
-                .label(*label)
-                .halign(gtk4::Align::End)
-                .css_classes(["dim-label"])
-                .build();
-
-            let value_widget = Label::builder()
-                .label(value)
-                .halign(gtk4::Align::Start)
-                .selectable(true)
-                .build();
-
-            #[allow(clippy::cast_possible_truncation)]
-            let row = i as i32;
-            grid.attach(&label_widget, 0, row, 1, 1);
-            grid.attach(&value_widget, 1, row, 1, 1);
-        }
-
-        grid
     }
 
     /// Creates a success rate visualization box
@@ -280,75 +307,6 @@ impl StatisticsDialog {
 
         container.append(&progress);
         container
-    }
-
-    /// Creates a stat card widget
-    fn create_stat_card(&self, title: &str, value: &str) -> GtkBox {
-        let card = GtkBox::new(Orientation::Vertical, 4);
-        card.add_css_class("card");
-        card.set_margin_start(8);
-        card.set_margin_end(8);
-
-        let value_label = Label::builder()
-            .label(value)
-            .css_classes(["title-2"])
-            .build();
-
-        let title_label = Label::builder()
-            .label(title)
-            .css_classes(["dim-label", "caption"])
-            .build();
-
-        card.append(&value_label);
-        card.append(&title_label);
-        card
-    }
-
-    /// Creates a row for per-connection breakdown
-    fn create_connection_row(&self, name: &str, stats: &ConnectionStatistics) -> GtkBox {
-        let row = GtkBox::new(Orientation::Horizontal, 12);
-        row.set_margin_top(8);
-        row.set_margin_bottom(8);
-        row.add_css_class("card");
-
-        let name_label = Label::builder()
-            .label(name)
-            .hexpand(true)
-            .halign(gtk4::Align::Start)
-            .build();
-        row.append(&name_label);
-
-        let sessions_label = Label::builder()
-            .label(format!("{} sessions", stats.total_connections))
-            .css_classes(["dim-label"])
-            .build();
-        row.append(&sessions_label);
-
-        let rate_label = Label::builder()
-            .label(format!("{:.0}%", stats.success_rate()))
-            .width_chars(5)
-            .build();
-
-        if stats.success_rate() >= 90.0 {
-            rate_label.add_css_class("success");
-        } else if stats.success_rate() >= 70.0 {
-            rate_label.add_css_class("warning");
-        } else {
-            rate_label.add_css_class("error");
-        }
-
-        row.append(&rate_label);
-
-        let duration_label = Label::builder()
-            .label(ConnectionStatistics::format_duration(
-                stats.total_duration_seconds,
-            ))
-            .css_classes(["dim-label"])
-            .width_chars(10)
-            .build();
-        row.append(&duration_label);
-
-        row
     }
 
     /// Shows the dialog

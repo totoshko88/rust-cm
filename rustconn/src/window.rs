@@ -3,13 +3,10 @@
 //! This module provides the main window implementation for `RustConn`,
 //! including the header bar, sidebar, terminal area, and action handling.
 
-use gtk4::prelude::*;
-use gtk4::{
-    gio, glib, Button, Label, MenuButton, Orientation,
-    Paned,
-};
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk4::prelude::*;
+use gtk4::{gio, glib, Button, Label, MenuButton, Orientation, Paned};
+use libadwaita as adw;
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -183,25 +180,23 @@ impl MainWindow {
         title.add_css_class("title");
         header_bar.set_title_widget(Some(&title));
 
-        // Local shell button (leftmost)
-        let local_shell_button = Button::from_icon_name("utilities-terminal-symbolic");
-        local_shell_button.set_tooltip_text(Some("Local Shell"));
-        local_shell_button.set_action_name(Some("win.local-shell"));
-        header_bar.pack_start(&local_shell_button);
+        // === Left side (pack_start) - Primary connection actions ===
 
-        // Add connection button
+        // Add connection button - primary action
         let add_button = Button::from_icon_name("list-add-symbolic");
         add_button.set_tooltip_text(Some("New Connection (Ctrl+N)"));
         add_button.set_action_name(Some("win.new-connection"));
         header_bar.pack_start(&add_button);
 
-        // Add import button
-        let import_button = Button::from_icon_name("document-open-symbolic");
-        import_button.set_tooltip_text(Some("Import Connections (Ctrl+I)"));
-        import_button.set_action_name(Some("win.import"));
-        header_bar.pack_start(&import_button);
+        // Quick connect button
+        let quick_connect_button = Button::from_icon_name("network-transmit-symbolic");
+        quick_connect_button.set_tooltip_text(Some("Quick Connect (Ctrl+Shift+Q)"));
+        quick_connect_button.set_action_name(Some("win.quick-connect"));
+        header_bar.pack_start(&quick_connect_button);
 
-        // Add menu button
+        // === Right side (pack_end) - Secondary actions ===
+
+        // Add menu button (rightmost)
         let menu_button = MenuButton::builder()
             .icon_name("open-menu-symbolic")
             .tooltip_text("Menu")
@@ -217,7 +212,7 @@ impl MainWindow {
         settings_button.set_action_name(Some("win.settings"));
         header_bar.pack_end(&settings_button);
 
-        // Add split view buttons (before settings, so they appear to the left)
+        // Add split view buttons
         let split_vertical_button = Button::from_icon_name("view-dual-symbolic");
         split_vertical_button.set_tooltip_text(Some("Split Vertical (Ctrl+Shift+S)"));
         split_vertical_button.set_action_name(Some("win.split-vertical"));
@@ -316,7 +311,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         new_conn_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_new_connection_dialog(win.upcast_ref(), state_clone.clone(), sidebar_clone.clone());
+                Self::show_new_connection_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&new_conn_action);
@@ -328,7 +327,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         new_group_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_new_group_dialog(win.upcast_ref(), state_clone.clone(), sidebar_clone.clone());
+                Self::show_new_group_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&new_group_action);
@@ -340,7 +343,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         import_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_import_dialog(win.upcast_ref(), state_clone.clone(), sidebar_clone.clone());
+                Self::show_import_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&import_action);
@@ -352,7 +359,11 @@ impl MainWindow {
         let notebook_clone = notebook.clone();
         settings_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_settings_dialog(win.upcast_ref(), state_clone.clone(), notebook_clone.clone());
+                Self::show_settings_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                );
             }
         });
         window.add_action(&settings_action);
@@ -743,7 +754,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         move_selected_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_move_selected_to_group_dialog(win.upcast_ref(), &state_clone, &sidebar_clone);
+                Self::show_move_selected_to_group_dialog(
+                    win.upcast_ref(),
+                    &state_clone,
+                    &sidebar_clone,
+                );
             }
         });
         window.add_action(&move_selected_action);
@@ -793,7 +808,11 @@ impl MainWindow {
         let notebook_clone = terminal_notebook.clone();
         manage_snippets_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                snippets::show_snippets_manager(win.upcast_ref(), state_clone.clone(), notebook_clone.clone());
+                snippets::show_snippets_manager(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                );
             }
         });
         window.add_action(&manage_snippets_action);
@@ -805,7 +824,11 @@ impl MainWindow {
         let notebook_clone = terminal_notebook.clone();
         execute_snippet_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                snippets::show_snippet_picker(win.upcast_ref(), state_clone.clone(), notebook_clone.clone());
+                snippets::show_snippet_picker(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                );
             }
         });
         window.add_action(&execute_snippet_action);
@@ -886,7 +909,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         manage_templates_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                templates::show_templates_manager(win.upcast_ref(), state_clone.clone(), sidebar_clone.clone());
+                templates::show_templates_manager(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&manage_templates_action);
@@ -1657,7 +1684,10 @@ impl MainWindow {
             }
 
             // Need to prompt for credentials
-            if let Some(window) = notebook.widget().ancestor(adw::ApplicationWindow::static_type()) {
+            if let Some(window) = notebook
+                .widget()
+                .ancestor(adw::ApplicationWindow::static_type())
+            {
                 if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
                     Self::start_rdp_with_password_dialog(
                         state,
@@ -1744,7 +1774,10 @@ impl MainWindow {
             }
 
             // Need to prompt for VNC password
-            if let Some(window) = notebook.widget().ancestor(adw::ApplicationWindow::static_type()) {
+            if let Some(window) = notebook
+                .widget()
+                .ancestor(adw::ApplicationWindow::static_type())
+            {
                 if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
                     Self::start_vnc_with_password_dialog(
                         state,

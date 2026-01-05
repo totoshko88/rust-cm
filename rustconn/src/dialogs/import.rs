@@ -6,13 +6,13 @@
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, Button, Frame, Label, ListBox, ListBoxRow, Orientation, ProgressBar,
     ScrolledWindow, Separator, Stack,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::export::NativeExport;
 use rustconn_core::import::{
     AnsibleInventoryImporter, AsbruImporter, ImportResult, ImportSource, RdmImporter,

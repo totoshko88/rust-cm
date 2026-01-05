@@ -204,11 +204,25 @@ impl ConnectionSidebar {
         zerotrust_filter.add_css_class("flat");
         zerotrust_filter.add_css_class("filter-button");
 
+        // Local Shell button - not a filter, opens local terminal
+        let local_shell_btn = Button::new();
+        let shell_box = GtkBox::new(Orientation::Horizontal, 4);
+        let shell_icon = gtk4::Image::from_icon_name("utilities-terminal-symbolic");
+        shell_icon.set_pixel_size(16);
+        let shell_label = Label::new(Some("Local Shell"));
+        shell_box.append(&shell_icon);
+        shell_box.append(&shell_label);
+        local_shell_btn.set_child(Some(&shell_box));
+        local_shell_btn.set_tooltip_text(Some("Local Shell (Ctrl+Shift+T)"));
+        local_shell_btn.set_action_name(Some("win.local-shell"));
+        local_shell_btn.add_css_class("flat");
+
         filter_box.append(&ssh_filter);
         filter_box.append(&rdp_filter);
         filter_box.append(&vnc_filter);
         filter_box.append(&spice_filter);
         filter_box.append(&zerotrust_filter);
+        filter_box.append(&local_shell_btn);
 
         // Store filter buttons for later reference
         let protocol_filter_buttons = Rc::new(RefCell::new(std::collections::HashMap::new()));

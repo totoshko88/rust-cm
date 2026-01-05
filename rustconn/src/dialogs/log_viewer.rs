@@ -2,13 +2,12 @@
 //!
 //! Provides a GTK4 dialog for browsing log files and viewing their contents.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, Label, ListBox, ListBoxRow, Orientation, Paned,
-    ScrolledWindow, TextView,
+    Box as GtkBox, Button, Label, ListBox, ListBoxRow, Orientation, Paned, ScrolledWindow, TextView,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};

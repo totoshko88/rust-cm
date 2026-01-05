@@ -3,10 +3,10 @@
 //! Provides a search interface for VTE terminals with basic text search
 //! and navigation between matches.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Button, CheckButton, Label, Orientation, SearchEntry};
 use libadwaita as adw;
-use adw::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use vte4::prelude::*;

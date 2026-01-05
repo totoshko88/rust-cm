@@ -10,8 +10,10 @@ use crate::split_view::SplitTerminalView;
 use crate::state::SharedAppState;
 use crate::terminal::TerminalNotebook;
 use crate::window::MainWindow;
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{Button, Label, Orientation};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
@@ -293,19 +295,22 @@ pub fn rename_selected_item(
     let is_group = conn_item.is_group();
     let current_name = conn_item.name();
 
-    // Create rename dialog
-    let rename_window = gtk4::Window::builder()
+    // Create rename dialog with Adwaita
+    let rename_window = adw::Window::builder()
         .title(if is_group {
             "Rename Group"
         } else {
             "Rename Connection"
         })
-        .transient_for(window)
         .modal(true)
-        .default_width(750)
+        .default_width(400)
+        .resizable(false)
         .build();
+    rename_window.set_transient_for(Some(window));
 
-    let header = gtk4::HeaderBar::new();
+    let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let cancel_btn = gtk4::Button::builder().label("Cancel").build();
     let save_btn = gtk4::Button::builder()
         .label("Rename")
@@ -313,24 +318,30 @@ pub fn rename_selected_item(
         .build();
     header.pack_start(&cancel_btn);
     header.pack_end(&save_btn);
-    rename_window.set_titlebar(Some(&header));
 
-    let content = gtk4::Box::new(Orientation::Vertical, 8);
+    let content = gtk4::Box::new(Orientation::Vertical, 12);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    let label = Label::new(Some("New name:"));
-    label.set_halign(gtk4::Align::Start);
-    content.append(&label);
+    // Name entry using PreferencesGroup
+    let name_group = adw::PreferencesGroup::new();
+    let entry = gtk4::Entry::builder()
+        .text(&current_name)
+        .valign(gtk4::Align::Center)
+        .hexpand(true)
+        .build();
+    entry.select_region(0, -1);
+    let name_row = adw::ActionRow::builder().title("Name").build();
+    name_row.add_suffix(&entry);
+    name_group.add(&name_row);
+    content.append(&name_group);
 
-    let entry = gtk4::Entry::new();
-    entry.set_text(&current_name);
-    entry.select_region(0, -1); // Select all text
-    content.append(&entry);
-
-    rename_window.set_child(Some(&content));
+    let main_box = gtk4::Box::new(Orientation::Vertical, 0);
+    main_box.append(&header);
+    main_box.append(&content);
+    rename_window.set_content(Some(&main_box));
 
     // Cancel button
     let window_clone = rename_window.clone();
@@ -447,17 +458,18 @@ pub fn show_edit_group_dialog(
     };
     drop(state_ref);
 
-    let entry = gtk4::Entry::new();
-    entry.set_text(&group.name);
-
-    let group_window = gtk4::Window::builder()
+    // Create group window with Adwaita
+    let group_window = adw::Window::builder()
         .title("Edit Group")
-        .transient_for(window)
         .modal(true)
-        .default_width(750)
+        .default_width(400)
+        .resizable(false)
         .build();
+    group_window.set_transient_for(Some(window));
 
-    let header = gtk4::HeaderBar::new();
+    let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let cancel_btn = gtk4::Button::builder().label("Cancel").build();
     let save_btn = gtk4::Button::builder()
         .label("Save")
@@ -465,18 +477,29 @@ pub fn show_edit_group_dialog(
         .build();
     header.pack_start(&cancel_btn);
     header.pack_end(&save_btn);
-    group_window.set_titlebar(Some(&header));
 
-    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    let label = Label::new(Some("Group name:"));
-    content.append(&label);
-    content.append(&entry);
-    group_window.set_child(Some(&content));
+    // Name entry using PreferencesGroup
+    let name_group = adw::PreferencesGroup::new();
+    let entry = gtk4::Entry::builder()
+        .text(&group.name)
+        .valign(gtk4::Align::Center)
+        .hexpand(true)
+        .build();
+    let name_row = adw::ActionRow::builder().title("Name").build();
+    name_row.add_suffix(&entry);
+    name_group.add(&name_row);
+    content.append(&name_group);
+
+    let main_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    main_box.append(&header);
+    main_box.append(&content);
+    group_window.set_content(Some(&main_box));
 
     let window_clone = group_window.clone();
     cancel_btn.connect_clicked(move |_| {
@@ -571,18 +594,22 @@ pub fn show_quick_connect_dialog_with_state(
         })
         .unwrap_or_default();
 
-    // Create a quick connect window
-    let quick_window = gtk4::Window::builder()
+    // Create a quick connect window with Adwaita
+    let quick_window = adw::Window::builder()
         .title("Quick Connect")
-        .transient_for(window)
         .modal(true)
-        .default_width(750)
-        .default_height(550)
+        .default_width(500)
+        .default_height(400)
         .build();
 
+    if let Some(gtk_win) = window.downcast_ref::<gtk4::Window>() {
+        quick_window.set_transient_for(Some(gtk_win));
+    }
+
     // Create header bar with Close/Connect buttons (GNOME HIG)
-    let header = gtk4::HeaderBar::new();
-    header.set_show_title_buttons(false);
+    let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let close_btn = Button::builder().label("Close").build();
     let connect_btn = Button::builder()
         .label("Connect")
@@ -590,7 +617,6 @@ pub fn show_quick_connect_dialog_with_state(
         .build();
     header.pack_start(&close_btn);
     header.pack_end(&connect_btn);
-    quick_window.set_titlebar(Some(&header));
 
     // Close button handler
     let window_clone = quick_window.clone();
@@ -598,7 +624,7 @@ pub fn show_quick_connect_dialog_with_state(
         window_clone.close();
     });
 
-    // Create content
+    // Main content
     let content = gtk4::Box::new(Orientation::Vertical, 12);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
@@ -610,98 +636,92 @@ pub fn show_quick_connect_dialog_with_state(
     info_label.add_css_class("dim-label");
     content.append(&info_label);
 
-    // Basic fields
-    let grid = gtk4::Grid::builder()
-        .row_spacing(8)
-        .column_spacing(12)
-        .build();
+    // Connection settings group
+    let settings_group = adw::PreferencesGroup::new();
 
-    // Template dropdown (if templates available)
+    // Template row (if templates available)
     let template_dropdown: Option<gtk4::DropDown> = if templates.is_empty() {
         None
     } else {
-        let template_label = Label::builder()
-            .label("Template:")
-            .halign(gtk4::Align::End)
-            .build();
-
-        // Build template names list with "None" option
         let mut template_names: Vec<String> = vec!["(None)".to_string()];
         template_names.extend(templates.iter().map(|t| t.name.clone()));
         let template_strings: Vec<&str> = template_names.iter().map(String::as_str).collect();
         let template_list = gtk4::StringList::new(&template_strings);
 
-        let dropdown = gtk4::DropDown::builder().model(&template_list).build();
-        dropdown.set_selected(0); // Default to "None"
+        let dropdown = gtk4::DropDown::builder()
+            .model(&template_list)
+            .valign(gtk4::Align::Center)
+            .build();
+        dropdown.set_selected(0);
 
-        grid.attach(&template_label, 0, 0, 1, 1);
-        grid.attach(&dropdown, 1, 0, 2, 1);
+        let template_row = adw::ActionRow::builder().title("Template").build();
+        template_row.add_suffix(&dropdown);
+        settings_group.add(&template_row);
 
         Some(dropdown)
     };
 
-    // Protocol dropdown (SSH, RDP, VNC) - row depends on whether template dropdown exists
-    let protocol_row = i32::from(template_dropdown.is_some());
-    let protocol_label = Label::builder()
-        .label("Protocol:")
-        .halign(gtk4::Align::End)
-        .build();
+    // Protocol dropdown
     let protocol_list = gtk4::StringList::new(&["SSH", "RDP", "VNC"]);
-    let protocol_dropdown = gtk4::DropDown::builder().model(&protocol_list).build();
-    protocol_dropdown.set_selected(0); // Default to SSH
-    grid.attach(&protocol_label, 0, protocol_row, 1, 1);
-    grid.attach(&protocol_dropdown, 1, protocol_row, 2, 1);
-
-    let host_label = Label::builder()
-        .label("Host:")
-        .halign(gtk4::Align::End)
+    let protocol_dropdown = gtk4::DropDown::builder()
+        .model(&protocol_list)
+        .valign(gtk4::Align::Center)
         .build();
+    protocol_dropdown.set_selected(0);
+    let protocol_row = adw::ActionRow::builder().title("Protocol").build();
+    protocol_row.add_suffix(&protocol_dropdown);
+    settings_group.add(&protocol_row);
+
+    // Host entry
     let host_entry = gtk4::Entry::builder()
-        .hexpand(true)
         .placeholder_text("hostname or IP")
+        .valign(gtk4::Align::Center)
+        .hexpand(true)
         .build();
-    grid.attach(&host_label, 0, protocol_row + 1, 1, 1);
-    grid.attach(&host_entry, 1, protocol_row + 1, 2, 1);
+    let host_row = adw::ActionRow::builder().title("Host").build();
+    host_row.add_suffix(&host_entry);
+    settings_group.add(&host_row);
 
-    let port_label = Label::builder()
-        .label("Port:")
-        .halign(gtk4::Align::End)
-        .build();
+    // Port spin
     let port_adj = gtk4::Adjustment::new(22.0, 1.0, 65535.0, 1.0, 10.0, 0.0);
     let port_spin = gtk4::SpinButton::builder()
         .adjustment(&port_adj)
         .climb_rate(1.0)
         .digits(0)
+        .valign(gtk4::Align::Center)
         .build();
-    grid.attach(&port_label, 0, protocol_row + 2, 1, 1);
-    grid.attach(&port_spin, 1, protocol_row + 2, 1, 1);
+    let port_row = adw::ActionRow::builder().title("Port").build();
+    port_row.add_suffix(&port_spin);
+    settings_group.add(&port_row);
 
-    let user_label = Label::builder()
-        .label("Username:")
-        .halign(gtk4::Align::End)
-        .build();
+    // Username entry
     let user_entry = gtk4::Entry::builder()
-        .hexpand(true)
         .placeholder_text("(optional)")
-        .build();
-    grid.attach(&user_label, 0, protocol_row + 3, 1, 1);
-    grid.attach(&user_entry, 1, protocol_row + 3, 2, 1);
-
-    // Password field
-    let password_label = Label::builder()
-        .label("Password:")
-        .halign(gtk4::Align::End)
-        .build();
-    let password_entry = gtk4::PasswordEntry::builder()
+        .valign(gtk4::Align::Center)
         .hexpand(true)
+        .build();
+    let user_row = adw::ActionRow::builder().title("Username").build();
+    user_row.add_suffix(&user_entry);
+    settings_group.add(&user_row);
+
+    // Password entry
+    let password_entry = gtk4::PasswordEntry::builder()
         .show_peek_icon(true)
         .placeholder_text("(optional)")
+        .valign(gtk4::Align::Center)
+        .hexpand(true)
         .build();
-    grid.attach(&password_label, 0, protocol_row + 4, 1, 1);
-    grid.attach(&password_entry, 1, protocol_row + 4, 2, 1);
+    let password_row = adw::ActionRow::builder().title("Password").build();
+    password_row.add_suffix(&password_entry);
+    settings_group.add(&password_row);
 
-    content.append(&grid);
-    quick_window.set_child(Some(&content));
+    content.append(&settings_group);
+
+    // Main box with header
+    let main_box = gtk4::Box::new(Orientation::Vertical, 0);
+    main_box.append(&header);
+    main_box.append(&content);
+    quick_window.set_content(Some(&main_box));
 
     // Track if port was manually changed
     let port_manually_changed = Rc::new(RefCell::new(false));

@@ -2,12 +2,10 @@
 //!
 //! Displays all available keyboard shortcuts in a searchable dialog.
 
-use gtk4::prelude::*;
-use gtk4::{
-    Box as GtkBox, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, SearchEntry,
-};
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk4::prelude::*;
+use gtk4::{Box as GtkBox, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, SearchEntry};
+use libadwaita as adw;
 
 /// Keyboard shortcut entry
 struct ShortcutEntry {

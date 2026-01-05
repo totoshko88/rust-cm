@@ -3,8 +3,8 @@
 //! This module contains methods for managing connection clusters,
 //! including cluster dialogs and related functionality.
 
+use gtk4::gio;
 use gtk4::prelude::*;
-use gtk4::{gio};
 use std::rc::Rc;
 use uuid::Uuid;
 

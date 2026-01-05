@@ -5,13 +5,13 @@
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, Label, ListBox, ListBoxRow,
     Orientation, PasswordEntry, ScrolledWindow,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::variables::Variable;
 use std::cell::RefCell;
 use std::rc::Rc;

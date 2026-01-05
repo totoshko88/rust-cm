@@ -6,8 +6,8 @@
 use crate::sidebar::ConnectionSidebar;
 use crate::state::SharedAppState;
 use crate::window_groups as groups;
+use gtk4::gio;
 use gtk4::prelude::*;
-use gtk4::{gio};
 use std::rc::Rc;
 
 /// Type alias for shared sidebar reference

@@ -8,13 +8,13 @@
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, Grid, Label, ListBox,
-    ListBoxRow, Notebook, Orientation, ScrolledWindow, SpinButton, Stack, StringList,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, Grid, Label, ListBox, ListBoxRow,
+    Notebook, Orientation, ScrolledWindow, SpinButton, Stack, StringList,
 };
 use libadwaita as adw;
-use adw::prelude::*;
 use rustconn_core::models::{
     AwsSsmConfig, AzureBastionConfig, AzureSshConfig, BoundaryConfig, CloudflareAccessConfig,
     ConnectionTemplate, GcpIapConfig, GenericZeroTrustConfig, OciBastionConfig, ProtocolConfig,
@@ -163,7 +163,7 @@ impl TemplateDialog {
 
         // === Basic Tab ===
         let (
-            basic_grid,
+            basic_scrolled,
             name_entry,
             description_entry,
             protocol_dropdown,
@@ -172,7 +172,7 @@ impl TemplateDialog {
             username_entry,
             tags_entry,
         ) = Self::create_basic_tab();
-        notebook.append_page(&basic_grid, Some(&Label::new(Some("Basic"))));
+        notebook.append_page(&basic_scrolled, Some(&Label::new(Some("Basic"))));
 
         // === Protocol Tab ===
         let protocol_stack = Stack::new();
@@ -450,97 +450,122 @@ impl TemplateDialog {
             .vexpand(true)
             .build();
 
-        let grid = Grid::builder()
-            .row_spacing(8)
-            .column_spacing(12)
-            .margin_top(12)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
+        let vbox = GtkBox::new(Orientation::Vertical, 8);
+        vbox.set_margin_top(12);
+        vbox.set_margin_bottom(12);
+        vbox.set_margin_start(12);
+        vbox.set_margin_end(12);
+
+        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
+        vbox.append(&grid);
 
         let mut row = 0;
 
+        // Name
         let name_label = Label::builder()
             .label("Name:")
             .halign(gtk4::Align::End)
             .build();
         let name_entry = Entry::builder()
-            .hexpand(true)
             .placeholder_text("Template name")
+            .hexpand(true)
             .build();
         grid.attach(&name_label, 0, row, 1, 1);
-        grid.attach(&name_entry, 1, row, 1, 1);
+        grid.attach(&name_entry, 1, row, 2, 1);
         row += 1;
 
+        // Description
         let desc_label = Label::builder()
             .label("Description:")
             .halign(gtk4::Align::End)
             .build();
         let description_entry = Entry::builder()
-            .hexpand(true)
             .placeholder_text("Optional description")
+            .hexpand(true)
             .build();
         grid.attach(&desc_label, 0, row, 1, 1);
-        grid.attach(&description_entry, 1, row, 1, 1);
+        grid.attach(&description_entry, 1, row, 2, 1);
         row += 1;
 
+        // Protocol
         let protocol_label = Label::builder()
             .label("Protocol:")
             .halign(gtk4::Align::End)
             .build();
         let protocols = StringList::new(&["SSH", "RDP", "VNC", "SPICE", "ZeroTrust"]);
-        let protocol_dropdown = DropDown::builder().model(&protocols).hexpand(true).build();
+        let protocol_dropdown = DropDown::builder().model(&protocols).build();
         grid.attach(&protocol_label, 0, row, 1, 1);
-        grid.attach(&protocol_dropdown, 1, row, 1, 1);
+        grid.attach(&protocol_dropdown, 1, row, 2, 1);
         row += 1;
 
+        // Separator label for default values
+        let defaults_label = Label::builder()
+            .label("<b>Default Values</b>")
+            .use_markup(true)
+            .halign(gtk4::Align::Start)
+            .margin_top(12)
+            .build();
+        grid.attach(&defaults_label, 0, row, 3, 1);
+        row += 1;
+
+        let defaults_desc = Label::builder()
+            .label("These values will be pre-filled when using this template")
+            .css_classes(["dim-label"])
+            .halign(gtk4::Align::Start)
+            .build();
+        grid.attach(&defaults_desc, 0, row, 3, 1);
+        row += 1;
+
+        // Host
         let host_label = Label::builder()
-            .label("Default Host:")
+            .label("Host:")
             .halign(gtk4::Align::End)
             .build();
         let host_entry = Entry::builder()
-            .hexpand(true)
             .placeholder_text("Leave empty for user to fill in")
+            .hexpand(true)
             .build();
         grid.attach(&host_label, 0, row, 1, 1);
-        grid.attach(&host_entry, 1, row, 1, 1);
+        grid.attach(&host_entry, 1, row, 2, 1);
         row += 1;
 
+        // Port
         let port_label = Label::builder()
-            .label("Default Port:")
+            .label("Port:")
             .halign(gtk4::Align::End)
             .build();
         let port_spin = SpinButton::with_range(1.0, 65535.0, 1.0);
         port_spin.set_value(22.0);
         grid.attach(&port_label, 0, row, 1, 1);
-        grid.attach(&port_spin, 1, row, 1, 1);
+        grid.attach(&port_spin, 1, row, 2, 1);
         row += 1;
 
+        // Username
         let user_label = Label::builder()
-            .label("Default Username:")
+            .label("Username:")
             .halign(gtk4::Align::End)
             .build();
         let username_entry = Entry::builder()
-            .hexpand(true)
             .placeholder_text("Optional default username")
+            .hexpand(true)
             .build();
         grid.attach(&user_label, 0, row, 1, 1);
-        grid.attach(&username_entry, 1, row, 1, 1);
+        grid.attach(&username_entry, 1, row, 2, 1);
         row += 1;
 
+        // Tags
         let tags_label = Label::builder()
-            .label("Default Tags:")
+            .label("Tags:")
             .halign(gtk4::Align::End)
             .build();
         let tags_entry = Entry::builder()
-            .hexpand(true)
             .placeholder_text("tag1, tag2, ...")
+            .hexpand(true)
             .build();
         grid.attach(&tags_label, 0, row, 1, 1);
-        grid.attach(&tags_entry, 1, row, 1, 1);
+        grid.attach(&tags_entry, 1, row, 2, 1);
 
-        scrolled.set_child(Some(&grid));
+        scrolled.set_child(Some(&vbox));
         (
             scrolled,
             name_entry,
