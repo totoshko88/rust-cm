@@ -315,20 +315,20 @@ impl SettingsDialog {
     /// Loads settings into the UI controls
     fn load_settings(&self, settings: &AppSettings) {
         // Load terminal settings
-        let terminal_controls = TerminalSettingsControls {
-            font_family_entry: &self.font_family_entry,
-            font_size_spin: &self.font_size_spin,
-            scrollback_spin: &self.scrollback_spin,
-            color_theme_dropdown: &self.color_theme_dropdown,
-            cursor_shape_dropdown: &self.cursor_shape_dropdown,
-            cursor_blink_dropdown: &self.cursor_blink_dropdown,
-            scroll_on_output_check: &self.scroll_on_output_check,
-            scroll_on_keystroke_check: &self.scroll_on_keystroke_check,
-            allow_hyperlinks_check: &self.allow_hyperlinks_check,
-            mouse_autohide_check: &self.mouse_autohide_check,
-            audible_bell_check: &self.audible_bell_check,
-        };
-        load_terminal_settings(&terminal_controls, &settings.terminal);
+        load_terminal_settings(
+            &self.font_family_entry,
+            &self.font_size_spin,
+            &self.scrollback_spin,
+            &self.color_theme_dropdown,
+            &self.cursor_shape_dropdown,
+            &self.cursor_blink_dropdown,
+            &self.scroll_on_output_check,
+            &self.scroll_on_keystroke_check,
+            &self.allow_hyperlinks_check,
+            &self.mouse_autohide_check,
+            &self.audible_bell_check,
+            &settings.terminal,
+        );
 
         // Load logging settings
         load_logging_settings(
@@ -342,19 +342,19 @@ impl SettingsDialog {
         );
 
         // Load secret settings
-        let secret_controls = SecretSettingsControls {
-            secret_backend_dropdown: &self.secret_backend_dropdown,
-            enable_fallback: &self.enable_fallback,
-            kdbx_path_entry: &self.kdbx_path_entry,
-            kdbx_password_entry: &self.kdbx_password_entry,
-            kdbx_enabled_switch: &self.kdbx_enabled_switch,
-            kdbx_save_password_check: &self.kdbx_save_password_check,
-            kdbx_status_label: &self.kdbx_status_label,
-            keepassxc_status_container: &self.keepassxc_status_container,
-            kdbx_key_file_entry: &self.kdbx_key_file_entry,
-            kdbx_use_key_file_check: &self.kdbx_use_key_file_check,
-        };
-        load_secret_settings(&secret_controls, &settings.secrets);
+        load_secret_settings(
+            &self.secret_backend_dropdown,
+            &self.enable_fallback,
+            &self.kdbx_path_entry,
+            &self.kdbx_password_entry,
+            &self.kdbx_enabled_switch,
+            &self.kdbx_save_password_check,
+            &self.kdbx_status_label,
+            &self.keepassxc_status_container,
+            &self.kdbx_key_file_entry,
+            &self.kdbx_use_key_file_check,
+            &settings.secrets,
+        );
 
         // Load UI settings
         load_ui_settings(
@@ -409,6 +409,7 @@ impl SettingsDialog {
         let enable_fallback_clone = self.enable_fallback.clone();
         let kdbx_path_entry_clone = self.kdbx_path_entry.clone();
         let kdbx_password_entry_clone = self.kdbx_password_entry.clone();
+        let kdbx_enabled_switch_clone = self.kdbx_enabled_switch.clone();
         let kdbx_save_password_check_clone = self.kdbx_save_password_check.clone();
         let kdbx_key_file_entry_clone = self.kdbx_key_file_entry.clone();
         let kdbx_use_key_file_check_clone = self.kdbx_use_key_file_check.clone();
@@ -426,20 +427,19 @@ impl SettingsDialog {
 
         self.save_button.connect_clicked(move |_| {
             // Collect terminal settings
-            let terminal_controls = TerminalSettingsControls {
-                font_family_entry: &font_family_entry_clone,
-                font_size_spin: &font_size_spin_clone,
-                scrollback_spin: &scrollback_spin_clone,
-                color_theme_dropdown: &color_theme_dropdown_clone,
-                cursor_shape_dropdown: &cursor_shape_dropdown_clone,
-                cursor_blink_dropdown: &cursor_blink_dropdown_clone,
-                scroll_on_output_check: &scroll_on_output_check_clone,
-                scroll_on_keystroke_check: &scroll_on_keystroke_check_clone,
-                allow_hyperlinks_check: &allow_hyperlinks_check_clone,
-                mouse_autohide_check: &mouse_autohide_check_clone,
-                audible_bell_check: &audible_bell_check_clone,
-            };
-            let terminal = collect_terminal_settings(&terminal_controls);
+            let terminal = collect_terminal_settings(
+                &font_family_entry_clone,
+                &font_size_spin_clone,
+                &scrollback_spin_clone,
+                &color_theme_dropdown_clone,
+                &cursor_shape_dropdown_clone,
+                &cursor_blink_dropdown_clone,
+                &scroll_on_output_check_clone,
+                &scroll_on_keystroke_check_clone,
+                &allow_hyperlinks_check_clone,
+                &mouse_autohide_check_clone,
+                &audible_bell_check_clone,
+            );
 
             // Collect logging settings
             let logging = collect_logging_settings(
@@ -457,6 +457,7 @@ impl SettingsDialog {
                 &enable_fallback_clone,
                 &kdbx_path_entry_clone,
                 &kdbx_password_entry_clone,
+                &kdbx_enabled_switch_clone,
                 &kdbx_save_password_check_clone,
                 &kdbx_key_file_entry_clone,
                 &kdbx_use_key_file_check_clone,
@@ -527,6 +528,7 @@ impl SettingsDialog {
         let secret_backend_dropdown_clone = self.secret_backend_dropdown.clone();
         let enable_fallback_clone = self.enable_fallback.clone();
         let kdbx_path_entry_clone = self.kdbx_path_entry.clone();
+        let kdbx_enabled_switch_clone = self.kdbx_enabled_switch.clone();
         let kdbx_password_entry_clone = self.kdbx_password_entry.clone();
         let kdbx_save_password_check_clone = self.kdbx_save_password_check.clone();
         let kdbx_key_file_entry_clone = self.kdbx_key_file_entry.clone();
@@ -562,20 +564,19 @@ impl SettingsDialog {
 
         self.save_button.connect_clicked(move |_| {
             // Collect terminal settings
-            let terminal_controls = TerminalSettingsControls {
-                font_family_entry: &font_family_entry_clone,
-                font_size_spin: &font_size_spin_clone,
-                scrollback_spin: &scrollback_spin_clone,
-                color_theme_dropdown: &color_theme_dropdown_clone,
-                cursor_shape_dropdown: &cursor_shape_dropdown_clone,
-                cursor_blink_dropdown: &cursor_blink_dropdown_clone,
-                scroll_on_output_check: &scroll_on_output_check_clone,
-                scroll_on_keystroke_check: &scroll_on_keystroke_check_clone,
-                allow_hyperlinks_check: &allow_hyperlinks_check_clone,
-                mouse_autohide_check: &mouse_autohide_check_clone,
-                audible_bell_check: &audible_bell_check_clone,
-            };
-            let terminal = collect_terminal_settings(&terminal_controls);
+            let terminal = collect_terminal_settings(
+                &font_family_entry_clone,
+                &font_size_spin_clone,
+                &scrollback_spin_clone,
+                &color_theme_dropdown_clone,
+                &cursor_shape_dropdown_clone,
+                &cursor_blink_dropdown_clone,
+                &scroll_on_output_check_clone,
+                &scroll_on_keystroke_check_clone,
+                &allow_hyperlinks_check_clone,
+                &mouse_autohide_check_clone,
+                &audible_bell_check_clone,
+            );
 
             // Collect logging settings
             let logging = collect_logging_settings(
@@ -593,6 +594,7 @@ impl SettingsDialog {
                 &enable_fallback_clone,
                 &kdbx_path_entry_clone,
                 &kdbx_password_entry_clone,
+                &kdbx_enabled_switch_clone,
                 &kdbx_save_password_check_clone,
                 &kdbx_key_file_entry_clone,
                 &kdbx_use_key_file_check_clone,
