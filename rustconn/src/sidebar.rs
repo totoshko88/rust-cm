@@ -137,10 +137,10 @@ impl ConnectionSidebar {
         search_box.append(&help_button);
 
         // Quick Filter buttons
-        let filter_box = GtkBox::new(Orientation::Horizontal, 4);
-        filter_box.set_margin_start(8);
-        filter_box.set_margin_end(8);
-        filter_box.set_margin_bottom(4);
+        let filter_box = GtkBox::new(Orientation::Horizontal, 6);
+        filter_box.set_margin_start(12);
+        filter_box.set_margin_end(12);
+        filter_box.set_margin_bottom(6);
         filter_box.add_css_class("linked");
 
         // Protocol filter buttons with icons
@@ -204,18 +204,19 @@ impl ConnectionSidebar {
         zerotrust_filter.add_css_class("flat");
         zerotrust_filter.add_css_class("filter-button");
 
-        // Local Shell button - not a filter, opens local terminal
+        // Local Shell button - distinct style (not a filter, opens local terminal)
         let local_shell_btn = Button::new();
-        let shell_box = GtkBox::new(Orientation::Horizontal, 4);
+        let shell_box = GtkBox::new(Orientation::Horizontal, 6);
         let shell_icon = gtk4::Image::from_icon_name("utilities-terminal-symbolic");
         shell_icon.set_pixel_size(16);
-        let shell_label = Label::new(Some("Local Shell"));
+        let shell_label = Label::new(Some("Shell"));
         shell_box.append(&shell_icon);
         shell_box.append(&shell_label);
         local_shell_btn.set_child(Some(&shell_box));
         local_shell_btn.set_tooltip_text(Some("Local Shell (Ctrl+Shift+T)"));
         local_shell_btn.set_action_name(Some("win.local-shell"));
-        local_shell_btn.add_css_class("flat");
+        local_shell_btn.add_css_class("suggested-action");
+        local_shell_btn.add_css_class("pill");
 
         filter_box.append(&ssh_filter);
         filter_box.append(&rdp_filter);

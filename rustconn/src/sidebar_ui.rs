@@ -457,11 +457,11 @@ pub fn create_bulk_actions_bar() -> GtkBox {
 /// Creates the button box at the bottom of the sidebar
 #[must_use]
 pub fn create_button_box() -> GtkBox {
-    let button_box = GtkBox::new(Orientation::Horizontal, 4);
-    button_box.set_margin_start(8);
-    button_box.set_margin_end(8);
-    button_box.set_margin_top(8);
-    button_box.set_margin_bottom(8);
+    let button_box = GtkBox::new(Orientation::Horizontal, 6);
+    button_box.set_margin_start(12);
+    button_box.set_margin_end(12);
+    button_box.set_margin_top(6);
+    button_box.set_margin_bottom(6);
     button_box.set_halign(gtk4::Align::Center);
 
     // Delete button
