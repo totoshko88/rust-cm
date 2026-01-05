@@ -179,6 +179,7 @@ impl Default for LoggingSettings {
 
 /// Secret storage settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct SecretSettings {
     /// Preferred secret backend
     #[serde(default)]
@@ -202,9 +203,12 @@ pub struct SecretSettings {
     /// Path to `KeePass` key file (.keyx or .key) - alternative to password
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kdbx_key_file: Option<PathBuf>,
-    /// Whether to use key file instead of password
+    /// Whether to use key file for authentication
     #[serde(default)]
     pub kdbx_use_key_file: bool,
+    /// Whether to use password for authentication
+    #[serde(default = "default_true")]
+    pub kdbx_use_password: bool,
 }
 
 const fn default_true() -> bool {
@@ -222,6 +226,7 @@ impl Default for SecretSettings {
             kdbx_password_encrypted: None,
             kdbx_key_file: None,
             kdbx_use_key_file: false,
+            kdbx_use_password: true,
         }
     }
 }
@@ -254,9 +259,25 @@ pub enum SecretBackendType {
     LibSecret,
 }
 
+/// Color scheme preference
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorScheme {
+    /// Follow system preference
+    #[default]
+    System,
+    /// Force light theme
+    Light,
+    /// Force dark theme
+    Dark,
+}
+
 /// UI settings
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
+    /// Color scheme preference
+    #[serde(default)]
+    pub color_scheme: ColorScheme,
     /// Remember window geometry
     #[serde(default = "default_true")]
     pub remember_window_geometry: bool,
@@ -335,6 +356,7 @@ pub struct SavedSession {
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
+            color_scheme: ColorScheme::default(),
             remember_window_geometry: true,
             window_width: None,
             window_height: None,

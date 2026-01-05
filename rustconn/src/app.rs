@@ -5,13 +5,33 @@
 //! action setup.
 
 use gtk4::prelude::*;
-use gtk4::{gio, glib, Application};
+use gtk4::{gio, glib};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::state::{create_shared_state, SharedAppState};
 use crate::tray::{TrayManager, TrayMessage};
 use crate::window::MainWindow;
+use rustconn_core::config::ColorScheme;
+
+/// Applies a color scheme to GTK/libadwaita settings
+pub fn apply_color_scheme(scheme: ColorScheme) {
+    // For libadwaita applications, use StyleManager instead of GTK Settings
+    let style_manager = adw::StyleManager::default();
+
+    match scheme {
+        ColorScheme::System => {
+            style_manager.set_color_scheme(adw::ColorScheme::Default);
+        }
+        ColorScheme::Light => {
+            style_manager.set_color_scheme(adw::ColorScheme::ForceLight);
+        }
+        ColorScheme::Dark => {
+            style_manager.set_color_scheme(adw::ColorScheme::ForceDark);
+        }
+    }
+}
 
 /// Application ID for `RustConn`
 pub const APP_ID: &str = "io.github.totoshko88.RustConn";
@@ -24,8 +44,8 @@ type SharedTrayManager = Rc<RefCell<Option<TrayManager>>>;
 /// Sets up the application with Wayland-native configuration and
 /// connects the activate signal to create the main window.
 #[must_use]
-pub fn create_application() -> Application {
-    let app = Application::builder()
+pub fn create_application() -> adw::Application {
+    let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::default())
         .build();
@@ -45,7 +65,7 @@ pub fn create_application() -> Application {
 }
 
 /// Builds the main UI when the application is activated
-fn build_ui(app: &Application, tray_manager: SharedTrayManager) {
+fn build_ui(app: &adw::Application, tray_manager: SharedTrayManager) {
     // Load CSS styles for split view panes
     load_css_styles();
 
@@ -58,6 +78,9 @@ fn build_ui(app: &Application, tray_manager: SharedTrayManager) {
             return;
         }
     };
+
+    // Apply saved color scheme from settings
+    apply_saved_color_scheme(&state);
 
     // Create main window with state
     let window = MainWindow::new(app, state.clone());
@@ -108,7 +131,7 @@ fn update_tray_state(tray: &TrayManager, state: &SharedAppState) {
 
 /// Sets up polling for tray messages
 fn setup_tray_polling(
-    app: &Application,
+    app: &adw::Application,
     window: &MainWindow,
     state: SharedAppState,
     tray_manager: SharedTrayManager,
@@ -493,6 +516,41 @@ fn load_css_styles() {
             background-color: @accent_bg_color;
             color: @accent_fg_color;
         }
+
+        /* Status indicator styles for settings dialog */
+        .success {
+            color: #2ec27e;
+        }
+
+        .warning {
+            color: #e5a50a;
+        }
+
+        .error {
+            color: @error_color;
+        }
+
+        /* Status icons with better visibility */
+        label.success {
+            color: #2ec27e;
+            font-weight: 600;
+        }
+
+        label.warning {
+            color: #e5a50a;
+            font-weight: 600;
+        }
+
+        label.error {
+            color: @error_color;
+            font-weight: 600;
+        }
+
+        /* Heading styles for settings sections */
+        .heading {
+            font-weight: 600;
+            font-size: 0.95em;
+        }
         ",
     );
 
@@ -504,7 +562,7 @@ fn load_css_styles() {
 
 /// Sets up application-level actions
 fn setup_app_actions(
-    app: &Application,
+    app: &adw::Application,
     window: &MainWindow,
     state: SharedAppState,
     _tray_manager: SharedTrayManager,
@@ -594,7 +652,7 @@ fn setup_app_actions(
 }
 
 /// Shows the about dialog
-fn show_about_dialog(parent: &gtk4::ApplicationWindow) {
+fn show_about_dialog(parent: &adw::ApplicationWindow) {
     let about = gtk4::AboutDialog::builder()
         .transient_for(parent)
         .modal(true)
@@ -666,7 +724,7 @@ fn show_about_dialog(parent: &gtk4::ApplicationWindow) {
 }
 
 /// Shows an error dialog
-fn show_error_dialog(app: &Application, title: &str, message: &str) {
+fn show_error_dialog(app: &adw::Application, title: &str, message: &str) {
     let dialog = gtk4::AlertDialog::builder()
         .message(title)
         .detail(message)
@@ -674,7 +732,7 @@ fn show_error_dialog(app: &Application, title: &str, message: &str) {
         .build();
 
     // Create a temporary window to show the dialog
-    let window = gtk4::ApplicationWindow::builder().application(app).build();
+    let window = adw::ApplicationWindow::builder().application(app).build();
 
     dialog.show(Some(&window));
 }
@@ -683,6 +741,19 @@ fn show_error_dialog(app: &Application, title: &str, message: &str) {
 ///
 /// This is the main entry point that initializes GTK and runs the event loop.
 pub fn run() -> glib::ExitCode {
+    // Initialize libadwaita before creating the application
+    adw::init().expect("Failed to initialize libadwaita");
+
     let app = create_application();
     app.run()
+}
+
+/// Applies the saved color scheme from settings to GTK
+fn apply_saved_color_scheme(state: &SharedAppState) {
+    let color_scheme = {
+        let state_ref = state.borrow();
+        state_ref.settings().ui.color_scheme
+    };
+
+    apply_color_scheme(color_scheme);
 }

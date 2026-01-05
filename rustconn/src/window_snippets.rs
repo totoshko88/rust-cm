@@ -3,7 +3,7 @@
 //! This module contains methods for managing and executing command snippets.
 
 use gtk4::prelude::*;
-use gtk4::{gio, ApplicationWindow, Button, HeaderBar, Label, Orientation};
+use gtk4::{gio, Button, HeaderBar, Label, Orientation};
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -15,7 +15,7 @@ use crate::terminal::TerminalNotebook;
 pub type SharedNotebook = Rc<TerminalNotebook>;
 
 /// Shows the new snippet dialog
-pub fn show_new_snippet_dialog(window: &ApplicationWindow, state: SharedAppState) {
+pub fn show_new_snippet_dialog(window: &gtk4::Window, state: SharedAppState) {
     let dialog = SnippetDialog::new(Some(&window.clone().upcast()));
 
     let window_clone = window.clone();
@@ -48,7 +48,7 @@ pub fn show_new_snippet_dialog(window: &ApplicationWindow, state: SharedAppState
 /// Shows the snippets manager window
 #[allow(clippy::too_many_lines)]
 pub fn show_snippets_manager(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     notebook: SharedNotebook,
 ) {
@@ -316,7 +316,7 @@ pub fn populate_snippets_list(state: &SharedAppState, list: &gtk4::ListBox, quer
 
 /// Shows a snippet picker for quick execution
 pub fn show_snippet_picker(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     notebook: SharedNotebook,
 ) {

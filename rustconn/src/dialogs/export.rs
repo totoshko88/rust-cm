@@ -8,9 +8,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, HeaderBar, Label,
-    Orientation, ProgressBar, ScrolledWindow, Separator, Spinner, Stack, StringList, Window,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, Label,
+    Orientation, ProgressBar, ScrolledWindow, Separator, Spinner, Stack, StringList,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::export::{
     AnsibleExporter, AsbruExporter, ExportFormat, ExportOptions, ExportResult, ExportTarget,
     NativeExport, RemminaExporter, RoyalTsExporter, SshConfigExporter,
@@ -26,7 +28,7 @@ pub type ExportCallback = Rc<RefCell<Option<Box<dyn Fn(Option<ExportResult>)>>>>
 /// Export dialog for exporting connections to external formats
 #[allow(dead_code)] // Fields kept for GTK widget lifecycle
 pub struct ExportDialog {
-    window: Window,
+    window: adw::Window,
     stack: Stack,
     // Format selection
     format_dropdown: DropDown,
@@ -55,9 +57,9 @@ pub struct ExportDialog {
 impl ExportDialog {
     /// Creates a new export dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
         // Create window
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("Export Connections")
             .modal(true)
             .default_width(750)
@@ -69,8 +71,9 @@ impl ExportDialog {
         }
 
         // Create header bar with Close/Export buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let export_button = Button::builder()
             .label("Export")
@@ -78,7 +81,6 @@ impl ExportDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&export_button);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -97,7 +99,12 @@ impl ExportDialog {
         let stack = Stack::new();
         stack.set_vexpand(true);
         content.append(&stack);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // === Options Page ===
         let (

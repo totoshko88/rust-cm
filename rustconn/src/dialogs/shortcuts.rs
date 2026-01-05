@@ -4,9 +4,10 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, HeaderBar, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, SearchEntry,
-    Window,
+    Box as GtkBox, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, SearchEntry,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 
 /// Keyboard shortcut entry
 struct ShortcutEntry {
@@ -159,14 +160,14 @@ const SHORTCUTS: &[ShortcutEntry] = &[
 
 /// Keyboard shortcuts help dialog
 pub struct ShortcutsDialog {
-    window: Window,
+    window: adw::Window,
 }
 
 impl ShortcutsDialog {
     /// Creates a new shortcuts dialog
     #[must_use]
-    pub fn new(parent: Option<&impl IsA<Window>>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&impl IsA<gtk4::Window>>) -> Self {
+        let window = adw::Window::builder()
             .title("Keyboard Shortcuts")
             .modal(true)
             .default_width(500)
@@ -178,9 +179,7 @@ impl ShortcutsDialog {
         }
 
         // Header bar
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(true);
-        window.set_titlebar(Some(&header));
+        let header = adw::HeaderBar::new();
 
         // Main content
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -188,6 +187,12 @@ impl ShortcutsDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Search entry
         let search_entry = SearchEntry::builder()
@@ -230,8 +235,6 @@ impl ShortcutsDialog {
             let search_text = entry.text().to_lowercase();
             Self::filter_shortcuts(&list_box_clone, &search_text);
         });
-
-        window.set_child(Some(&content));
 
         Self { window }
     }

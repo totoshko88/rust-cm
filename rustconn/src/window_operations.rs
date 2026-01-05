@@ -9,7 +9,7 @@ use crate::window::MainWindow;
 use crate::window_types::get_protocol_string;
 use gtk4::gio;
 use gtk4::prelude::*;
-use gtk4::ApplicationWindow;
+
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -18,7 +18,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 
 /// Deletes the selected connection or group
 pub fn delete_selected_connection(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -98,7 +98,7 @@ pub fn delete_selected_connection(
 
 /// Duplicates the selected connection
 pub fn duplicate_selected_connection(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -164,7 +164,7 @@ pub fn duplicate_selected_connection(
 
 /// Copies the selected connection to the internal clipboard
 pub fn copy_selected_connection(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -206,7 +206,7 @@ pub fn copy_selected_connection(
 
 /// Pastes a connection from the internal clipboard
 pub fn paste_connection(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -312,7 +312,7 @@ pub fn add_group_children_static(
 /// Deletes all selected connections (bulk delete for group operations mode)
 #[allow(clippy::too_many_lines)]
 pub fn delete_selected_connections(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -483,7 +483,7 @@ pub fn delete_selected_connections(
 
 /// Shows dialog to move selected items to a group (supports both connections and groups)
 pub fn show_move_selected_to_group_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {

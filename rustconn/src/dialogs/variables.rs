@@ -7,9 +7,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, HeaderBar, Label, ListBox, ListBoxRow,
-    Orientation, PasswordEntry, ScrolledWindow, Window,
+    Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, Label, ListBox, ListBoxRow,
+    Orientation, PasswordEntry, ScrolledWindow,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::variables::Variable;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,7 +20,7 @@ use super::VariablesCallback;
 
 /// Variables dialog for managing global variables
 pub struct VariablesDialog {
-    window: Window,
+    window: adw::Window,
     variables_list: ListBox,
     add_button: Button,
     variables: Rc<RefCell<Vec<VariableRow>>>,
@@ -46,8 +48,8 @@ struct VariableRow {
 impl VariablesDialog {
     /// Creates a new variables dialog for global variables
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("Global Variables")
             .modal(true)
             .default_width(750)
@@ -59,8 +61,9 @@ impl VariablesDialog {
         }
 
         // Create header bar with Cancel/Save buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let save_btn = Button::builder()
             .label("Save")
@@ -68,7 +71,6 @@ impl VariablesDialog {
             .build();
         header.pack_start(&cancel_btn);
         header.pack_end(&save_btn);
-        window.set_titlebar(Some(&header));
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -76,7 +78,12 @@ impl VariablesDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Info label
         let info_label = Label::builder()
@@ -400,7 +407,7 @@ impl VariablesDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }

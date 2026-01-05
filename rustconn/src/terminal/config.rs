@@ -10,7 +10,10 @@ use rustconn_core::terminal_themes::{Color, TerminalTheme};
 use vte4::prelude::*;
 use vte4::{CursorBlinkMode, CursorShape, Terminal};
 
-/// Configures terminal appearance and behavior
+/// Configures terminal appearance and behavior with default settings
+///
+/// For custom terminal settings, use `configure_terminal_with_settings` instead.
+#[allow(dead_code)]
 pub fn configure_terminal(terminal: &Terminal) {
     configure_terminal_with_settings(terminal, &TerminalSettings::default());
 }

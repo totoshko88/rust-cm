@@ -4,7 +4,7 @@
 //! including cluster dialogs and related functionality.
 
 use gtk4::prelude::*;
-use gtk4::{gio, ApplicationWindow};
+use gtk4::{gio};
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 
 /// Shows the new cluster dialog
 pub fn show_new_cluster_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     notebook: SharedNotebook,
 ) {
@@ -74,7 +74,7 @@ pub fn show_new_cluster_dialog(
 /// Shows the clusters manager dialog
 #[allow(clippy::too_many_lines)]
 pub fn show_clusters_manager(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     notebook: SharedNotebook,
     sidebar: SharedSidebar,
@@ -134,7 +134,7 @@ pub fn show_clusters_manager(
     let refresh_after_edit = create_refresh_callback(dialog_ref_edit.clone());
     dialog_ref.set_on_edit(move |cluster_id| {
         edit_cluster(
-            &dialog_window,
+            dialog_window.upcast_ref(),
             &state_clone,
             &notebook_clone,
             cluster_id,
@@ -148,7 +148,7 @@ pub fn show_clusters_manager(
     let refresh_after_delete = create_refresh_callback(dialog_ref_delete.clone());
     dialog_ref.set_on_delete(move |cluster_id| {
         delete_cluster(
-            &dialog_window,
+            dialog_window.upcast_ref(),
             &state_clone,
             cluster_id,
             Box::new(refresh_after_delete.clone()),
@@ -162,7 +162,7 @@ pub fn show_clusters_manager(
     let refresh_after_new = create_refresh_callback(dialog_ref_new.clone());
     dialog_ref.set_on_new(move || {
         show_new_cluster_dialog_from_manager(
-            &dialog_window,
+            dialog_window.upcast_ref(),
             state_clone.clone(),
             notebook_clone.clone(),
             Box::new(refresh_after_new.clone()),
@@ -224,7 +224,7 @@ fn show_new_cluster_dialog_from_manager(
 fn connect_cluster(
     state: &SharedAppState,
     notebook: &SharedNotebook,
-    _window: &ApplicationWindow,
+    _window: &gtk4::Window,
     sidebar: &SharedSidebar,
     cluster_id: Uuid,
 ) {

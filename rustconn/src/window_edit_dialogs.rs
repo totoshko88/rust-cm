@@ -11,7 +11,7 @@ use crate::state::SharedAppState;
 use crate::terminal::TerminalNotebook;
 use crate::window::MainWindow;
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, Button, Label, Orientation};
+use gtk4::{Button, Label, Orientation};
 use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
@@ -27,7 +27,7 @@ pub type SharedSplitView = Rc<SplitTerminalView>;
 
 /// Edits the selected connection or group
 pub fn edit_selected_connection(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -129,7 +129,7 @@ pub fn edit_selected_connection(
 /// Handles saving password to KeePass
 #[allow(clippy::too_many_arguments)]
 fn handle_save_to_keepass(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     conn_name: &str,
     conn_host: &str,
@@ -276,7 +276,7 @@ fn handle_load_from_keepass(state: &SharedAppState, name: &str, host: &str) -> O
 
 /// Renames the selected connection or group with a simple inline dialog
 pub fn rename_selected_item(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -436,7 +436,7 @@ pub fn rename_selected_item(
 // SharedAppState is Rc<RefCell<...>> - cheap to clone and needed for closure ownership
 #[allow(clippy::needless_pass_by_value)]
 pub fn show_edit_group_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
     group_id: Uuid,
@@ -546,7 +546,7 @@ pub fn show_edit_group_dialog(
 /// Shows the quick connect dialog with protocol selection and template support
 #[allow(clippy::too_many_lines)]
 pub fn show_quick_connect_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     notebook: SharedNotebook,
     split_view: SharedSplitView,
     sidebar: SharedSidebar,
@@ -557,7 +557,7 @@ pub fn show_quick_connect_dialog(
 /// Shows the quick connect dialog with optional state for template access
 #[allow(clippy::too_many_lines)]
 pub fn show_quick_connect_dialog_with_state(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     notebook: SharedNotebook,
     split_view: SharedSplitView,
     sidebar: SharedSidebar,
@@ -780,11 +780,20 @@ pub fn show_quick_connect_dialog_with_state(
     let user_clone = user_entry;
     let password_clone = password_entry;
     let protocol_clone = protocol_dropdown;
+    // Clone state for use in closure
+    let state_for_connect = state.cloned();
     connect_btn.connect_clicked(move |_| {
         let host = host_clone.text().to_string();
         if host.trim().is_empty() {
             return;
         }
+
+        // Get terminal settings from state if available
+        let terminal_settings = state_for_connect
+            .as_ref()
+            .and_then(|s| s.try_borrow().ok())
+            .map(|s| s.settings().terminal.clone())
+            .unwrap_or_default();
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let port = port_clone.value() as u16;
@@ -810,11 +819,12 @@ pub fn show_quick_connect_dialog_with_state(
         match protocol_idx {
             0 => {
                 // SSH - use terminal tab
-                let session_id = notebook.create_terminal_tab(
+                let session_id = notebook.create_terminal_tab_with_settings(
                     Uuid::nil(),
                     &format!("Quick: {host}"),
                     "ssh",
                     None,
+                    &terminal_settings,
                 );
 
                 notebook.spawn_ssh(session_id, &host, port, username.as_deref(), None, &[]);
@@ -934,11 +944,12 @@ pub fn show_quick_connect_dialog_with_state(
             }
             _ => {
                 // Default to SSH
-                let session_id = notebook.create_terminal_tab(
+                let session_id = notebook.create_terminal_tab_with_settings(
                     Uuid::nil(),
                     &format!("Quick: {host}"),
                     "ssh",
                     None,
+                    &terminal_settings,
                 );
 
                 notebook.spawn_ssh(session_id, &host, port, username.as_deref(), None, &[]);

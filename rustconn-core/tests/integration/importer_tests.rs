@@ -630,7 +630,8 @@ fn test_large_import_performance() {
         write!(
             large_ssh_config,
             "Host server{i}\n    HostName server{i}.example.com\n    Port 22\n    User admin\n\n"
-        ).expect("Failed to write to string");
+        )
+        .expect("Failed to write to string");
     }
 
     let ssh_importer = SshConfigImporter::new();
@@ -640,8 +641,5 @@ fn test_large_import_performance() {
 
     assert_eq!(result.connections.len(), 1000);
     // Should complete within reasonable time (adjust threshold as needed)
-    assert!(
-        duration.as_secs() < 5,
-        "Import took too long: {duration:?}"
-    );
+    assert!(duration.as_secs() < 5, "Import took too long: {duration:?}");
 }

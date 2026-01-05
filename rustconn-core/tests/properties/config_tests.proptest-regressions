@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc abc61a8af38ffa96ee8c8b6039ce303c249f0f212ca86755f572432384b05635 # shrinks to settings = SecretSettings { preferred_backend: KeePassXc, enable_fallback: false, kdbx_path: None, kdbx_enabled: false, kdbx_password: None, kdbx_password_encrypted: None, kdbx_key_file: None, kdbx_use_key_file: false, kdbx_use_password: true }

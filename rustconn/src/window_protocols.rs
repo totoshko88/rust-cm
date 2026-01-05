@@ -32,9 +32,21 @@ pub fn start_ssh_connection(
 
     let conn_name = conn.name.clone();
 
-    // Create terminal tab for SSH
-    let session_id =
-        notebook.create_terminal_tab(connection_id, &conn.name, "ssh", Some(&conn.automation));
+    // Get terminal settings from state
+    let terminal_settings = state
+        .try_borrow()
+        .ok()
+        .map(|s| s.settings().terminal.clone())
+        .unwrap_or_default();
+
+    // Create terminal tab for SSH with user settings
+    let session_id = notebook.create_terminal_tab_with_settings(
+        connection_id,
+        &conn.name,
+        "ssh",
+        Some(&conn.automation),
+        &terminal_settings,
+    );
 
     // Record connection start in history
     let history_entry_id = if let Ok(mut state_mut) = state.try_borrow_mut() {
@@ -398,13 +410,21 @@ pub fn start_zerotrust_connection(
 
     let automation_config = conn.automation.clone();
 
+    // Get terminal settings from state
+    let terminal_settings = state
+        .try_borrow()
+        .ok()
+        .map(|s| s.settings().terminal.clone())
+        .unwrap_or_default();
+
     // Create terminal tab for Zero Trust with provider-specific protocol
     let tab_protocol = format!("zerotrust:{provider_key}");
-    let session_id = notebook.create_terminal_tab(
+    let session_id = notebook.create_terminal_tab_with_settings(
         connection_id,
         &conn_name,
         &tab_protocol,
         Some(&automation_config),
+        &terminal_settings,
     );
 
     // Record connection start in history

@@ -1,7 +1,7 @@
 //! SSH Agent settings tab
 
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Button, Frame, Label, ListBox, Orientation, ScrolledWindow, Spinner};
+use gtk4::{Box as GtkBox, Button, Label, ListBox, Orientation, ScrolledWindow, Spinner};
 use rustconn_core::ssh_agent::SshAgentManager;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,88 +24,142 @@ pub fn create_ssh_agent_tab() -> (
         .vscrollbar_policy(gtk4::PolicyType::Automatic)
         .build();
 
-    let main_vbox = GtkBox::new(Orientation::Vertical, 12);
+    let main_vbox = GtkBox::new(Orientation::Vertical, 6);
     main_vbox.set_margin_top(12);
     main_vbox.set_margin_bottom(12);
     main_vbox.set_margin_start(12);
     main_vbox.set_margin_end(12);
     main_vbox.set_valign(gtk4::Align::Start);
 
-    // SSH Agent Status
-    let status_frame = Frame::builder()
-        .label("SSH Agent Status")
-        .margin_bottom(12)
+    // === Agent Status section ===
+    let status_header = Label::builder()
+        .label("Agent Status")
+        .halign(gtk4::Align::Start)
+        .css_classes(["heading"])
+        .build();
+    main_vbox.append(&status_header);
+
+    let status_grid = gtk4::Grid::builder()
+        .row_spacing(4)
+        .column_spacing(12)
+        .margin_start(6)
+        .margin_top(6)
+        .margin_bottom(6)
         .build();
 
-    let status_vbox = GtkBox::new(Orientation::Vertical, 6);
-    status_vbox.set_margin_top(6);
-    status_vbox.set_margin_bottom(6);
-    status_vbox.set_margin_start(6);
-    status_vbox.set_margin_end(6);
+    let status_label = Label::builder()
+        .label("Status:")
+        .halign(gtk4::Align::Start)
+        .build();
 
     let ssh_agent_status_label = Label::builder()
-        .label("Status: Checking...")
+        .label("Checking...")
+        .halign(gtk4::Align::Start)
+        .build();
+
+    let socket_label = Label::builder()
+        .label("Socket:")
         .halign(gtk4::Align::Start)
         .build();
 
     let ssh_agent_socket_label = Label::builder()
-        .label("Socket: Not available")
+        .label("")
         .halign(gtk4::Align::Start)
+        .css_classes(["dim-label"])
+        .selectable(true)
         .build();
 
+    status_grid.attach(&status_label, 0, 0, 1, 1);
+    status_grid.attach(&ssh_agent_status_label, 1, 0, 1, 1);
+    status_grid.attach(&socket_label, 0, 1, 1, 1);
+    status_grid.attach(&ssh_agent_socket_label, 1, 1, 1, 1);
+
+    main_vbox.append(&status_grid);
+
+    // Control buttons
     let control_hbox = GtkBox::new(Orientation::Horizontal, 6);
+    control_hbox.set_margin_start(6);
+    control_hbox.set_margin_bottom(12);
+
     let ssh_agent_start_button = Button::with_label("Start Agent");
     let ssh_agent_refresh_button = Button::with_label("Refresh");
+
     control_hbox.append(&ssh_agent_start_button);
     control_hbox.append(&ssh_agent_refresh_button);
+    main_vbox.append(&control_hbox);
 
-    status_vbox.append(&ssh_agent_status_label);
-    status_vbox.append(&ssh_agent_socket_label);
-    status_vbox.append(&control_hbox);
-
-    status_frame.set_child(Some(&status_vbox));
-
-    // SSH Keys Management
-    let keys_frame = Frame::builder().label("SSH Keys").margin_bottom(12).build();
-
-    let keys_vbox = GtkBox::new(Orientation::Vertical, 6);
-    keys_vbox.set_margin_top(6);
-    keys_vbox.set_margin_bottom(6);
-    keys_vbox.set_margin_start(6);
-    keys_vbox.set_margin_end(6);
-
-    let keys_scrolled = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk4::PolicyType::Never)
-        .vscrollbar_policy(gtk4::PolicyType::Automatic)
-        .min_content_height(200)
+    // === Loaded Keys section ===
+    let keys_header = Label::builder()
+        .label("Loaded Keys")
+        .halign(gtk4::Align::Start)
+        .css_classes(["heading"])
+        .margin_top(6)
         .build();
+    main_vbox.append(&keys_header);
 
+    // Keys list without ScrolledWindow wrapper - just plain ListBox
     let ssh_agent_keys_list = ListBox::builder()
-        .selection_mode(gtk4::SelectionMode::Single)
+        .selection_mode(gtk4::SelectionMode::None)
         .build();
+    main_vbox.append(&ssh_agent_keys_list);
 
-    keys_scrolled.set_child(Some(&ssh_agent_keys_list));
-
-    let keys_control_hbox = GtkBox::new(Orientation::Horizontal, 6);
-    let ssh_agent_add_key_button = Button::with_label("Add Key");
     let ssh_agent_loading_spinner = Spinner::new();
-    keys_control_hbox.append(&ssh_agent_add_key_button);
-    keys_control_hbox.append(&ssh_agent_loading_spinner);
+    main_vbox.append(&ssh_agent_loading_spinner);
 
     let ssh_agent_error_label = Label::builder()
         .label("")
         .halign(gtk4::Align::Start)
         .css_classes(["error"])
         .build();
+    main_vbox.append(&ssh_agent_error_label);
 
-    keys_vbox.append(&keys_scrolled);
-    keys_vbox.append(&keys_control_hbox);
-    keys_vbox.append(&ssh_agent_error_label);
+    // Add Key button
+    let add_key_hbox = GtkBox::new(Orientation::Horizontal, 6);
+    add_key_hbox.set_margin_top(6);
 
-    keys_frame.set_child(Some(&keys_vbox));
+    let ssh_agent_add_key_button = Button::with_label("Add Key");
+    add_key_hbox.append(&ssh_agent_add_key_button);
+    main_vbox.append(&add_key_hbox);
 
-    main_vbox.append(&status_frame);
-    main_vbox.append(&keys_frame);
+    // === Available Key Files section ===
+    let available_header = Label::builder()
+        .label("Available Key Files")
+        .halign(gtk4::Align::Start)
+        .css_classes(["heading"])
+        .margin_top(18)
+        .build();
+    main_vbox.append(&available_header);
+
+    let available_desc = Label::builder()
+        .label("Key files found in ~/.ssh/")
+        .halign(gtk4::Align::Start)
+        .css_classes(["dim-label"])
+        .margin_start(6)
+        .margin_bottom(6)
+        .build();
+    main_vbox.append(&available_desc);
+
+    // Available keys list without ScrolledWindow
+    let available_keys_list = ListBox::builder()
+        .selection_mode(gtk4::SelectionMode::None)
+        .build();
+
+    if let Ok(key_files) = SshAgentManager::list_key_files() {
+        if key_files.is_empty() {
+            let empty_row = create_empty_row("No SSH key files found");
+            available_keys_list.append(&empty_row);
+        } else {
+            for key_file in key_files {
+                let key_row = create_available_key_row(&key_file);
+                available_keys_list.append(&key_row);
+            }
+        }
+    } else {
+        let error_row = create_error_row("Failed to scan ~/.ssh/ directory");
+        available_keys_list.append(&error_row);
+    }
+
+    main_vbox.append(&available_keys_list);
 
     scrolled.set_child(Some(&main_vbox));
 
@@ -131,63 +185,179 @@ pub fn load_ssh_agent_settings(
 ) {
     let manager = ssh_agent_manager.borrow();
 
-    // Update status
-    match manager.get_status() {
-        Ok(status) => {
-            let status_text = if status.running {
-                "Status: Running"
-            } else {
-                "Status: Not running"
-            };
-            ssh_agent_status_label.set_text(status_text);
-        }
-        Err(_) => {
-            ssh_agent_status_label.set_text("Status: Error checking agent");
-        }
-    }
+    if let Ok(status) = manager.get_status() {
+        let status_text = if status.running {
+            "✓ Running"
+        } else {
+            "○ Not running"
+        };
+        ssh_agent_status_label.set_text(status_text);
 
-    // Update socket path
-    if let Some(socket) = manager.socket_path() {
-        ssh_agent_socket_label.set_text(&format!("Socket: {socket}"));
+        if status.running {
+            ssh_agent_status_label.remove_css_class("error");
+            ssh_agent_status_label.add_css_class("success");
+        } else {
+            ssh_agent_status_label.remove_css_class("success");
+            ssh_agent_status_label.add_css_class("dim-label");
+        }
     } else {
-        ssh_agent_socket_label.set_text("Socket: Not available");
+        ssh_agent_status_label.set_text("✗ Error");
+        ssh_agent_status_label.add_css_class("error");
     }
 
-    // Clear existing keys
+    if let Some(socket) = manager.socket_path() {
+        ssh_agent_socket_label.set_text(socket);
+    } else {
+        ssh_agent_socket_label.set_text("Not available");
+    }
+
     while let Some(child) = ssh_agent_keys_list.first_child() {
         ssh_agent_keys_list.remove(&child);
     }
 
-    // Load keys - simplified for now since we need to check what methods are available
-    if let Ok(key_files) = SshAgentManager::list_key_files() {
-        for key_file in key_files {
-            let key_row = GtkBox::new(Orientation::Horizontal, 6);
-            key_row.set_margin_top(6);
-            key_row.set_margin_bottom(6);
-            key_row.set_margin_start(6);
-            key_row.set_margin_end(6);
-
-            let key_info = GtkBox::new(Orientation::Vertical, 2);
-            let key_path_label = Label::builder()
-                .label(&format!("Key: {}", key_file.display()))
-                .halign(gtk4::Align::Start)
-                .build();
-
-            key_info.append(&key_path_label);
-
-            let remove_button = Button::builder()
-                .label("Remove")
-                .css_classes(["destructive-action"])
-                .build();
-
-            key_row.append(&key_info);
-            key_row.append(&remove_button);
-            key_row.set_hexpand(true);
-
-            ssh_agent_keys_list.append(&key_row);
+    if let Ok(status) = manager.get_status() {
+        if status.running {
+            if status.keys.is_empty() {
+                let empty_row = create_empty_row("No keys loaded in agent");
+                ssh_agent_keys_list.append(&empty_row);
+            } else {
+                for key in &status.keys {
+                    let key_row = create_loaded_key_row(key);
+                    ssh_agent_keys_list.append(&key_row);
+                }
+            }
+        } else {
+            let empty_row = create_empty_row("Agent not running");
+            ssh_agent_keys_list.append(&empty_row);
         }
     } else {
-        let error_row = Label::new(Some("Failed to load SSH key files"));
-        ssh_agent_keys_list.append(&error_row);
+        let empty_row = create_empty_row("Agent not running");
+        ssh_agent_keys_list.append(&empty_row);
     }
+}
+
+fn create_loaded_key_row(key: &rustconn_core::ssh_agent::AgentKey) -> gtk4::ListBoxRow {
+    let row = gtk4::ListBoxRow::new();
+
+    let key_box = GtkBox::new(Orientation::Horizontal, 12);
+    key_box.set_margin_top(4);
+    key_box.set_margin_bottom(4);
+    key_box.set_margin_start(6);
+    key_box.set_margin_end(6);
+
+    let key_info = GtkBox::new(Orientation::Vertical, 2);
+    key_info.set_hexpand(true);
+
+    let key_type_label = Label::builder()
+        .label(&format!("{} ({} bits)", key.key_type, key.bits))
+        .halign(gtk4::Align::Start)
+        .css_classes(["heading"])
+        .build();
+
+    let fingerprint_label = Label::builder()
+        .label(&format!("SHA256:{}", key.fingerprint))
+        .halign(gtk4::Align::Start)
+        .css_classes(["dim-label", "caption"])
+        .ellipsize(gtk4::pango::EllipsizeMode::Middle)
+        .build();
+
+    let comment_text = if key.comment.is_empty() {
+        "No comment"
+    } else {
+        &key.comment
+    };
+    let comment_label = Label::builder()
+        .label(comment_text)
+        .halign(gtk4::Align::Start)
+        .css_classes(["dim-label"])
+        .build();
+
+    key_info.append(&key_type_label);
+    key_info.append(&fingerprint_label);
+    key_info.append(&comment_label);
+
+    let remove_button = Button::builder()
+        .label("Remove")
+        .css_classes(["destructive-action"])
+        .valign(gtk4::Align::Center)
+        .build();
+
+    let fingerprint = key.fingerprint.clone();
+    remove_button.connect_clicked(move |_| {
+        tracing::info!("Remove key requested: {}", fingerprint);
+    });
+
+    key_box.append(&key_info);
+    key_box.append(&remove_button);
+
+    row.set_child(Some(&key_box));
+    row
+}
+
+fn create_available_key_row(key_path: &std::path::Path) -> gtk4::ListBoxRow {
+    let row = gtk4::ListBoxRow::new();
+
+    let key_box = GtkBox::new(Orientation::Horizontal, 12);
+    key_box.set_margin_top(2);
+    key_box.set_margin_bottom(2);
+    key_box.set_margin_start(6);
+    key_box.set_margin_end(6);
+
+    let key_name = key_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown");
+
+    let key_label = Label::builder()
+        .label(key_name)
+        .halign(gtk4::Align::Start)
+        .hexpand(true)
+        .build();
+
+    let path_label = Label::builder()
+        .label(&key_path.display().to_string())
+        .halign(gtk4::Align::End)
+        .css_classes(["dim-label"])
+        .ellipsize(gtk4::pango::EllipsizeMode::Start)
+        .build();
+
+    key_box.append(&key_label);
+    key_box.append(&path_label);
+
+    row.set_child(Some(&key_box));
+    row
+}
+
+fn create_empty_row(message: &str) -> gtk4::ListBoxRow {
+    let row = gtk4::ListBoxRow::new();
+
+    let label = Label::builder()
+        .label(message)
+        .halign(gtk4::Align::Start)
+        .css_classes(["dim-label"])
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(6)
+        .margin_end(6)
+        .build();
+
+    row.set_child(Some(&label));
+    row
+}
+
+fn create_error_row(message: &str) -> gtk4::ListBoxRow {
+    let row = gtk4::ListBoxRow::new();
+
+    let label = Label::builder()
+        .label(message)
+        .halign(gtk4::Align::Start)
+        .css_classes(["error"])
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(6)
+        .margin_end(6)
+        .build();
+
+    row.set_child(Some(&label));
+    row
 }

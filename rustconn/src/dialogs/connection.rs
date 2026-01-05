@@ -11,10 +11,12 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, HeaderBar, Label,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, Label,
     ListBox, ListBoxRow, Notebook, Orientation, PasswordEntry, ScrolledWindow, SpinButton, Stack,
-    StringList, TextView, Window, WrapMode,
+    StringList, TextView, WrapMode,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::automation::{ConnectionTask, ExpectRule, TaskCondition};
 use rustconn_core::models::{
     AwsSsmConfig, AzureBastionConfig, AzureSshConfig, BoundaryConfig, CloudflareAccessConfig,
@@ -38,7 +40,7 @@ use uuid::Uuid;
 /// Connection dialog for creating/editing connections
 #[allow(dead_code)] // Many fields kept for GTK widget lifecycle and signal handlers
 pub struct ConnectionDialog {
-    window: Window,
+    window: adw::Window,
     /// Header bar save button - stored for potential future use
     /// (e.g., enabling/disabling based on validation state)
     save_button: Button,
@@ -256,9 +258,9 @@ impl ConnectionDialog {
     /// Creates a new connection dialog
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let (window, save_btn, test_btn) = Self::create_window_with_header(parent);
-        let notebook = Self::create_notebook(&window);
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let (window, header, save_btn, test_btn) = Self::create_window_with_header(parent);
+        let notebook = Self::create_notebook(&window, &header);
 
         // === Basic Tab ===
         let (
@@ -860,8 +862,10 @@ impl ConnectionDialog {
     }
 
     /// Creates the main window with header bar containing Save button
-    fn create_window_with_header(parent: Option<&Window>) -> (Window, Button, Button) {
-        let window = Window::builder()
+    fn create_window_with_header(
+        parent: Option<&gtk4::Window>,
+    ) -> (adw::Window, adw::HeaderBar, Button, Button) {
+        let window = adw::Window::builder()
             .title("New Connection")
             .modal(true)
             .default_width(750)
@@ -873,8 +877,9 @@ impl ConnectionDialog {
         }
 
         // Create header bar with Close/Test/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let test_btn = Button::builder()
             .label("Test")
@@ -887,8 +892,6 @@ impl ConnectionDialog {
         header.pack_start(&close_btn);
         header.pack_end(&save_btn);
         header.pack_end(&test_btn);
-        window.set_titlebar(Some(&header));
-        window.set_default_widget(Some(&save_btn));
 
         // Close button handler
         let window_clone = window.clone();
@@ -896,11 +899,11 @@ impl ConnectionDialog {
             window_clone.close();
         });
 
-        (window, save_btn, test_btn)
+        (window, header, save_btn, test_btn)
     }
 
     /// Creates the notebook widget and adds it to the window
-    fn create_notebook(window: &Window) -> Notebook {
+    fn create_notebook(window: &adw::Window, header: &adw::HeaderBar) -> Notebook {
         let content = GtkBox::new(Orientation::Vertical, 12);
         content.set_margin_top(12);
         content.set_margin_bottom(12);
@@ -909,7 +912,12 @@ impl ConnectionDialog {
 
         let notebook = Notebook::new();
         content.append(&notebook);
-        window.set_child(Some(&content));
+
+        // Use GtkBox with HeaderBar for adw::Window (libadwaita 0.8)
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         notebook
     }
@@ -1017,7 +1025,7 @@ impl ConnectionDialog {
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     fn connect_save_button(
         save_btn: &Button,
-        window: &Window,
+        window: &adw::Window,
         on_save: &super::ConnectionCallback,
         editing_id: &Rc<RefCell<Option<Uuid>>>,
         name_entry: &Entry,
@@ -2064,7 +2072,7 @@ impl ConnectionDialog {
 
             let folders_list = folders_list_clone.clone();
             let shared_folders = shared_folders_clone.clone();
-            let parent = btn.root().and_then(|r| r.downcast::<Window>().ok());
+            let parent = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
 
             file_dialog.select_folder(
                 parent.as_ref(),
@@ -4608,7 +4616,7 @@ impl ConnectionDialog {
     }
 
     /// Sets up the file chooser button for SSH key selection using portal
-    pub fn setup_key_file_chooser(&self, parent_window: Option<&Window>) {
+    pub fn setup_key_file_chooser(&self, parent_window: Option<&gtk4::Window>) {
         let key_entry = self.ssh_key_entry.clone();
         let parent = parent_window.cloned();
 
@@ -4643,7 +4651,7 @@ impl ConnectionDialog {
     }
 
     /// Sets up the file chooser button for SPICE CA certificate selection using portal
-    pub fn setup_ca_cert_file_chooser(&self, parent_window: Option<&Window>) {
+    pub fn setup_ca_cert_file_chooser(&self, parent_window: Option<&gtk4::Window>) {
         let ca_cert_entry = self.spice_ca_cert_entry.clone();
         let parent = parent_window.cloned();
 
@@ -5421,7 +5429,7 @@ impl ConnectionDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 

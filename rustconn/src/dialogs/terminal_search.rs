@@ -4,9 +4,9 @@
 //! and navigation between matches.
 
 use gtk4::prelude::*;
-use gtk4::{
-    Box as GtkBox, Button, CheckButton, HeaderBar, Label, Orientation, SearchEntry, Window,
-};
+use gtk4::{Box as GtkBox, Button, CheckButton, Label, Orientation, SearchEntry};
+use libadwaita as adw;
+use adw::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use vte4::prelude::*;
@@ -14,19 +14,22 @@ use vte4::Terminal;
 
 /// Terminal search dialog for VTE terminals
 pub struct TerminalSearchDialog {
-    window: Window,
+    window: adw::Window,
     search_entry: SearchEntry,
     case_sensitive: CheckButton,
     match_label: Label,
     terminal: Terminal,
     current_search: Rc<RefCell<String>>,
+    close_btn: Button,
+    prev_btn: Button,
+    next_btn: Button,
 }
 
 impl TerminalSearchDialog {
     /// Creates a new terminal search dialog
     #[must_use]
     pub fn new(parent: Option<&gtk4::Window>, terminal: Terminal) -> Self {
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("Search in Terminal")
             .modal(true)
             .default_width(400)
@@ -39,13 +42,12 @@ impl TerminalSearchDialog {
         }
 
         // Create header bar
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
 
         let close_btn = Button::builder().label("Close").build();
         header.pack_start(&close_btn);
-
-        window.set_titlebar(Some(&header));
 
         // Create main content
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -53,6 +55,12 @@ impl TerminalSearchDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+
+        // Use GtkBox with HeaderBar for adw::Window (libadwaita 0.8)
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Search entry
         let search_entry = SearchEntry::builder()
@@ -92,7 +100,6 @@ impl TerminalSearchDialog {
         nav_box.append(&match_label);
 
         content.append(&nav_box);
-        window.set_child(Some(&content));
 
         let current_search = Rc::new(RefCell::new(String::new()));
 
@@ -103,6 +110,9 @@ impl TerminalSearchDialog {
             match_label,
             terminal,
             current_search,
+            close_btn,
+            prev_btn,
+            next_btn,
         };
 
         dialog.setup_signals();
@@ -111,19 +121,11 @@ impl TerminalSearchDialog {
 
     /// Sets up signal handlers for the dialog
     fn setup_signals(&self) {
+        // Close button handler
         let window = self.window.clone();
-        let close_btn = self
-            .window
-            .titlebar()
-            .and_then(|t| t.downcast::<HeaderBar>().ok())
-            .and_then(|h| h.first_child())
-            .and_then(|c| c.downcast::<Button>().ok());
-
-        if let Some(btn) = close_btn {
-            btn.connect_clicked(move |_| {
-                window.close();
-            });
-        }
+        self.close_btn.connect_clicked(move |_| {
+            window.close();
+        });
 
         // Search on text change
         let terminal = self.terminal.clone();
@@ -148,7 +150,6 @@ impl TerminalSearchDialog {
         let search_entry_clone = self.search_entry.clone();
         let case_sensitive_clone = self.case_sensitive.clone();
         let match_label_clone = self.match_label.clone();
-        let _current_search_clone = self.current_search.clone();
 
         self.case_sensitive.connect_toggled(move |_| {
             let text = search_entry_clone.text();
@@ -163,37 +164,15 @@ impl TerminalSearchDialog {
         });
 
         // Navigation buttons
-        let content = self
-            .window
-            .child()
-            .and_then(|c| c.downcast::<GtkBox>().ok());
-        if let Some(content_box) = content {
-            if let Some(nav_box) = content_box
-                .last_child()
-                .and_then(|c| c.downcast::<GtkBox>().ok())
-            {
-                if let Some(prev_btn) = nav_box
-                    .first_child()
-                    .and_then(|c| c.downcast::<Button>().ok())
-                {
-                    let terminal_prev = self.terminal.clone();
-                    prev_btn.connect_clicked(move |_| {
-                        terminal_prev.search_find_previous();
-                    });
-                }
+        let terminal_prev = self.terminal.clone();
+        self.prev_btn.connect_clicked(move |_| {
+            terminal_prev.search_find_previous();
+        });
 
-                if let Some(next_btn) = nav_box
-                    .first_child()
-                    .and_then(|c| c.next_sibling())
-                    .and_then(|c| c.downcast::<Button>().ok())
-                {
-                    let terminal_next = self.terminal.clone();
-                    next_btn.connect_clicked(move |_| {
-                        terminal_next.search_find_next();
-                    });
-                }
-            }
-        }
+        let terminal_next = self.terminal.clone();
+        self.next_btn.connect_clicked(move |_| {
+            terminal_next.search_find_next();
+        });
 
         // Handle Enter key to find next
         let terminal_enter = self.terminal.clone();
@@ -250,7 +229,7 @@ impl TerminalSearchDialog {
 
     /// Returns the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }

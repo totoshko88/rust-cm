@@ -329,9 +329,11 @@ View success rates, connection durations, and usage patterns.
 
 Access via **Ctrl+,** or Menu → **Settings**
 
+The Settings dialog uses a clean, modern layout with section headers and organized tabs.
+
 ### Appearance
 
-- **Color Scheme** — System, Light, or Dark theme
+- **Color Scheme** — System, Light, or Dark theme (uses libadwaita StyleManager)
 - **Remember Window Geometry** — Save size/position
 
 ### Terminal
@@ -339,6 +341,10 @@ Access via **Ctrl+,** or Menu → **Settings**
 - **Font Family** — Terminal font (default: Monospace)
 - **Font Size** — Size in points
 - **Scrollback Lines** — History buffer size
+- **Color Theme** — Dark, Light, Solarized Dark/Light, Monokai, Dracula
+- **Cursor Shape** — Block, IBeam, or Underline
+- **Cursor Blink** — On, Off, or System default
+- **Behavior** — Scroll on output/keystroke, hyperlinks, mouse autohide, audible bell
 
 ### Session
 
@@ -358,7 +364,29 @@ Access via **Ctrl+,** or Menu → **Settings**
 - **Preferred Backend** — libsecret, KeePassXC, or KDBX file
 - **Enable Fallback** — Use libsecret if primary unavailable
 - **KDBX Path** — Path to KeePass database file
-- **KDBX Password/Key File** — Database credentials
+- **KDBX Authentication** — Password and/or key file
+
+### Clients
+
+Displays detected CLI tools with version information:
+
+**Protocol Clients:**
+- SSH Client (OpenSSH)
+- RDP Client (FreeRDP)
+- VNC Client (TigerVNC)
+- SPICE Client (remote-viewer)
+
+**Zero Trust Clients:**
+- AWS CLI (SSM)
+- Google Cloud CLI
+- Azure CLI
+- OCI CLI
+- Cloudflare CLI
+- Teleport CLI
+- Tailscale CLI
+- Boundary CLI
+
+The Clients tab automatically searches PATH and common user directories (`~/bin/`, `~/.local/bin/`, `~/.cargo/bin/`) for installed tools.
 
 ### Tray Icon
 

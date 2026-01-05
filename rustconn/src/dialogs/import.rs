@@ -8,9 +8,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, Frame, HeaderBar, Label, ListBox, ListBoxRow, Orientation, ProgressBar,
-    ScrolledWindow, Separator, Stack, Window,
+    Box as GtkBox, Button, Frame, Label, ListBox, ListBoxRow, Orientation, ProgressBar,
+    ScrolledWindow, Separator, Stack,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::export::NativeExport;
 use rustconn_core::import::{
     AnsibleInventoryImporter, AsbruImporter, ImportResult, ImportSource, RdmImporter,
@@ -22,7 +24,7 @@ use std::rc::Rc;
 
 /// Import dialog for importing connections from external sources
 pub struct ImportDialog {
-    window: Window,
+    window: adw::Window,
     stack: Stack,
     source_list: ListBox,
     progress_bar: ProgressBar,
@@ -41,13 +43,13 @@ pub struct ImportDialog {
 impl ImportDialog {
     /// Creates a new import dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
         // Create window instead of deprecated Dialog
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("Import Connections")
             .modal(true)
             .default_width(750)
-            .default_height(500)
+            .default_height(750)
             .build();
 
         if let Some(p) = parent {
@@ -55,8 +57,9 @@ impl ImportDialog {
         }
 
         // Create header bar with Close/Import buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let import_button = Button::builder()
             .label("Import")
@@ -64,13 +67,16 @@ impl ImportDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&import_button);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
         close_btn.connect_clicked(move |_| {
             window_clone.close();
         });
+
+        // Create main layout with header at top
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -83,7 +89,9 @@ impl ImportDialog {
         let stack = Stack::new();
         stack.set_vexpand(true);
         content.append(&stack);
-        window.set_child(Some(&content));
+
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // === Source Selection Page ===
         let source_page = Self::create_source_page();
@@ -800,7 +808,7 @@ impl ImportDialog {
     /// Requirements: 1.1, 1.5
     #[allow(clippy::too_many_arguments)]
     fn handle_ssh_config_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -887,7 +895,7 @@ impl ImportDialog {
     /// Handles the special case of importing from an Asbru-CM YAML file
     #[allow(clippy::too_many_arguments)]
     fn handle_asbru_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -972,7 +980,7 @@ impl ImportDialog {
     /// Handles the special case of importing from an Ansible inventory file
     #[allow(clippy::too_many_arguments)]
     fn handle_ansible_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -1060,7 +1068,7 @@ impl ImportDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 
@@ -1208,7 +1216,7 @@ impl ImportDialog {
     /// Requirements: 13.1, 13.3
     #[allow(clippy::too_many_arguments)]
     fn handle_native_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -1314,7 +1322,7 @@ impl ImportDialog {
     /// Handles the special case of importing from a Royal TS file (.rtsz)
     #[allow(clippy::too_many_arguments)]
     fn handle_royalts_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -1397,7 +1405,7 @@ impl ImportDialog {
     /// Handles the special case of importing from a Remote Desktop Manager JSON file
     #[allow(clippy::too_many_arguments)]
     fn handle_rdm_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,

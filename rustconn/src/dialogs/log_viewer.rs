@@ -4,9 +4,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, HeaderBar, Label, ListBox, ListBoxRow, Orientation, Paned,
-    ScrolledWindow, TextView, Window,
+    Box as GtkBox, Button, Label, ListBox, ListBoxRow, Orientation, Paned,
+    ScrolledWindow, TextView,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,7 +16,7 @@ use std::rc::Rc;
 
 /// Log viewer dialog for browsing and viewing session logs
 pub struct LogViewerDialog {
-    window: Window,
+    window: adw::Window,
     log_list: ListBox,
     log_content: TextView,
     log_dir: PathBuf,
@@ -27,8 +29,8 @@ impl LogViewerDialog {
     /// Creates a new log viewer dialog
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("Session Logs")
             .modal(true)
             .default_width(900)
@@ -40,8 +42,9 @@ impl LogViewerDialog {
         }
 
         // Create header bar with Close/Refresh buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let refresh_btn = Button::builder()
             .icon_name("view-refresh-symbolic")
@@ -49,7 +52,6 @@ impl LogViewerDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&refresh_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -64,6 +66,12 @@ impl LogViewerDialog {
         paned.set_margin_bottom(12);
         paned.set_margin_start(12);
         paned.set_margin_end(12);
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&paned);
+        window.set_content(Some(&main_box));
 
         // Left side: Log file list
         let left_box = GtkBox::new(Orientation::Vertical, 8);
@@ -326,7 +334,7 @@ impl LogViewerDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }

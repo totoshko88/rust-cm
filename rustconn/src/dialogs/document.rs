@@ -4,9 +4,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, FileDialog, FileFilter, HeaderBar, Label,
-    Orientation, PasswordEntry, Window,
+    Box as GtkBox, Button, CheckButton, Entry, FileDialog, FileFilter, Label,
+    Orientation, PasswordEntry,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -40,7 +42,7 @@ pub enum DocumentDialogResult {
 
 /// Dialog for creating a new document
 pub struct NewDocumentDialog {
-    window: Window,
+    window: adw::Window,
     name_entry: Entry,
     password_check: CheckButton,
     password_entry: PasswordEntry,
@@ -51,8 +53,8 @@ pub struct NewDocumentDialog {
 impl NewDocumentDialog {
     /// Creates a new document creation dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("New Document")
             .modal(true)
             .default_width(400)
@@ -64,8 +66,9 @@ impl NewDocumentDialog {
         }
 
         // Header bar with Cancel/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let create_btn = Button::builder()
             .label("Create")
@@ -74,7 +77,6 @@ impl NewDocumentDialog {
             .build();
         header.pack_start(&cancel_btn);
         header.pack_end(&create_btn);
-        window.set_titlebar(Some(&header));
 
         // Content
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -82,6 +84,12 @@ impl NewDocumentDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Name field
         let name_label = Label::builder()
@@ -245,7 +253,7 @@ impl OpenDocumentDialog {
     }
 
     /// Shows the file chooser dialog
-    pub fn present(&self, parent: Option<&Window>) {
+    pub fn present(&self, parent: Option<&gtk4::Window>) {
         let filter = FileFilter::new();
         filter.add_pattern("*.rcdb");
         filter.add_pattern("*.json");
@@ -292,8 +300,12 @@ impl OpenDocumentDialog {
     }
 
     /// Shows a password dialog for encrypted documents
-    fn show_password_dialog(parent: Option<&Window>, path: PathBuf, on_complete: DocumentCallback) {
-        let window = Window::builder()
+    fn show_password_dialog(
+        parent: Option<&gtk4::Window>,
+        path: PathBuf,
+        on_complete: DocumentCallback,
+    ) {
+        let window = adw::Window::builder()
             .title("Enter Password")
             .modal(true)
             .default_width(350)
@@ -304,8 +316,9 @@ impl OpenDocumentDialog {
             window.set_transient_for(Some(p));
         }
 
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let open_btn = Button::builder()
             .label("Open")
@@ -313,7 +326,6 @@ impl OpenDocumentDialog {
             .build();
         header.pack_start(&cancel_btn);
         header.pack_end(&open_btn);
-        window.set_titlebar(Some(&header));
 
         let content = GtkBox::new(Orientation::Vertical, 12);
         content.set_margin_top(12);
@@ -330,7 +342,11 @@ impl OpenDocumentDialog {
         let password_entry = PasswordEntry::builder().show_peek_icon(true).build();
         content.append(&password_entry);
 
-        window.set_child(Some(&content));
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Cancel
         let window_clone = window.clone();
@@ -389,7 +405,7 @@ impl SaveDocumentDialog {
     }
 
     /// Shows the file chooser dialog for saving
-    pub fn present(&self, parent: Option<&Window>, doc_id: Uuid, suggested_name: &str) {
+    pub fn present(&self, parent: Option<&gtk4::Window>, doc_id: Uuid, suggested_name: &str) {
         let filter = FileFilter::new();
         filter.add_pattern("*.rcdb");
         filter.set_name(Some("RustConn Documents"));
@@ -453,7 +469,7 @@ impl CloseDocumentDialog {
     }
 
     /// Shows the confirmation dialog
-    pub fn present(&self, parent: Option<&Window>, doc_id: Uuid, doc_name: &str) {
+    pub fn present(&self, parent: Option<&gtk4::Window>, doc_id: Uuid, doc_name: &str) {
         let dialog = gtk4::AlertDialog::builder()
             .message("Save changes?")
             .detail(format!(
@@ -506,7 +522,7 @@ impl Default for CloseDocumentDialog {
 
 /// Dialog for setting/changing document password protection
 pub struct DocumentProtectionDialog {
-    window: Window,
+    window: adw::Window,
     enable_check: CheckButton,
     password_entry: PasswordEntry,
     confirm_entry: PasswordEntry,
@@ -517,8 +533,8 @@ pub struct DocumentProtectionDialog {
 impl DocumentProtectionDialog {
     /// Creates a new document protection dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("Document Protection")
             .modal(true)
             .default_width(400)
@@ -530,8 +546,9 @@ impl DocumentProtectionDialog {
         }
 
         // Header bar with Cancel/Apply buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let apply_btn = Button::builder()
             .label("Apply")
@@ -539,7 +556,6 @@ impl DocumentProtectionDialog {
             .build();
         header.pack_start(&cancel_btn);
         header.pack_end(&apply_btn);
-        window.set_titlebar(Some(&header));
 
         // Content
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -547,6 +563,12 @@ impl DocumentProtectionDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Info label
         let info_label = Label::builder()

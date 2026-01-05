@@ -8,7 +8,7 @@ use crate::sidebar::ConnectionSidebar;
 use crate::state::SharedAppState;
 use crate::window::MainWindow;
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, Label};
+use gtk4::{Label};
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -17,7 +17,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 
 /// Shows the new connection dialog (always creates blank connection)
 pub fn show_new_connection_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
 ) {
@@ -28,7 +28,7 @@ pub fn show_new_connection_dialog(
 /// Internal function to show the new connection dialog with optional template
 #[allow(clippy::too_many_lines)]
 pub fn show_new_connection_dialog_internal(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
     template: Option<rustconn_core::models::ConnectionTemplate>,
@@ -218,7 +218,7 @@ pub fn show_new_connection_dialog_internal(
 
 /// Shows the new group dialog with optional parent selection
 pub fn show_new_group_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
 ) {
@@ -228,7 +228,7 @@ pub fn show_new_group_dialog(
 /// Shows the new group dialog with parent group selection
 #[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 pub fn show_new_group_dialog_with_parent(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
     preselected_parent: Option<Uuid>,
@@ -379,7 +379,7 @@ pub fn show_new_group_dialog_with_parent(
 
 /// Shows the import dialog
 pub fn show_import_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
 ) {

@@ -7,9 +7,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, HeaderBar, Label, ListBox, ListBoxRow,
-    Orientation, ScrolledWindow, Window,
+    Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, Label, ListBox, ListBoxRow,
+    Orientation, ScrolledWindow,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::cluster::Cluster;
 use rustconn_core::models::Connection;
 use std::cell::RefCell;
@@ -21,7 +23,7 @@ pub type ClusterCallback = Rc<RefCell<Option<Box<dyn Fn(Option<Cluster>)>>>>;
 
 /// Cluster dialog for managing clusters
 pub struct ClusterDialog {
-    window: Window,
+    window: adw::Window,
     name_entry: Entry,
     broadcast_check: CheckButton,
     connections_list: ListBox,
@@ -46,8 +48,8 @@ struct ConnectionSelectionRow {
 impl ClusterDialog {
     /// Creates a new cluster dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("New Cluster")
             .modal(true)
             .default_width(750)
@@ -59,8 +61,9 @@ impl ClusterDialog {
         }
 
         // Create header bar with Close/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let save_btn = Button::builder()
             .label("Create")
@@ -68,8 +71,6 @@ impl ClusterDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&save_btn);
-        window.set_titlebar(Some(&header));
-        window.set_default_widget(Some(&save_btn));
 
         // Close button handler
         let window_clone = window.clone();
@@ -83,7 +84,12 @@ impl ClusterDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Basic info section
         let basic_grid = Grid::builder().row_spacing(8).column_spacing(12).build();
@@ -352,14 +358,14 @@ impl ClusterDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }
 
 /// Cluster list dialog for managing all clusters
 pub struct ClusterListDialog {
-    window: Window,
+    window: adw::Window,
     clusters_list: ListBox,
     cluster_rows: Rc<RefCell<Vec<ClusterListRow>>>,
     on_connect: Rc<RefCell<Option<Box<dyn Fn(Uuid)>>>>,
@@ -392,8 +398,8 @@ struct ClusterListRow {
 impl ClusterListDialog {
     /// Creates a new cluster list dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("Manage Clusters")
             .modal(true)
             .default_width(750)
@@ -405,8 +411,9 @@ impl ClusterListDialog {
         }
 
         // Create header bar with Close/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let new_btn = Button::builder()
             .label("Create")
@@ -414,7 +421,6 @@ impl ClusterListDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&new_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -428,7 +434,12 @@ impl ClusterListDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Info label
         let info_label = Label::builder()
@@ -666,7 +677,7 @@ impl ClusterListDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }

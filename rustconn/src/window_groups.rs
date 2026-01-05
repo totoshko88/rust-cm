@@ -4,7 +4,7 @@
 //! including move to group dialog and related functionality.
 
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, Button, HeaderBar, Label, Orientation};
+use gtk4::{Button, HeaderBar, Label, Orientation};
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -18,7 +18,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 /// Shows the move to group dialog for the selected item (connection or group)
 #[allow(clippy::too_many_lines)]
 pub fn show_move_to_group_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -206,7 +206,7 @@ fn is_descendant_of(
 }
 
 /// Shows an error toast/notification
-pub fn show_error_toast(window: &ApplicationWindow, message: &str) {
+pub fn show_error_toast(window: &impl gtk4::prelude::IsA<gtk4::Window>, message: &str) {
     let alert = gtk4::AlertDialog::builder()
         .message("Error")
         .detail(message)

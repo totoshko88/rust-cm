@@ -3,7 +3,7 @@
 //! This module contains methods for managing connection templates.
 
 use gtk4::prelude::*;
-use gtk4::{gio, ApplicationWindow, Label, Orientation};
+use gtk4::{gio, Label, Orientation};
 use std::rc::Rc;
 
 use crate::dialogs::{ConnectionDialog, TemplateDialog, TemplateManagerDialog};
@@ -17,7 +17,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 /// Shows the templates manager window
 #[allow(clippy::too_many_lines)]
 pub fn show_templates_manager(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
 ) {
@@ -187,7 +187,7 @@ pub fn show_templates_manager(
             if let Some(template) = template_opt {
                 // Create connection from template
                 show_new_connection_from_template(
-                    &manager_clone,
+                    manager_clone.upcast_ref(),
                     state_clone.clone(),
                     sidebar_clone.clone(),
                     &template,

@@ -17,11 +17,14 @@ pub use ssh_agent_tab::*;
 pub use terminal_tab::*;
 pub use ui_tab::*;
 
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, HeaderBar, Label, Notebook, Orientation,
-    PasswordEntry, ScrolledWindow, SpinButton, Spinner, Switch, Window,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, Notebook, Orientation,
+    PasswordEntry, ScrolledWindow, SpinButton, Spinner, Switch,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::config::AppSettings;
 use rustconn_core::ssh_agent::SshAgentManager;
 use std::cell::RefCell;
@@ -33,7 +36,7 @@ pub type SettingsCallback = Option<Rc<dyn Fn(AppSettings)>>;
 /// Main settings dialog
 #[allow(dead_code)] // Fields kept for GTK widget lifecycle
 pub struct SettingsDialog {
-    window: Window,
+    window: adw::Window,
     save_button: Button,
     // Terminal settings
     font_family_entry: Entry,
@@ -69,7 +72,9 @@ pub struct SettingsDialog {
     kdbx_key_file_entry: Entry,
     kdbx_key_file_browse_button: Button,
     kdbx_use_key_file_check: CheckButton,
+    kdbx_use_password_check: CheckButton, // Add this field
     // UI settings
+    color_scheme_box: GtkBox,
     remember_geometry: CheckButton,
     enable_tray_icon: CheckButton,
     minimize_to_tray: CheckButton,
@@ -96,13 +101,13 @@ pub struct SettingsDialog {
 impl SettingsDialog {
     /// Creates a new settings dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
         // Create window instead of deprecated Dialog
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("Settings")
             .modal(true)
             .default_width(750)
-            .default_height(600)
+            .default_height(800)
             .resizable(true)
             .build();
 
@@ -111,8 +116,9 @@ impl SettingsDialog {
         }
 
         // Create header bar with Close/Save buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
 
         let close_btn = Button::with_label("Close");
         let save_btn = Button::with_label("Save");
@@ -120,7 +126,6 @@ impl SettingsDialog {
 
         header.pack_start(&close_btn);
         header.pack_end(&save_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -179,10 +184,12 @@ impl SettingsDialog {
             kdbx_key_file_entry,
             kdbx_key_file_browse_button,
             kdbx_use_key_file_check,
+            kdbx_use_password_check,
         ) = create_secrets_tab();
 
         let (
             ui_tab,
+            color_scheme_box,
             remember_geometry,
             enable_tray_icon,
             minimize_to_tray,
@@ -207,7 +214,7 @@ impl SettingsDialog {
 
         // Add tabs to notebook
         notebook.append_page(&terminal_tab, Some(&Label::new(Some("Terminal"))));
-        notebook.append_page(&logging_tab, Some(&Label::new(Some("Session Logging"))));
+        notebook.append_page(&logging_tab, Some(&Label::new(Some("Logging"))));
         notebook.append_page(&secrets_tab, Some(&Label::new(Some("Secrets"))));
         notebook.append_page(&ui_tab, Some(&Label::new(Some("Interface"))));
         notebook.append_page(&ssh_agent_tab, Some(&Label::new(Some("SSH Agent"))));
@@ -222,7 +229,12 @@ impl SettingsDialog {
             .build();
 
         content.append(&scrolled);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Initialize settings
         let settings: Rc<RefCell<AppSettings>> = Rc::new(RefCell::new(AppSettings::default()));
@@ -262,6 +274,8 @@ impl SettingsDialog {
             kdbx_key_file_entry,
             kdbx_key_file_browse_button,
             kdbx_use_key_file_check,
+            kdbx_use_password_check,
+            color_scheme_box,
             remember_geometry,
             enable_tray_icon,
             minimize_to_tray,
@@ -353,11 +367,13 @@ impl SettingsDialog {
             &self.keepassxc_status_container,
             &self.kdbx_key_file_entry,
             &self.kdbx_use_key_file_check,
+            &self.kdbx_use_password_check,
             &settings.secrets,
         );
 
         // Load UI settings
         load_ui_settings(
+            &self.color_scheme_box,
             &self.remember_geometry,
             &self.enable_tray_icon,
             &self.minimize_to_tray,
@@ -413,8 +429,10 @@ impl SettingsDialog {
         let kdbx_save_password_check_clone = self.kdbx_save_password_check.clone();
         let kdbx_key_file_entry_clone = self.kdbx_key_file_entry.clone();
         let kdbx_use_key_file_check_clone = self.kdbx_use_key_file_check.clone();
+        let kdbx_use_password_check_clone = self.kdbx_use_password_check.clone();
 
         // UI controls
+        let color_scheme_box_clone = self.color_scheme_box.clone();
         let remember_geometry_clone = self.remember_geometry.clone();
         let enable_tray_icon_clone = self.enable_tray_icon.clone();
         let minimize_to_tray_clone = self.minimize_to_tray.clone();
@@ -461,11 +479,13 @@ impl SettingsDialog {
                 &kdbx_save_password_check_clone,
                 &kdbx_key_file_entry_clone,
                 &kdbx_use_key_file_check_clone,
+                &kdbx_use_password_check_clone,
                 &settings_clone,
             );
 
             // Collect UI settings
             let ui = collect_ui_settings(
+                &color_scheme_box_clone,
                 &remember_geometry_clone,
                 &enable_tray_icon_clone,
                 &minimize_to_tray_clone,
@@ -533,8 +553,10 @@ impl SettingsDialog {
         let kdbx_save_password_check_clone = self.kdbx_save_password_check.clone();
         let kdbx_key_file_entry_clone = self.kdbx_key_file_entry.clone();
         let kdbx_use_key_file_check_clone = self.kdbx_use_key_file_check.clone();
+        let kdbx_use_password_check_clone = self.kdbx_use_password_check.clone();
 
         // UI controls
+        let color_scheme_box_clone = self.color_scheme_box.clone();
         let remember_geometry_clone = self.remember_geometry.clone();
         let enable_tray_icon_clone = self.enable_tray_icon.clone();
         let minimize_to_tray_clone = self.minimize_to_tray.clone();
@@ -547,19 +569,11 @@ impl SettingsDialog {
 
         // Close button handler - call external callback with None
         let close_callback = external_callback.clone();
-        let close_btn = self
-            .window
-            .titlebar()
-            .unwrap()
-            .downcast::<HeaderBar>()
-            .unwrap()
-            .first_child()
-            .unwrap()
-            .downcast::<Button>()
-            .unwrap();
 
-        close_btn.connect_clicked(move |_| {
+        // Handle window close event instead of trying to find close button
+        self.window.connect_close_request(move |_| {
             close_callback(None);
+            glib::Propagation::Proceed
         });
 
         self.save_button.connect_clicked(move |_| {
@@ -598,11 +612,13 @@ impl SettingsDialog {
                 &kdbx_save_password_check_clone,
                 &kdbx_key_file_entry_clone,
                 &kdbx_use_key_file_check_clone,
+                &kdbx_use_password_check_clone,
                 &settings_clone,
             );
 
             // Collect UI settings
             let ui = collect_ui_settings(
+                &color_scheme_box_clone,
                 &remember_geometry_clone,
                 &enable_tray_icon_clone,
                 &minimize_to_tray_clone,

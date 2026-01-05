@@ -7,9 +7,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, Entry, Frame, Grid, HeaderBar, Label, ListBox, ListBoxRow, Orientation,
-    ScrolledWindow, TextView, Window,
+    Box as GtkBox, Button, Entry, Frame, Grid, Label, ListBox, ListBoxRow, Orientation,
+    ScrolledWindow, TextView,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::models::{Snippet, SnippetVariable};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -17,7 +19,7 @@ use uuid::Uuid;
 
 /// Snippet dialog for creating/editing snippets
 pub struct SnippetDialog {
-    window: Window,
+    window: adw::Window,
     name_entry: Entry,
     description_entry: Entry,
     category_entry: Entry,
@@ -53,9 +55,9 @@ struct VariableRow {
 impl SnippetDialog {
     /// Creates a new snippet dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
         // Create window instead of deprecated Dialog
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("New Snippet")
             .modal(true)
             .default_width(750)
@@ -67,8 +69,9 @@ impl SnippetDialog {
         }
 
         // Create header bar with Close/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let new_btn = Button::builder()
             .label("Create")
@@ -76,7 +79,6 @@ impl SnippetDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&new_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -90,7 +92,12 @@ impl SnippetDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // === Basic Info Section ===
         let (basic_frame, name_entry, description_entry, category_entry, tags_entry) =
@@ -632,7 +639,7 @@ impl SnippetDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }

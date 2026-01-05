@@ -10,9 +10,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, Grid, HeaderBar, Label, ListBox,
-    ListBoxRow, Notebook, Orientation, ScrolledWindow, SpinButton, Stack, StringList, Window,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, Grid, Label, ListBox,
+    ListBoxRow, Notebook, Orientation, ScrolledWindow, SpinButton, Stack, StringList,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::models::{
     AwsSsmConfig, AzureBastionConfig, AzureSshConfig, BoundaryConfig, CloudflareAccessConfig,
     ConnectionTemplate, GcpIapConfig, GenericZeroTrustConfig, OciBastionConfig, ProtocolConfig,
@@ -30,7 +32,7 @@ pub type TemplateCallback = Rc<RefCell<Option<Box<dyn Fn(Option<ConnectionTempla
 /// Template dialog for creating/editing templates
 #[allow(clippy::similar_names)]
 pub struct TemplateDialog {
-    window: Window,
+    window: adw::Window,
     save_button: Button,
     // Basic fields
     name_entry: Entry,
@@ -111,8 +113,8 @@ impl TemplateDialog {
     /// Creates a new template dialog
     #[must_use]
     #[allow(clippy::too_many_lines, clippy::similar_names)]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("New Template")
             .modal(true)
             .default_width(750)
@@ -124,8 +126,9 @@ impl TemplateDialog {
         }
 
         // Create header bar with Close/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let save_btn = Button::builder()
             .label("Create")
@@ -133,7 +136,6 @@ impl TemplateDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&save_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -147,7 +149,12 @@ impl TemplateDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
-        window.set_child(Some(&content));
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Create notebook for tabs
         let notebook = Notebook::new();
@@ -1479,7 +1486,7 @@ impl TemplateDialog {
     )]
     fn connect_save_button(
         save_btn: &Button,
-        window: &Window,
+        window: &adw::Window,
         on_save: &TemplateCallback,
         editing_id: &Rc<RefCell<Option<Uuid>>>,
         name_entry: &Entry,
@@ -2435,14 +2442,14 @@ impl TemplateDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }
 
 /// Template manager dialog for listing and managing templates
 pub struct TemplateManagerDialog {
-    window: Window,
+    window: adw::Window,
     templates_list: ListBox,
     state_templates: Rc<RefCell<Vec<ConnectionTemplate>>>,
     on_template_selected: Rc<RefCell<Option<Box<dyn Fn(Option<ConnectionTemplate>)>>>>,
@@ -2454,8 +2461,8 @@ pub struct TemplateManagerDialog {
 impl TemplateManagerDialog {
     /// Creates a new template manager dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
+        let window = adw::Window::builder()
             .title("Manage Templates")
             .modal(true)
             .default_width(750)
@@ -2466,8 +2473,9 @@ impl TemplateManagerDialog {
             window.set_transient_for(Some(p));
         }
 
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let create_conn_btn = Button::builder()
             .label("Create")
@@ -2476,7 +2484,6 @@ impl TemplateManagerDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&create_conn_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -2527,7 +2534,11 @@ impl TemplateManagerDialog {
         button_box.append(&new_template_btn);
         content.append(&button_box);
 
-        window.set_child(Some(&content));
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         let state_templates: Rc<RefCell<Vec<ConnectionTemplate>>> =
             Rc::new(RefCell::new(Vec::new()));
@@ -2798,7 +2809,7 @@ impl TemplateManagerDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 

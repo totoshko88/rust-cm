@@ -4,9 +4,11 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Adjustment, Box as GtkBox, Button, CheckButton, Entry, Grid, HeaderBar, Label, LevelBar,
-    Orientation, Scale, SpinButton, Window,
+    Adjustment, Box as GtkBox, Button, CheckButton, Entry, Grid, Label, LevelBar, Orientation,
+    Scale, SpinButton,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::{
     estimate_crack_time, PasswordGenerator, PasswordGeneratorConfig, PasswordStrength,
 };
@@ -15,7 +17,7 @@ use std::rc::Rc;
 
 /// Shows the password generator dialog
 pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
-    let window = Window::builder()
+    let window = adw::Window::builder()
         .title("Password Generator")
         .modal(true)
         .default_width(750)
@@ -28,8 +30,9 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
     }
 
     // Header bar with Close/Copy buttons (GNOME HIG)
-    let header = HeaderBar::new();
-    header.set_show_title_buttons(false);
+    let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let close_btn = Button::builder().label("Close").build();
     let copy_btn = Button::builder()
         .label("Copy")
@@ -37,7 +40,6 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         .build();
     header.pack_start(&close_btn);
     header.pack_end(&copy_btn);
-    window.set_titlebar(Some(&header));
 
     // Close button handler
     let window_clone = window.clone();
@@ -51,6 +53,12 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
+
+    // Use ToolbarView for adw::Window
+    let main_box = GtkBox::new(Orientation::Vertical, 0);
+    main_box.append(&header);
+    main_box.append(&content);
+    window.set_content(Some(&main_box));
 
     // Password display
     let password_box = GtkBox::new(Orientation::Horizontal, 6);

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::error::ImportError;
 use crate::models::{
-    AutomationConfig, Connection, ConnectionGroup, PasswordSource, ProtocolConfig, ProtocolType, 
+    AutomationConfig, Connection, ConnectionGroup, PasswordSource, ProtocolConfig, ProtocolType,
     RdpConfig, SshConfig, VncConfig, WindowMode,
 };
 use crate::progress::ProgressReporter;
@@ -256,10 +256,15 @@ impl RdmImporter {
             }
         };
 
-        let password_source = conn.password.as_ref().map_or(PasswordSource::None, |password| if password.is_empty() {
-                PasswordSource::None
-            } else {
-                PasswordSource::Stored
+        let password_source = conn
+            .password
+            .as_ref()
+            .map_or(PasswordSource::None, |password| {
+                if password.is_empty() {
+                    PasswordSource::None
+                } else {
+                    PasswordSource::Stored
+                }
             });
 
         let group_id = conn

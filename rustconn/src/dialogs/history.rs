@@ -5,8 +5,9 @@
 use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, Button, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, SearchEntry,
-    Window,
 };
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::models::{ConnectionHistoryEntry, ConnectionStatistics};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,7 +15,7 @@ use std::rc::Rc;
 /// Connection history dialog
 #[allow(dead_code)] // search_entry kept for GTK widget lifecycle
 pub struct HistoryDialog {
-    window: Window,
+    window: adw::Window,
     list_box: ListBox,
     search_entry: SearchEntry,
     total_label: Label,
@@ -28,8 +29,8 @@ pub struct HistoryDialog {
 impl HistoryDialog {
     /// Creates a new history dialog
     #[must_use]
-    pub fn new(parent: Option<&impl IsA<Window>>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&impl IsA<gtk4::Window>>) -> Self {
+        let window = adw::Window::builder()
             .title("Connection History")
             .default_width(750)
             .default_height(500)
@@ -41,8 +42,9 @@ impl HistoryDialog {
         }
 
         // Header bar with Close/Connect buttons (GNOME HIG)
-        let header = gtk4::HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let connect_btn = Button::builder()
             .label("Connect")
@@ -51,7 +53,6 @@ impl HistoryDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&connect_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -65,6 +66,12 @@ impl HistoryDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Search entry
         let search_entry = SearchEntry::builder()

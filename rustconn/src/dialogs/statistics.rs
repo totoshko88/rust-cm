@@ -3,7 +3,10 @@
 //! This module provides a dialog for viewing detailed connection statistics.
 
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Button, Grid, Label, Orientation, ScrolledWindow, Window};
+use gtk4::Box as GtkBox;
+use gtk4::{Button, Grid, Label, Orientation, ScrolledWindow};
+use libadwaita as adw;
+use adw::prelude::*;
 use rustconn_core::models::ConnectionStatistics;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,7 +14,7 @@ use uuid::Uuid;
 
 /// Connection statistics dialog
 pub struct StatisticsDialog {
-    window: Window,
+    window: adw::Window,
     content_box: GtkBox,
     on_clear: Rc<RefCell<Option<Box<dyn Fn() + 'static>>>>,
 }
@@ -19,8 +22,8 @@ pub struct StatisticsDialog {
 impl StatisticsDialog {
     /// Creates a new statistics dialog
     #[must_use]
-    pub fn new(parent: Option<&impl IsA<Window>>) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&impl IsA<gtk4::Window>>) -> Self {
+        let window = adw::Window::builder()
             .title("Connection Statistics")
             .default_width(750)
             .default_height(500)
@@ -32,8 +35,9 @@ impl StatisticsDialog {
         }
 
         // Header bar with Close/Reset buttons (GNOME HIG)
-        let header = gtk4::HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let reset_btn = Button::builder()
             .label("Reset")
@@ -41,16 +45,12 @@ impl StatisticsDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&reset_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
         close_btn.connect_clicked(move |_| {
             window_clone.close();
         });
-
-        // Main layout with scrolled content
-        let main_box = GtkBox::new(Orientation::Vertical, 0);
 
         // Scrolled content
         let scrolled = ScrolledWindow::builder()
@@ -65,9 +65,12 @@ impl StatisticsDialog {
         content_box.set_margin_end(16);
 
         scrolled.set_child(Some(&content_box));
-        main_box.append(&scrolled);
 
-        window.set_child(Some(&main_box));
+        // Use GtkBox with HeaderBar for adw::Window (libadwaita 0.8)
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&scrolled);
+        window.set_content(Some(&main_box));
 
         let on_clear: Rc<RefCell<Option<Box<dyn Fn() + 'static>>>> = Rc::new(RefCell::new(None));
 
