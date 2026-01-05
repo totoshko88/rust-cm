@@ -6,15 +6,17 @@
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, Frame, HeaderBar, Label, ListBox, ListBoxRow, Orientation, ProgressBar,
-    ScrolledWindow, Separator, Stack, Window,
+    Box as GtkBox, Button, Frame, Label, ListBox, ListBoxRow, Orientation, ProgressBar,
+    ScrolledWindow, Separator, Stack,
 };
+use libadwaita as adw;
 use rustconn_core::export::NativeExport;
 use rustconn_core::import::{
-    AnsibleInventoryImporter, AsbruImporter, ImportResult, ImportSource, RemminaImporter,
-    RoyalTsImporter, SshConfigImporter,
+    AnsibleInventoryImporter, AsbruImporter, ImportResult, ImportSource, RdmImporter,
+    RemminaImporter, RoyalTsImporter, SshConfigImporter,
 };
 use rustconn_core::progress::LocalProgressReporter;
 use std::cell::{Cell, RefCell};
@@ -22,7 +24,7 @@ use std::rc::Rc;
 
 /// Import dialog for importing connections from external sources
 pub struct ImportDialog {
-    window: Window,
+    window: adw::Window,
     stack: Stack,
     source_list: ListBox,
     progress_bar: ProgressBar,
@@ -41,13 +43,13 @@ pub struct ImportDialog {
 impl ImportDialog {
     /// Creates a new import dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
         // Create window instead of deprecated Dialog
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("Import Connections")
             .modal(true)
             .default_width(750)
-            .default_height(500)
+            .default_height(750)
             .build();
 
         if let Some(p) = parent {
@@ -55,8 +57,9 @@ impl ImportDialog {
         }
 
         // Create header bar with Close/Import buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let import_button = Button::builder()
             .label("Import")
@@ -64,13 +67,16 @@ impl ImportDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&import_button);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
         close_btn.connect_clicked(move |_| {
             window_clone.close();
         });
+
+        // Create main layout with header at top
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
 
         // Create main content area
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -83,7 +89,9 @@ impl ImportDialog {
         let stack = Stack::new();
         stack.set_vexpand(true);
         content.append(&stack);
-        window.set_child(Some(&content));
+
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // === Source Selection Page ===
         let source_page = Self::create_source_page();
@@ -228,6 +236,12 @@ impl ImportDialog {
                 "royalts_file",
                 "Royal TS (.rtsz)",
                 "Import from a Royal TS export file",
+                true,
+            ),
+            (
+                "rdm_file",
+                "Remote Desktop Manager (JSON)",
+                "Import from a Remote Desktop Manager JSON export file",
                 true,
             ),
         ];
@@ -402,6 +416,7 @@ impl ImportDialog {
             "ansible_file" => "Ansible File",
             "native_file" => "RustConn Native",
             "royalts_file" => "Royal TS",
+            "rdm_file" => "Remote Desktop Manager",
             _ => "Unknown",
         }
     }
@@ -716,6 +731,21 @@ impl ImportDialog {
                     return;
                 }
 
+                if source_id == "rdm_file" {
+                    Self::handle_rdm_file_import(
+                        &window,
+                        &stack,
+                        &progress_bar,
+                        &progress_label,
+                        &result_label,
+                        &result_details,
+                        &result_cell,
+                        &source_name_cell,
+                        btn,
+                    );
+                    return;
+                }
+
                 // Perform import with progress reporting (Requirements 3.1, 3.6)
                 let result = Self::do_import_with_progress(
                     &source_id,
@@ -778,7 +808,7 @@ impl ImportDialog {
     /// Requirements: 1.1, 1.5
     #[allow(clippy::too_many_arguments)]
     fn handle_ssh_config_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -865,7 +895,7 @@ impl ImportDialog {
     /// Handles the special case of importing from an Asbru-CM YAML file
     #[allow(clippy::too_many_arguments)]
     fn handle_asbru_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -950,7 +980,7 @@ impl ImportDialog {
     /// Handles the special case of importing from an Ansible inventory file
     #[allow(clippy::too_many_arguments)]
     fn handle_ansible_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -1038,7 +1068,7 @@ impl ImportDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 
@@ -1186,7 +1216,7 @@ impl ImportDialog {
     /// Requirements: 13.1, 13.3
     #[allow(clippy::too_many_arguments)]
     fn handle_native_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -1292,7 +1322,7 @@ impl ImportDialog {
     /// Handles the special case of importing from a Royal TS file (.rtsz)
     #[allow(clippy::too_many_arguments)]
     fn handle_royalts_file_import(
-        window: &Window,
+        window: &adw::Window,
         stack: &Stack,
         progress_bar: &ProgressBar,
         progress_label: &Label,
@@ -1348,6 +1378,90 @@ impl ImportDialog {
 
                         progress_bar_clone.set_fraction(1.0);
 
+                        let conn_count = result.connections.len();
+                        let group_count = result.groups.len();
+                        let summary = format!(
+                            "Successfully imported {conn_count} connection(s) and {group_count} group(s).\nConnections will be added to '{filename} Import' group."
+                        );
+                        result_label_clone.set_text(&summary);
+
+                        let details = Self::format_import_details(&result);
+                        result_details_clone.set_text(&details);
+
+                        *result_cell_clone.borrow_mut() = Some(result);
+                        stack_clone.set_visible_child_name("result");
+                        btn_clone.set_label("Done");
+                        btn_clone.set_sensitive(true);
+                    }
+                } else {
+                    // User cancelled file selection - return to source page
+                    stack_clone.set_visible_child_name("source");
+                    btn_clone.set_sensitive(true);
+                }
+            },
+        );
+    }
+
+    /// Handles the special case of importing from a Remote Desktop Manager JSON file
+    #[allow(clippy::too_many_arguments)]
+    fn handle_rdm_file_import(
+        window: &adw::Window,
+        stack: &Stack,
+        progress_bar: &ProgressBar,
+        progress_label: &Label,
+        result_label: &Label,
+        result_details: &Label,
+        result_cell: &Rc<RefCell<Option<ImportResult>>>,
+        source_name_cell: &Rc<RefCell<String>>,
+        btn: &Button,
+    ) {
+        let file_dialog = gtk4::FileDialog::builder()
+            .title("Select RDM JSON File")
+            .modal(true)
+            .build();
+
+        let filter = gtk4::FileFilter::new();
+        filter.add_pattern("*.json");
+        filter.set_name(Some("JSON files"));
+        let filters = gtk4::gio::ListStore::new::<gtk4::FileFilter>();
+        filters.append(&filter);
+        file_dialog.set_filters(Some(&filters));
+
+        let stack_clone = stack.clone();
+        let progress_bar_clone = progress_bar.clone();
+        let progress_label_clone = progress_label.clone();
+        let result_label_clone = result_label.clone();
+        let result_details_clone = result_details.clone();
+        let result_cell_clone = result_cell.clone();
+        let source_name_cell_clone = source_name_cell.clone();
+        let btn_clone = btn.clone();
+
+        file_dialog.open(
+            Some(window),
+            gtk4::gio::Cancellable::NONE,
+            move |file_result| {
+                if let Ok(file) = file_result {
+                    if let Some(path) = file.path() {
+                        stack_clone.set_visible_child_name("progress");
+                        btn_clone.set_sensitive(false);
+                        progress_bar_clone.set_fraction(0.5);
+                        progress_label_clone
+                            .set_text(&format!("Importing from {}...", path.display()));
+
+                        let importer = RdmImporter::new();
+                        let result = importer.import_from_path(&path).unwrap_or_default();
+
+                        // Extract filename for display
+                        let filename = path.file_name().map_or_else(
+                            || "RDM JSON".to_string(),
+                            |n| n.to_string_lossy().to_string(),
+                        );
+
+                        source_name_cell_clone.borrow_mut().clone_from(&filename);
+
+                        progress_bar_clone.set_fraction(1.0);
+
+                        // Show results
                         let conn_count = result.connections.len();
                         let group_count = result.groups.len();
                         let summary = format!(

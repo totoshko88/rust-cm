@@ -11,7 +11,7 @@ use crate::state::SharedAppState;
 use crate::terminal::TerminalNotebook;
 use crate::window::MainWindow;
 use gtk4::prelude::*;
-use gtk4::ApplicationWindow;
+
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -32,7 +32,7 @@ pub fn start_rdp_with_password_dialog(
     split_view: SharedSplitView,
     sidebar: SharedSidebar,
     connection_id: Uuid,
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
 ) {
     // Check if we can skip password dialog (verified credentials from KeePass)
     let can_skip = {
@@ -490,7 +490,7 @@ pub fn start_vnc_with_password_dialog(
     split_view: SharedSplitView,
     sidebar: SharedSidebar,
     connection_id: Uuid,
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
 ) {
     // Check if we can skip password dialog (verified credentials from KeePass)
     let can_skip = {

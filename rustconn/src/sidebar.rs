@@ -85,6 +85,10 @@ pub struct ConnectionSidebar {
     pending_search_query: Rc<RefCell<Option<String>>>,
     /// Saved tree state before search (for restoration when search is cleared)
     pre_search_state: Rc<RefCell<Option<TreeState>>>,
+    /// Active protocol filters (SSH, RDP, VNC, SPICE)
+    active_protocol_filters: Rc<RefCell<HashSet<String>>>,
+    /// Quick filter buttons for protocol filtering
+    protocol_filter_buttons: Rc<RefCell<std::collections::HashMap<String, Button>>>,
 }
 
 impl ConnectionSidebar {
@@ -131,6 +135,198 @@ impl ConnectionSidebar {
         });
 
         search_box.append(&help_button);
+
+        // Quick Filter buttons
+        let filter_box = GtkBox::new(Orientation::Horizontal, 6);
+        filter_box.set_margin_start(12);
+        filter_box.set_margin_end(12);
+        filter_box.set_margin_bottom(6);
+        filter_box.add_css_class("linked");
+
+        // Protocol filter buttons with icons
+        let ssh_filter = Button::new();
+        let ssh_box = GtkBox::new(Orientation::Horizontal, 4);
+        let ssh_icon = gtk4::Image::from_icon_name("network-server-symbolic");
+        ssh_icon.set_pixel_size(16);
+        let ssh_label = Label::new(Some("SSH"));
+        ssh_box.append(&ssh_icon);
+        ssh_box.append(&ssh_label);
+        ssh_filter.set_child(Some(&ssh_box));
+        ssh_filter.set_tooltip_text(Some("Filter SSH connections"));
+        ssh_filter.add_css_class("flat");
+        ssh_filter.add_css_class("filter-button");
+
+        let rdp_filter = Button::new();
+        let rdp_box = GtkBox::new(Orientation::Horizontal, 4);
+        let rdp_icon = gtk4::Image::from_icon_name("computer-symbolic");
+        rdp_icon.set_pixel_size(16);
+        let rdp_label = Label::new(Some("RDP"));
+        rdp_box.append(&rdp_icon);
+        rdp_box.append(&rdp_label);
+        rdp_filter.set_child(Some(&rdp_box));
+        rdp_filter.set_tooltip_text(Some("Filter RDP connections"));
+        rdp_filter.add_css_class("flat");
+        rdp_filter.add_css_class("filter-button");
+
+        let vnc_filter = Button::new();
+        let vnc_box = GtkBox::new(Orientation::Horizontal, 4);
+        let vnc_icon = gtk4::Image::from_icon_name("video-display-symbolic");
+        vnc_icon.set_pixel_size(16);
+        let vnc_label = Label::new(Some("VNC"));
+        vnc_box.append(&vnc_icon);
+        vnc_box.append(&vnc_label);
+        vnc_filter.set_child(Some(&vnc_box));
+        vnc_filter.set_tooltip_text(Some("Filter VNC connections"));
+        vnc_filter.add_css_class("flat");
+        vnc_filter.add_css_class("filter-button");
+
+        let spice_filter = Button::new();
+        let spice_box = GtkBox::new(Orientation::Horizontal, 4);
+        let spice_icon = gtk4::Image::from_icon_name("video-x-generic-symbolic");
+        spice_icon.set_pixel_size(16);
+        let spice_label = Label::new(Some("SPICE"));
+        spice_box.append(&spice_icon);
+        spice_box.append(&spice_label);
+        spice_filter.set_child(Some(&spice_box));
+        spice_filter.set_tooltip_text(Some("Filter SPICE connections"));
+        spice_filter.add_css_class("flat");
+        spice_filter.add_css_class("filter-button");
+
+        let zerotrust_filter = Button::new();
+        let zerotrust_box = GtkBox::new(Orientation::Horizontal, 4);
+        let zerotrust_icon = gtk4::Image::from_icon_name("folder-remote-symbolic");
+        zerotrust_icon.set_pixel_size(16);
+        let zerotrust_label = Label::new(Some("ZeroTrust"));
+        zerotrust_box.append(&zerotrust_icon);
+        zerotrust_box.append(&zerotrust_label);
+        zerotrust_filter.set_child(Some(&zerotrust_box));
+        zerotrust_filter.set_tooltip_text(Some("Filter ZeroTrust connections"));
+        zerotrust_filter.add_css_class("flat");
+        zerotrust_filter.add_css_class("filter-button");
+
+        // Local Shell button - distinct style (not a filter, opens local terminal)
+        let local_shell_btn = Button::new();
+        let shell_box = GtkBox::new(Orientation::Horizontal, 6);
+        let shell_icon = gtk4::Image::from_icon_name("utilities-terminal-symbolic");
+        shell_icon.set_pixel_size(16);
+        let shell_label = Label::new(Some("Shell"));
+        shell_box.append(&shell_icon);
+        shell_box.append(&shell_label);
+        local_shell_btn.set_child(Some(&shell_box));
+        local_shell_btn.set_tooltip_text(Some("Local Shell (Ctrl+Shift+T)"));
+        local_shell_btn.set_action_name(Some("win.local-shell"));
+        local_shell_btn.add_css_class("suggested-action");
+        local_shell_btn.add_css_class("pill");
+
+        filter_box.append(&ssh_filter);
+        filter_box.append(&rdp_filter);
+        filter_box.append(&vnc_filter);
+        filter_box.append(&spice_filter);
+        filter_box.append(&zerotrust_filter);
+        filter_box.append(&local_shell_btn);
+
+        // Store filter buttons for later reference
+        let protocol_filter_buttons = Rc::new(RefCell::new(std::collections::HashMap::new()));
+        protocol_filter_buttons
+            .borrow_mut()
+            .insert("SSH".to_string(), ssh_filter.clone());
+        protocol_filter_buttons
+            .borrow_mut()
+            .insert("RDP".to_string(), rdp_filter.clone());
+        protocol_filter_buttons
+            .borrow_mut()
+            .insert("VNC".to_string(), vnc_filter.clone());
+        protocol_filter_buttons
+            .borrow_mut()
+            .insert("SPICE".to_string(), spice_filter.clone());
+        protocol_filter_buttons
+            .borrow_mut()
+            .insert("ZeroTrust".to_string(), zerotrust_filter.clone());
+
+        // Active protocol filters state
+        let active_protocol_filters = Rc::new(RefCell::new(HashSet::new()));
+
+        // Create programmatic flag for preventing recursive updates
+        let programmatic_flag = Rc::new(RefCell::new(false));
+        let programmatic_flag_clone = programmatic_flag.clone();
+
+        // Setup filter button handlers
+        let search_entry_for_filter = search_entry.clone();
+        let active_filters_ssh = active_protocol_filters.clone();
+        let buttons_ssh = protocol_filter_buttons.clone();
+        let programmatic_flag_ssh = programmatic_flag_clone.clone();
+        ssh_filter.connect_clicked(move |button| {
+            Self::toggle_protocol_filter(
+                "SSH",
+                button,
+                &active_filters_ssh,
+                &buttons_ssh,
+                &search_entry_for_filter,
+                &programmatic_flag_ssh,
+            );
+        });
+
+        let search_entry_for_filter = search_entry.clone();
+        let active_filters_rdp = active_protocol_filters.clone();
+        let buttons_rdp = protocol_filter_buttons.clone();
+        let programmatic_flag_rdp = programmatic_flag_clone.clone();
+        rdp_filter.connect_clicked(move |button| {
+            Self::toggle_protocol_filter(
+                "RDP",
+                button,
+                &active_filters_rdp,
+                &buttons_rdp,
+                &search_entry_for_filter,
+                &programmatic_flag_rdp,
+            );
+        });
+
+        let search_entry_for_filter = search_entry.clone();
+        let active_filters_vnc = active_protocol_filters.clone();
+        let buttons_vnc = protocol_filter_buttons.clone();
+        let programmatic_flag_vnc = programmatic_flag_clone.clone();
+        vnc_filter.connect_clicked(move |button| {
+            Self::toggle_protocol_filter(
+                "VNC",
+                button,
+                &active_filters_vnc,
+                &buttons_vnc,
+                &search_entry_for_filter,
+                &programmatic_flag_vnc,
+            );
+        });
+
+        let search_entry_for_filter = search_entry.clone();
+        let active_filters_spice = active_protocol_filters.clone();
+        let buttons_spice = protocol_filter_buttons.clone();
+        let programmatic_flag_spice = programmatic_flag_clone.clone();
+        spice_filter.connect_clicked(move |button| {
+            Self::toggle_protocol_filter(
+                "SPICE",
+                button,
+                &active_filters_spice,
+                &buttons_spice,
+                &search_entry_for_filter,
+                &programmatic_flag_spice,
+            );
+        });
+
+        let search_entry_for_filter = search_entry.clone();
+        let active_filters_zerotrust = active_protocol_filters.clone();
+        let buttons_zerotrust = protocol_filter_buttons.clone();
+        let programmatic_flag_zerotrust = programmatic_flag_clone.clone();
+        zerotrust_filter.connect_clicked(move |button| {
+            Self::toggle_protocol_filter(
+                "ZeroTrust",
+                button,
+                &active_filters_zerotrust,
+                &buttons_zerotrust,
+                &search_entry_for_filter,
+                &programmatic_flag_zerotrust,
+            );
+        });
+
+        container.append(&filter_box);
         container.append(&search_box);
 
         // Create search history storage and popover
@@ -138,16 +334,45 @@ impl ConnectionSidebar {
         let history_popover = Self::create_history_popover(&search_entry, search_history.clone());
         history_popover.set_parent(&search_entry);
 
-        // Show help popover when user types '?'
+        // Show help popover when user types '?' and handle filter clearing
         let help_popover_for_key = help_popover.clone();
-        let search_entry_clone = search_entry.clone();
-        let search_history_clone = search_history.clone();
-        let history_popover_clone = history_popover.clone();
+        let active_filters_for_clear = active_protocol_filters.clone();
+        let buttons_for_clear = protocol_filter_buttons.clone();
+        let programmatic_flag_for_search = programmatic_flag.clone();
         search_entry.connect_search_changed(move |entry| {
             let text = entry.text();
+
+            // Skip if this is a programmatic update
+            if *programmatic_flag_for_search.borrow() {
+                return;
+            }
+
+            // Handle help popover
             if text.as_str() == "?" {
+                *programmatic_flag_for_search.borrow_mut() = true;
                 entry.set_text("");
+                *programmatic_flag_for_search.borrow_mut() = false;
                 help_popover_for_key.popup();
+                return;
+            }
+
+            // Clear filter buttons when search is manually cleared
+            // Only clear if text is empty and we have active filters
+            if text.is_empty() {
+                if let Ok(filters) = active_filters_for_clear.try_borrow() {
+                    if !filters.is_empty() {
+                        drop(filters); // Release the borrow before clearing
+
+                        // Clear the active filters state
+                        active_filters_for_clear.borrow_mut().clear();
+
+                        // Remove CSS classes from all buttons
+                        for button in buttons_for_clear.borrow().values() {
+                            button.remove_css_class("suggested-action");
+                            button.remove_css_class("filter-active-multiple");
+                        }
+                    }
+                }
             }
         });
 
@@ -164,6 +389,9 @@ impl ConnectionSidebar {
         });
 
         // Setup search entry key handler for operator hints and history navigation
+        let search_entry_clone = search_entry.clone();
+        let search_history_clone = search_history.clone();
+        let history_popover_clone = history_popover.clone();
         Self::setup_search_entry_hints(
             &search_entry,
             &search_entry_clone,
@@ -418,6 +646,8 @@ impl ConnectionSidebar {
             search_spinner,
             pending_search_query: Rc::new(RefCell::new(None)),
             pre_search_state: Rc::new(RefCell::new(None)),
+            active_protocol_filters,
+            protocol_filter_buttons,
         }
     }
 
@@ -1555,6 +1785,78 @@ impl ConnectionSidebar {
         history.truncate(MAX_SEARCH_HISTORY);
     }
 
+    /// Toggles a protocol filter and updates the search
+    fn toggle_protocol_filter(
+        protocol: &str,
+        button: &Button,
+        active_filters: &Rc<RefCell<HashSet<String>>>,
+        buttons: &Rc<RefCell<std::collections::HashMap<String, Button>>>,
+        search_entry: &SearchEntry,
+        programmatic_flag: &Rc<RefCell<bool>>,
+    ) {
+        let mut filters = active_filters.borrow_mut();
+
+        if filters.contains(protocol) {
+            // Remove filter
+            filters.remove(protocol);
+            button.remove_css_class("suggested-action");
+        } else {
+            // Add filter
+            filters.insert(protocol.to_string());
+            button.add_css_class("suggested-action");
+        }
+
+        // Update visual feedback for all buttons when multiple filters are active
+        let filter_count = filters.len();
+        if filter_count > 1 {
+            // Multiple filters active - add special styling to show AND relationship
+            for (filter_name, filter_button) in buttons.borrow().iter() {
+                if filters.contains(filter_name) {
+                    filter_button.add_css_class("filter-active-multiple");
+                } else {
+                    filter_button.remove_css_class("filter-active-multiple");
+                }
+            }
+        } else {
+            // Single or no filters - remove multiple filter styling
+            for filter_button in buttons.borrow().values() {
+                filter_button.remove_css_class("filter-active-multiple");
+            }
+        }
+
+        // Update search with protocol filters
+        Self::update_search_with_filters(&filters, search_entry, programmatic_flag);
+    }
+
+    /// Updates search entry with current protocol filters
+    fn update_search_with_filters(
+        filters: &HashSet<String>,
+        search_entry: &SearchEntry,
+        programmatic_flag: &Rc<RefCell<bool>>,
+    ) {
+        // Set flag to prevent recursive clearing
+        *programmatic_flag.borrow_mut() = true;
+
+        if filters.is_empty() {
+            // Clear search if no filters
+            search_entry.set_text("");
+        } else if filters.len() == 1 {
+            // Single protocol filter - use standard search syntax
+            let protocol = filters.iter().next().unwrap();
+            let query = format!("protocol:{}", protocol.to_lowercase());
+            search_entry.set_text(&query);
+        } else {
+            // Multiple protocol filters - use special syntax that filter_connections can recognize
+            let mut protocols: Vec<String> = filters.iter().cloned().collect();
+            protocols.sort();
+            let query = format!("protocols:{}", protocols.join(","));
+            search_entry.set_text(&query);
+        }
+
+        // Reset flag
+        *programmatic_flag.borrow_mut() = false;
+    }
+
     /// Gets the search history
     ///
     /// Note: Part of search history API.
@@ -1570,6 +1872,29 @@ impl ConnectionSidebar {
     #[allow(dead_code)]
     pub fn clear_search_history(&self) {
         self.search_history.borrow_mut().clear();
+    }
+
+    /// Gets the active protocol filters
+    ///
+    /// Returns a set of currently active protocol filter names.
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn get_active_protocol_filters(&self) -> HashSet<String> {
+        self.active_protocol_filters.borrow().clone()
+    }
+
+    /// Checks if any protocol filters are active
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn has_active_protocol_filters(&self) -> bool {
+        !self.active_protocol_filters.borrow().is_empty()
+    }
+
+    /// Gets the count of active protocol filters
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn active_protocol_filter_count(&self) -> usize {
+        self.active_protocol_filters.borrow().len()
     }
 
     /// Saves the current tree state before starting a search

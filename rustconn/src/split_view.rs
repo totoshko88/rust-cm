@@ -4,8 +4,10 @@
 //! allowing users to view multiple sessions simultaneously while maintaining
 //! a single unified tab list.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Orientation, Paned};
+use gtk4::{Box as GtkBox, Button, Label, Orientation, Paned};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -210,7 +212,7 @@ impl SplitTerminalView {
     }
 
     /// Creates welcome content for the initial pane
-    fn create_welcome_content() -> GtkBox {
+    fn create_welcome_content() -> adw::StatusPage {
         // Use the same content as placeholder for consistency
         Self::create_placeholder()
     }
@@ -463,10 +465,10 @@ impl SplitTerminalView {
             let new_pane_id = new_pane.id();
 
             // Add placeholder content to new pane with close button
-            let placeholder = if let Some(cb) = close_callback {
-                Self::create_placeholder_with_close(move || cb())
+            let placeholder: gtk4::Widget = if let Some(cb) = close_callback {
+                Self::create_placeholder_with_close(move || cb()).upcast()
             } else {
-                Self::create_placeholder()
+                Self::create_placeholder().upcast()
             };
             new_pane.set_content(&placeholder);
 
@@ -529,10 +531,10 @@ impl SplitTerminalView {
             let new_pane_id = new_pane.id();
 
             // Add placeholder content to new pane with close button
-            let placeholder = if let Some(cb) = close_callback {
-                Self::create_placeholder_with_close(move || cb())
+            let placeholder: gtk4::Widget = if let Some(cb) = close_callback {
+                Self::create_placeholder_with_close(move || cb()).upcast()
             } else {
-                Self::create_placeholder()
+                Self::create_placeholder().upcast()
             };
             new_pane.set_content(&placeholder);
 
@@ -588,10 +590,10 @@ impl SplitTerminalView {
         // Header with close button (only visible when there are multiple panes)
         let header = GtkBox::new(Orientation::Horizontal, 0);
         header.set_halign(gtk4::Align::End);
-        header.set_margin_top(4);
-        header.set_margin_end(4);
+        header.set_margin_top(6);
+        header.set_margin_end(6);
 
-        let close_button = gtk4::Button::from_icon_name("window-close-symbolic");
+        let close_button = Button::from_icon_name("window-close-symbolic");
         close_button.add_css_class("flat");
         close_button.add_css_class("circular");
         close_button.set_tooltip_text(Some("Close pane (Ctrl+Shift+W)"));
@@ -601,129 +603,197 @@ impl SplitTerminalView {
         header.append(&close_button);
         outer.append(&header);
 
-        // Center content
-        let container = GtkBox::new(Orientation::Vertical, 16);
-        container.set_halign(gtk4::Align::Center);
-        container.set_valign(gtk4::Align::Center);
-        container.set_vexpand(true);
-        container.set_margin_start(32);
-        container.set_margin_end(32);
-        container.set_margin_top(32);
-        container.set_margin_bottom(32);
+        // Use AdwStatusPage for center content
+        let status_page = adw::StatusPage::builder()
+            .icon_name("view-paged-symbolic")
+            .title("Empty Pane")
+            .description("Drag a session tab here\nOr double-click a connection")
+            .vexpand(true)
+            .build();
 
-        // Welcome message with emoji
-        let title = gtk4::Label::new(Some("📋 Empty Pane"));
-        title.add_css_class("title-3");
-        container.append(&title);
-
-        let label = gtk4::Label::new(Some(
-            "🔗 Drag a session tab here\n\
-             🖱️ Or double-click a connection",
-        ));
-        label.add_css_class("dim-label");
-        label.set_justify(gtk4::Justification::Center);
-        container.append(&label);
-
-        outer.append(&container);
+        outer.append(&status_page);
         outer
     }
 
     /// Creates a placeholder widget for empty panes (simple version)
-    fn create_placeholder() -> GtkBox {
-        let container = GtkBox::new(Orientation::Vertical, 20);
-        container.set_halign(gtk4::Align::Center);
-        container.set_valign(gtk4::Align::Center);
-        container.set_hexpand(true);
-        container.set_vexpand(true);
-        container.set_margin_start(40);
-        container.set_margin_end(40);
-        container.set_margin_top(40);
-        container.set_margin_bottom(40);
+    fn create_placeholder() -> adw::StatusPage {
+        let status_page = adw::StatusPage::new();
 
-        // Try to load logo, fallback to text title
-        let title_widget = Self::create_logo_or_title();
-        container.append(&title_widget);
+        // Try to set logo image as icon
+        if let Some(pixbuf) = Self::load_embedded_logo(96) {
+            let texture = gtk4::gdk::Texture::for_pixbuf(&pixbuf);
+            let paintable = texture.upcast::<gtk4::gdk::Paintable>();
+            status_page.set_paintable(Some(&paintable));
+        } else {
+            status_page.set_icon_name(Some("network-server-symbolic"));
+        }
 
-        // Description
-        let desc = gtk4::Label::new(Some(
-            "🔐 Modern Connection Manager for Linux\n\
-             SSH • RDP • VNC • SPICE\n\
-             Embedded & External Clients",
+        status_page.set_title("RustConn");
+        status_page.set_description(Some(
+            "Modern Connection Manager for Linux • SSH • RDP • VNC • SPICE • Zero Trust",
         ));
-        desc.add_css_class("dim-label");
-        desc.set_justify(gtk4::Justification::Center);
-        container.append(&desc);
 
-        // Features section
-        let features = gtk4::Label::new(Some(
-            "✨ Features:\n\
-             🖥️  Embedded SSH terminals with split view\n\
-             🔒  Secure credential storage (KeePass/Keyring)\n\
-             📁  Import/Export: Remmina, Asbru-CM, Royal TS, SSH config, Ansible\n\
-             🔑  Password Generator with strength analysis\n\
-             🔄  Session Restore on startup\n\
-             🤖  Expect automation for SSH\n\
-             🏷️  Organize with groups and tags\n\
-             🌐  Zero Trust: AWS SSM, GCP IAP, Azure Bastion, OCI Bastion",
-        ));
-        features.set_justify(gtk4::Justification::Left);
-        features.add_css_class("dim-label");
-        features.set_margin_top(12);
-        container.append(&features);
+        // Create content box for additional elements
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_halign(gtk4::Align::Fill);
+        content.set_hexpand(true);
+        content.set_margin_top(6);
+        content.set_margin_bottom(12);
+        content.set_margin_start(24);
+        content.set_margin_end(24);
 
-        // Performance features section
-        let perf_title = gtk4::Label::new(Some("🚀 Performance Features"));
-        perf_title.add_css_class("heading");
-        perf_title.set_margin_top(16);
-        container.append(&perf_title);
+        // Quick actions as buttons
+        let actions = GtkBox::new(Orientation::Horizontal, 12);
+        actions.set_halign(gtk4::Align::Center);
 
-        let perf_features = gtk4::Label::new(Some(
-            "🔍  Smart search caching for instant results\n\
-             📂  Lazy loading for large connection trees\n\
-             📜  Virtual scrolling for 1000+ connections\n\
-             🎯  Debounced search for responsive typing\n\
-             🖼️  Embedded VNC/RDP/SPICE (optional features)",
-        ));
-        perf_features.set_justify(gtk4::Justification::Left);
-        perf_features.add_css_class("dim-label");
-        container.append(&perf_features);
+        let new_conn_btn = Button::builder()
+            .label("New Connection")
+            .css_classes(["suggested-action", "pill"])
+            .action_name("win.new-connection")
+            .build();
+        actions.append(&new_conn_btn);
 
-        // Keyboard shortcuts section
-        let shortcuts_title = gtk4::Label::new(Some("⌨️ Keyboard Shortcuts"));
-        shortcuts_title.add_css_class("heading");
-        shortcuts_title.set_margin_top(16);
-        container.append(&shortcuts_title);
+        let quick_btn = Button::builder()
+            .label("Quick Connect")
+            .css_classes(["pill"])
+            .action_name("win.quick-connect")
+            .build();
+        actions.append(&quick_btn);
 
-        // Use monospace font for aligned shortcuts
-        let shortcuts = gtk4::Label::new(Some(
-            "Ctrl+N             New connection\n\
-             Ctrl+Shift+N       New group\n\
-             Ctrl+Shift+T       Local shell\n\
-             Ctrl+Shift+Q       Quick connect\n\
-             Ctrl+F             Search\n\
-             Ctrl+Shift+S       Split vertical\n\
-             Ctrl+Shift+H       Split horizontal\n\
-             Ctrl+W             Close tab\n\
-             Ctrl+Tab           Next tab",
-        ));
-        shortcuts.set_justify(gtk4::Justification::Left);
-        shortcuts.add_css_class("dim-label");
-        shortcuts.add_css_class("monospace");
-        shortcuts.set_use_markup(false);
-        container.append(&shortcuts);
+        content.append(&actions);
 
-        // Getting started hint
-        let hint = gtk4::Label::new(Some(
-            "👆 Double-click a connection in the sidebar to get started",
-        ));
-        hint.add_css_class("dim-label");
-        hint.set_margin_top(20);
-        container.append(&hint);
+        // Three-column layout
+        let columns = GtkBox::new(Orientation::Horizontal, 18);
+        columns.set_halign(gtk4::Align::Fill);
+        columns.set_hexpand(true);
+        columns.set_homogeneous(true);
+        columns.set_margin_top(12);
 
-        container
+        // Column 1 - Features
+        let col1 = GtkBox::new(Orientation::Vertical, 6);
+        col1.set_valign(gtk4::Align::Start);
+        col1.set_hexpand(true);
+
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
+
+        let features = [
+            ("display-symbolic", "Embedded SSH terminals"),
+            ("channel-secure-symbolic", "Secure credential storage"),
+            ("document-open-symbolic", "Import/Export connections"),
+            ("dialog-password-symbolic", "Password Generator"),
+            ("view-refresh-symbolic", "Session Restore"),
+            ("system-run-symbolic", "Expect automation"),
+            ("folder-symbolic", "Groups and tags"),
+            ("network-workgroup-symbolic", "Zero Trust tunnels"),
+            ("preferences-system-symbolic", "Customizable settings"),
+            (
+                "application-x-executable-symbolic",
+                "Embedded &amp; external clients",
+            ),
+        ];
+
+        for (icon, description) in features {
+            let row = adw::ActionRow::builder().title(description).build();
+            row.add_prefix(&gtk4::Image::from_icon_name(icon));
+            features_group.add(&row);
+        }
+        col1.append(&features_group);
+        columns.append(&col1);
+
+        // Column 2 - Keyboard shortcuts
+        let col2 = GtkBox::new(Orientation::Vertical, 6);
+        col2.set_valign(gtk4::Align::Start);
+        col2.set_hexpand(true);
+
+        let shortcuts_group = adw::PreferencesGroup::builder()
+            .title("Keyboard Shortcuts")
+            .build();
+
+        let shortcuts = [
+            ("Ctrl+N", "New connection"),
+            ("Ctrl+Shift+N", "New group"),
+            ("Ctrl+Shift+T", "Local shell"),
+            ("Ctrl+Shift+Q", "Quick connect"),
+            ("Ctrl+F", "Search"),
+            ("Ctrl+Shift+S", "Split vertical"),
+            ("Ctrl+Shift+H", "Split horizontal"),
+            ("Ctrl+W", "Close tab"),
+            ("Ctrl+Tab", "Next tab"),
+        ];
+
+        for (shortcut, description) in shortcuts {
+            let row = adw::ActionRow::builder().title(description).build();
+            let label = Label::builder()
+                .label(shortcut)
+                .css_classes(["dim-label", "monospace"])
+                .build();
+            row.add_suffix(&label);
+            shortcuts_group.add(&row);
+        }
+        col2.append(&shortcuts_group);
+        columns.append(&col2);
+
+        // Column 3 - Performance & Import
+        let col3 = GtkBox::new(Orientation::Vertical, 6);
+        col3.set_valign(gtk4::Align::Start);
+        col3.set_hexpand(true);
+
+        let perf_group = adw::PreferencesGroup::builder()
+            .title("Performance")
+            .build();
+
+        let perf_features = [
+            ("edit-find-symbolic", "Smart search caching"),
+            ("folder-symbolic", "Lazy loading for trees"),
+            ("view-list-symbolic", "Virtual scrolling"),
+            ("video-display-symbolic", "Embedded VNC/RDP/SPICE"),
+        ];
+
+        for (icon, description) in perf_features {
+            let row = adw::ActionRow::builder().title(description).build();
+            row.add_prefix(&gtk4::Image::from_icon_name(icon));
+            perf_group.add(&row);
+        }
+        col3.append(&perf_group);
+
+        // Import formats
+        let formats_group = adw::PreferencesGroup::builder()
+            .title("Import Formats")
+            .margin_top(6)
+            .build();
+
+        let formats = [
+            "Remmina",
+            "Asbru-CM",
+            "Royal TS",
+            "SSH Config",
+            "Ansible Inventory",
+        ];
+
+        for format in formats {
+            let row = adw::ActionRow::builder().title(format).build();
+            row.add_prefix(&gtk4::Image::from_icon_name("document-open-symbolic"));
+            formats_group.add(&row);
+        }
+        col3.append(&formats_group);
+        columns.append(&col3);
+
+        content.append(&columns);
+
+        // Hint at the bottom
+        let hint = Label::builder()
+            .label("Double-click a connection in the sidebar to get started")
+            .css_classes(["dim-label"])
+            .margin_top(12)
+            .build();
+        content.append(&hint);
+
+        status_page.set_child(Some(&content));
+        status_page
     }
 
-    /// Creates logo image or fallback text title
+    /// Creates logo image or fallback text title (kept for compatibility)
+    #[allow(dead_code)]
     fn create_logo_or_title() -> gtk4::Widget {
         // Try to load embedded SVG icon using GdkPixbuf
         if let Some(pixbuf) = Self::load_embedded_logo(64) {
@@ -736,7 +806,7 @@ impl SplitTerminalView {
             hbox.set_halign(gtk4::Align::Center);
             hbox.append(&image);
 
-            let title = gtk4::Label::new(Some("RustConn"));
+            let title = Label::new(Some("RustConn"));
             title.add_css_class("title-1");
             hbox.append(&title);
 
@@ -1171,38 +1241,22 @@ impl SplitTerminalView {
     }
 
     /// Creates a placeholder for external sessions (RDP/VNC)
-    fn create_external_session_placeholder(name: &str, protocol: &str) -> GtkBox {
-        let container = GtkBox::new(Orientation::Vertical, 16);
-        container.set_halign(gtk4::Align::Center);
-        container.set_valign(gtk4::Align::Center);
-        container.set_margin_start(32);
-        container.set_margin_end(32);
-        container.set_margin_top(32);
-        container.set_margin_bottom(32);
-
+    fn create_external_session_placeholder(name: &str, protocol: &str) -> adw::StatusPage {
         let icon_name = match protocol {
             "rdp" => "computer-symbolic",
             "vnc" => "video-display-symbolic",
+            "spice" => "video-display-symbolic",
             _ => "network-server-symbolic",
         };
 
-        let icon = gtk4::Image::from_icon_name(icon_name);
-        icon.set_pixel_size(64);
-        icon.add_css_class("dim-label");
-        container.append(&icon);
-
-        let label = gtk4::Label::new(Some(&format!(
-            "{} session running in external window",
-            protocol.to_uppercase()
-        )));
-        label.add_css_class("dim-label");
-        container.append(&label);
-
-        let title_label = gtk4::Label::new(Some(name));
-        title_label.add_css_class("title-3");
-        container.append(&title_label);
-
-        container
+        adw::StatusPage::builder()
+            .icon_name(icon_name)
+            .title(name)
+            .description(format!(
+                "{} session running in external window",
+                protocol.to_uppercase()
+            ))
+            .build()
     }
 
     /// Gets the active terminal in the focused pane

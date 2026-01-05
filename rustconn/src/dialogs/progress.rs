@@ -4,13 +4,14 @@
 //! imports, exports, and bulk operations.
 
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Button, Label, Orientation, ProgressBar, Window};
+use gtk4::{Box as GtkBox, Button, Label, Orientation, ProgressBar};
+use libadwaita as adw;
 use std::cell::Cell;
 use std::rc::Rc;
 
 /// Progress dialog for displaying operation progress
 pub struct ProgressDialog {
-    window: Window,
+    window: adw::Window,
     progress_bar: ProgressBar,
     status_label: Label,
     cancel_button: Button,
@@ -26,8 +27,8 @@ impl ProgressDialog {
     /// * `title` - Title of the progress dialog
     /// * `cancellable` - Whether to show a cancel button
     #[must_use]
-    pub fn new(parent: Option<&Window>, title: &str, cancellable: bool) -> Self {
-        let window = Window::builder()
+    pub fn new(parent: Option<&gtk4::Window>, title: &str, cancellable: bool) -> Self {
+        let window = adw::Window::builder()
             .title(title)
             .modal(true)
             .resizable(false)
@@ -143,7 +144,7 @@ impl ProgressDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 

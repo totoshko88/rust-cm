@@ -33,6 +33,7 @@ pub struct AppSettings {
 
 /// Terminal-related settings
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Terminal settings are independent boolean flags
 pub struct TerminalSettings {
     /// Font family for terminal
     #[serde(default = "default_font_family")]
@@ -43,6 +44,30 @@ pub struct TerminalSettings {
     /// Scrollback buffer lines
     #[serde(default = "default_scrollback")]
     pub scrollback_lines: u32,
+    /// Color theme
+    #[serde(default = "default_color_theme")]
+    pub color_theme: String,
+    /// Cursor shape
+    #[serde(default = "default_cursor_shape")]
+    pub cursor_shape: String,
+    /// Cursor blink mode
+    #[serde(default = "default_cursor_blink")]
+    pub cursor_blink: String,
+    /// Scroll on output
+    #[serde(default = "default_scroll_on_output")]
+    pub scroll_on_output: bool,
+    /// Scroll on keystroke
+    #[serde(default = "default_scroll_on_keystroke")]
+    pub scroll_on_keystroke: bool,
+    /// Allow hyperlinks
+    #[serde(default = "default_allow_hyperlinks")]
+    pub allow_hyperlinks: bool,
+    /// Mouse autohide
+    #[serde(default = "default_mouse_autohide")]
+    pub mouse_autohide: bool,
+    /// Audible bell
+    #[serde(default = "default_audible_bell")]
+    pub audible_bell: bool,
 }
 
 fn default_font_family() -> String {
@@ -57,12 +82,52 @@ const fn default_scrollback() -> u32 {
     10000
 }
 
+fn default_color_theme() -> String {
+    "Dark".to_string()
+}
+
+fn default_cursor_shape() -> String {
+    "Block".to_string()
+}
+
+fn default_cursor_blink() -> String {
+    "On".to_string()
+}
+
+const fn default_scroll_on_output() -> bool {
+    false
+}
+
+const fn default_scroll_on_keystroke() -> bool {
+    true
+}
+
+const fn default_allow_hyperlinks() -> bool {
+    true
+}
+
+const fn default_mouse_autohide() -> bool {
+    true
+}
+
+const fn default_audible_bell() -> bool {
+    false
+}
+
 impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
             font_family: default_font_family(),
             font_size: default_font_size(),
             scrollback_lines: default_scrollback(),
+            color_theme: default_color_theme(),
+            cursor_shape: default_cursor_shape(),
+            cursor_blink: default_cursor_blink(),
+            scroll_on_output: default_scroll_on_output(),
+            scroll_on_keystroke: default_scroll_on_keystroke(),
+            allow_hyperlinks: default_allow_hyperlinks(),
+            mouse_autohide: default_mouse_autohide(),
+            audible_bell: default_audible_bell(),
         }
     }
 }
@@ -114,6 +179,7 @@ impl Default for LoggingSettings {
 
 /// Secret storage settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct SecretSettings {
     /// Preferred secret backend
     #[serde(default)]
@@ -137,9 +203,12 @@ pub struct SecretSettings {
     /// Path to `KeePass` key file (.keyx or .key) - alternative to password
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kdbx_key_file: Option<PathBuf>,
-    /// Whether to use key file instead of password
+    /// Whether to use key file for authentication
     #[serde(default)]
     pub kdbx_use_key_file: bool,
+    /// Whether to use password for authentication
+    #[serde(default = "default_true")]
+    pub kdbx_use_password: bool,
 }
 
 const fn default_true() -> bool {
@@ -157,6 +226,7 @@ impl Default for SecretSettings {
             kdbx_password_encrypted: None,
             kdbx_key_file: None,
             kdbx_use_key_file: false,
+            kdbx_use_password: true,
         }
     }
 }
@@ -189,9 +259,25 @@ pub enum SecretBackendType {
     LibSecret,
 }
 
+/// Color scheme preference
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorScheme {
+    /// Follow system preference
+    #[default]
+    System,
+    /// Force light theme
+    Light,
+    /// Force dark theme
+    Dark,
+}
+
 /// UI settings
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
+    /// Color scheme preference
+    #[serde(default)]
+    pub color_scheme: ColorScheme,
     /// Remember window geometry
     #[serde(default = "default_true")]
     pub remember_window_geometry: bool,
@@ -270,6 +356,7 @@ pub struct SavedSession {
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
+            color_scheme: ColorScheme::default(),
             remember_window_geometry: true,
             window_width: None,
             window_height: None,

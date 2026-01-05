@@ -180,7 +180,10 @@ impl TerminalNotebook {
         container
     }
 
-    /// Creates a new terminal tab for an SSH session
+    /// Creates a new terminal tab for an SSH session with default settings
+    ///
+    /// For custom terminal settings, use `create_terminal_tab_with_settings` instead.
+    #[allow(dead_code)]
     pub fn create_terminal_tab(
         &self,
         connection_id: Uuid,
@@ -188,84 +191,13 @@ impl TerminalNotebook {
         protocol: &str,
         automation: Option<&AutomationConfig>,
     ) -> Uuid {
-        let session_id = Uuid::new_v4();
-        let is_first_session = self.sessions.borrow().is_empty();
-
-        if is_first_session && self.notebook.n_pages() > 0 {
-            self.notebook.remove_page(Some(0));
-        }
-
-        let terminal = Terminal::new();
-        terminal.set_hexpand(true);
-        terminal.set_vexpand(true);
-
-        // Setup automation if configured
-        if let Some(cfg) = automation {
-            if !cfg.expect_rules.is_empty() {
-                let mut triggers = Vec::new();
-                for rule in &cfg.expect_rules {
-                    if !rule.enabled {
-                        continue;
-                    }
-                    if let Ok(regex) = Regex::new(&rule.pattern) {
-                        triggers.push(Trigger {
-                            pattern: regex,
-                            response: rule.response.clone(),
-                            one_shot: true,
-                        });
-                    }
-                }
-
-                if !triggers.is_empty() {
-                    let session = AutomationSession::new(terminal.clone(), triggers);
-                    self.automation_sessions
-                        .borrow_mut()
-                        .insert(session_id, session);
-                }
-            }
-        }
-
-        config::configure_terminal(&terminal);
-
-        let placeholder = GtkBox::new(Orientation::Vertical, 0);
-        let spacer = gtk4::DrawingArea::new();
-        spacer.set_content_width(1);
-        spacer.set_content_height(1);
-        placeholder.append(&spacer);
-
-        let tab_label = tabs::create_tab_label_with_protocol(
+        self.create_terminal_tab_with_settings(
+            connection_id,
             title,
-            session_id,
-            &self.notebook,
-            &self.sessions,
             protocol,
-            "",
-            &self.tab_labels,
-            &self.overflow_box,
-        );
-
-        let page_num = self.notebook.append_page(&placeholder, Some(&tab_label));
-
-        self.sessions.borrow_mut().insert(session_id, page_num);
-        self.terminals.borrow_mut().insert(session_id, terminal);
-
-        self.session_info.borrow_mut().insert(
-            session_id,
-            TerminalSession {
-                id: session_id,
-                connection_id,
-                name: title.to_string(),
-                protocol: protocol.to_string(),
-                is_embedded: true,
-                log_file: None,
-                history_entry_id: None,
-            },
-        );
-
-        self.notebook.set_tab_reorderable(&placeholder, true);
-        self.notebook.set_current_page(Some(page_num));
-
-        session_id
+            automation,
+            &rustconn_core::config::TerminalSettings::default(),
+        )
     }
 
     /// Creates a new VNC session tab
@@ -959,5 +891,105 @@ impl TerminalNotebook {
 impl Default for TerminalNotebook {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl TerminalNotebook {
+    /// Applies terminal settings to all existing terminals
+    pub fn apply_settings(&self, settings: &rustconn_core::config::TerminalSettings) {
+        let terminals = self.terminals.borrow();
+        for terminal in terminals.values() {
+            config::configure_terminal_with_settings(terminal, settings);
+        }
+    }
+
+    /// Creates a new terminal tab with specific settings
+    pub fn create_terminal_tab_with_settings(
+        &self,
+        connection_id: Uuid,
+        title: &str,
+        protocol: &str,
+        automation: Option<&AutomationConfig>,
+        settings: &rustconn_core::config::TerminalSettings,
+    ) -> Uuid {
+        let session_id = Uuid::new_v4();
+        let is_first_session = self.sessions.borrow().is_empty();
+
+        if is_first_session && self.notebook.n_pages() > 0 {
+            self.notebook.remove_page(Some(0));
+        }
+
+        let terminal = Terminal::new();
+        terminal.set_hexpand(true);
+        terminal.set_vexpand(true);
+
+        // Setup automation if configured
+        if let Some(cfg) = automation {
+            if !cfg.expect_rules.is_empty() {
+                let mut triggers = Vec::new();
+                for rule in &cfg.expect_rules {
+                    if !rule.enabled {
+                        continue;
+                    }
+                    if let Ok(regex) = Regex::new(&rule.pattern) {
+                        triggers.push(Trigger {
+                            pattern: regex,
+                            response: rule.response.clone(),
+                            one_shot: true,
+                        });
+                    }
+                }
+
+                if !triggers.is_empty() {
+                    let session = AutomationSession::new(terminal.clone(), triggers);
+                    self.automation_sessions
+                        .borrow_mut()
+                        .insert(session_id, session);
+                }
+            }
+        }
+
+        // Apply user settings instead of defaults
+        config::configure_terminal_with_settings(&terminal, settings);
+
+        let placeholder = GtkBox::new(Orientation::Vertical, 0);
+        let spacer = gtk4::DrawingArea::new();
+        spacer.set_content_width(1);
+        spacer.set_content_height(1);
+        placeholder.append(&spacer);
+
+        let tab_label = tabs::create_tab_label_with_protocol(
+            title,
+            session_id,
+            &self.notebook,
+            &self.sessions,
+            protocol,
+            "",
+            &self.tab_labels,
+            &self.overflow_box,
+        );
+
+        let page_num = self.notebook.append_page(&placeholder, Some(&tab_label));
+
+        self.sessions.borrow_mut().insert(session_id, page_num);
+        self.terminals.borrow_mut().insert(session_id, terminal);
+
+        self.session_info.borrow_mut().insert(
+            session_id,
+            TerminalSession {
+                id: session_id,
+                connection_id,
+                name: title.to_string(),
+                protocol: protocol.to_string(),
+                is_embedded: true,
+                log_file: None,
+                history_entry_id: None,
+            },
+        );
+
+        self.notebook.set_tab_reorderable(&placeholder, true);
+        self.notebook.set_current_page(Some(page_num));
+
+        session_id
     }
 }

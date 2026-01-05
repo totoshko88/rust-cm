@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.5"
+version = "0.5.6"
 edition = "2021"
 authors = ["RustConn Contributors"]
 license = "MIT"
@@ -15,7 +15,7 @@ rust-version = "1.87"
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.48", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 futures = "0.3"
 
 # Serialization
@@ -27,11 +27,12 @@ toml = "0.8"
 # GTK4 and VTE
 gtk4 = "0.10.2"
 vte4 = "0.9"
+libadwaita = "0.8"
 
 # Utilities
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "2.0"
+thiserror = "2.0.17"
 async-trait = "0.1"
 secrecy = { version = "0.10", features = ["serde"] }
 dirs = "6.0"

@@ -1,12 +1,16 @@
 //! Password generator dialog
 //!
 //! Provides a dialog for generating secure passwords with configurable options.
+//! Migrated to use libadwaita components for GNOME HIG compliance.
 
+use adw::prelude::*;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Adjustment, Box as GtkBox, Button, CheckButton, Entry, Grid, HeaderBar, Label, LevelBar,
-    Orientation, Scale, SpinButton, Window,
+    Adjustment, Box as GtkBox, Button, Entry, Label, LevelBar, Orientation, Scale, SpinButton,
+    Switch,
 };
+use libadwaita as adw;
 use rustconn_core::{
     estimate_crack_time, PasswordGenerator, PasswordGeneratorConfig, PasswordStrength,
 };
@@ -15,11 +19,11 @@ use std::rc::Rc;
 
 /// Shows the password generator dialog
 pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
-    let window = Window::builder()
+    let window = adw::Window::builder()
         .title("Password Generator")
         .modal(true)
-        .default_width(750)
-        .default_height(500)
+        .default_width(500)
+        .default_height(700)
         .resizable(true)
         .build();
 
@@ -28,8 +32,9 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
     }
 
     // Header bar with Close/Copy buttons (GNOME HIG)
-    let header = HeaderBar::new();
-    header.set_show_title_buttons(false);
+    let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let close_btn = Button::builder().label("Close").build();
     let copy_btn = Button::builder()
         .label("Copy")
@@ -37,7 +42,6 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         .build();
     header.pack_start(&close_btn);
     header.pack_end(&copy_btn);
-    window.set_titlebar(Some(&header));
 
     // Close button handler
     let window_clone = window.clone();
@@ -45,15 +49,42 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         window_clone.close();
     });
 
-    // Content
+    // Scrollable content with clamp
+    let scrolled = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Never)
+        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .vexpand(true)
+        .build();
+
+    let clamp = adw::Clamp::builder()
+        .maximum_size(600)
+        .tightening_threshold(400)
+        .build();
+
     let content = GtkBox::new(Orientation::Vertical, 12);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    // Password display
-    let password_box = GtkBox::new(Orientation::Horizontal, 6);
+    clamp.set_child(Some(&content));
+    scrolled.set_child(Some(&clamp));
+
+    let main_box = GtkBox::new(Orientation::Vertical, 0);
+    main_box.append(&header);
+    main_box.append(&scrolled);
+    window.set_content(Some(&main_box));
+
+    // === Password Display Group ===
+    let password_group = adw::PreferencesGroup::builder()
+        .title("Generated Password")
+        .build();
+
+    let password_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(6)
+        .hexpand(true)
+        .build();
     let password_entry = Entry::builder()
         .hexpand(true)
         .editable(false)
@@ -62,147 +93,232 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
     let generate_btn = Button::builder()
         .icon_name("view-refresh-symbolic")
         .tooltip_text("Generate new password")
+        .valign(gtk4::Align::Center)
         .build();
     password_box.append(&password_entry);
     password_box.append(&generate_btn);
-    content.append(&password_box);
+    password_group.add(&password_box);
 
-    // Strength indicator
-    let strength_box = GtkBox::new(Orientation::Horizontal, 6);
+    content.append(&password_group);
+
+    // === Strength Indicator Group ===
+    let strength_group = adw::PreferencesGroup::builder()
+        .title("Strength Analysis")
+        .build();
+
+    // Strength bar row
     let strength_bar = LevelBar::builder()
         .min_value(0.0)
         .max_value(5.0)
         .hexpand(true)
+        .valign(gtk4::Align::Center)
         .build();
     strength_bar.add_offset_value("very-weak", 1.0);
     strength_bar.add_offset_value("weak", 2.0);
     strength_bar.add_offset_value("fair", 3.0);
     strength_bar.add_offset_value("strong", 4.0);
     strength_bar.add_offset_value("very-strong", 5.0);
+
     let strength_label = Label::builder()
         .label("Strong")
         .width_chars(12)
-        .xalign(1.0)
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
         .build();
-    strength_box.append(&strength_bar);
-    strength_box.append(&strength_label);
-    content.append(&strength_box);
 
-    // Info labels
-    let info_box = GtkBox::new(Orientation::Horizontal, 12);
+    let strength_row = adw::ActionRow::builder().title("Strength").build();
+    strength_row.add_suffix(&strength_bar);
+    strength_row.add_suffix(&strength_label);
+    strength_group.add(&strength_row);
+
+    // Entropy row
     let entropy_label = Label::builder()
-        .label("Entropy: 0 bits")
+        .label("0 bits")
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
         .css_classes(["dim-label"])
-        .halign(gtk4::Align::Start)
-        .hexpand(true)
         .build();
+    let entropy_row = adw::ActionRow::builder()
+        .title("Entropy")
+        .subtitle("Measure of randomness")
+        .build();
+    entropy_row.add_suffix(&entropy_label);
+    strength_group.add(&entropy_row);
+
+    // Crack time row
     let crack_time_label = Label::builder()
-        .label("Crack time: instant")
+        .label("instant")
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
         .css_classes(["dim-label"])
-        .halign(gtk4::Align::End)
         .build();
-    info_box.append(&entropy_label);
-    info_box.append(&crack_time_label);
-    content.append(&info_box);
-
-    // Options grid
-    let options_label = Label::builder()
-        .label("Options")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(6)
+    let crack_time_row = adw::ActionRow::builder()
+        .title("Crack time")
+        .subtitle("At 10 billion guesses/sec")
         .build();
-    content.append(&options_label);
+    crack_time_row.add_suffix(&crack_time_label);
+    strength_group.add(&crack_time_row);
 
-    let grid = Grid::builder().row_spacing(6).column_spacing(12).build();
+    content.append(&strength_group);
 
-    // Length
-    let length_label = Label::builder()
-        .label("Length:")
-        .halign(gtk4::Align::End)
-        .build();
+    // === Length Group ===
+    let length_group = adw::PreferencesGroup::builder().title("Length").build();
+
     let length_adj = Adjustment::new(16.0, 4.0, 128.0, 1.0, 4.0, 0.0);
     let length_spin = SpinButton::builder()
         .adjustment(&length_adj)
         .climb_rate(1.0)
         .digits(0)
+        .valign(gtk4::Align::Center)
         .build();
     let length_scale = Scale::builder()
         .adjustment(&length_adj)
         .hexpand(true)
         .draw_value(false)
+        .valign(gtk4::Align::Center)
         .build();
-    grid.attach(&length_label, 0, 0, 1, 1);
-    grid.attach(&length_spin, 1, 0, 1, 1);
-    grid.attach(&length_scale, 2, 0, 1, 1);
 
-    // Character sets
-    let lowercase_check = CheckButton::builder()
-        .label("Lowercase (a-z)")
-        .active(true)
+    let length_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(12)
+        .hexpand(true)
         .build();
-    let uppercase_check = CheckButton::builder()
-        .label("Uppercase (A-Z)")
-        .active(true)
+    length_box.append(&length_scale);
+    length_box.append(&length_spin);
+
+    let length_row = adw::ActionRow::builder()
+        .title("Characters")
+        .subtitle("Recommended: 16+ for important accounts")
         .build();
-    let digits_check = CheckButton::builder()
-        .label("Digits (0-9)")
-        .active(true)
+    length_row.add_suffix(&length_box);
+    length_group.add(&length_row);
+
+    content.append(&length_group);
+
+    // === Character Sets Group ===
+    let charset_group = adw::PreferencesGroup::builder()
+        .title("Character Sets")
+        .description("Select which characters to include")
         .build();
-    let special_check = CheckButton::builder()
-        .label("Special (!@#$%...)")
+
+    // Lowercase
+    let lowercase_switch = Switch::builder()
         .active(true)
+        .valign(gtk4::Align::Center)
         .build();
-    let extended_check = CheckButton::builder()
-        .label("Extended (()[]{}...)")
+    let lowercase_row = adw::ActionRow::builder()
+        .title("Lowercase")
+        .subtitle("a-z")
+        .build();
+    lowercase_row.add_suffix(&lowercase_switch);
+    lowercase_row.set_activatable_widget(Some(&lowercase_switch));
+    charset_group.add(&lowercase_row);
+
+    // Uppercase
+    let uppercase_switch = Switch::builder()
+        .active(true)
+        .valign(gtk4::Align::Center)
+        .build();
+    let uppercase_row = adw::ActionRow::builder()
+        .title("Uppercase")
+        .subtitle("A-Z")
+        .build();
+    uppercase_row.add_suffix(&uppercase_switch);
+    uppercase_row.set_activatable_widget(Some(&uppercase_switch));
+    charset_group.add(&uppercase_row);
+
+    // Digits
+    let digits_switch = Switch::builder()
+        .active(true)
+        .valign(gtk4::Align::Center)
+        .build();
+    let digits_row = adw::ActionRow::builder()
+        .title("Digits")
+        .subtitle("0-9")
+        .build();
+    digits_row.add_suffix(&digits_switch);
+    digits_row.set_activatable_widget(Some(&digits_switch));
+    charset_group.add(&digits_row);
+
+    // Special
+    let special_switch = Switch::builder()
+        .active(true)
+        .valign(gtk4::Align::Center)
+        .build();
+    let special_row = adw::ActionRow::builder()
+        .title("Special")
+        .subtitle("!@#$%^&*")
+        .build();
+    special_row.add_suffix(&special_switch);
+    special_row.set_activatable_widget(Some(&special_switch));
+    charset_group.add(&special_row);
+
+    // Extended special
+    let extended_switch = Switch::builder()
         .active(false)
+        .valign(gtk4::Align::Center)
         .build();
-    let ambiguous_check = CheckButton::builder()
-        .label("Exclude ambiguous (0O1lI)")
+    let extended_row = adw::ActionRow::builder()
+        .title("Extended")
+        .subtitle("()[]{}|;:,.<>?/")
+        .build();
+    extended_row.add_suffix(&extended_switch);
+    extended_row.set_activatable_widget(Some(&extended_switch));
+    charset_group.add(&extended_row);
+
+    content.append(&charset_group);
+
+    // === Options Group ===
+    let options_group = adw::PreferencesGroup::builder().title("Options").build();
+
+    // Exclude ambiguous
+    let ambiguous_switch = Switch::builder()
         .active(false)
+        .valign(gtk4::Align::Center)
         .build();
-
-    grid.attach(&lowercase_check, 0, 1, 2, 1);
-    grid.attach(&uppercase_check, 2, 1, 1, 1);
-    grid.attach(&digits_check, 0, 2, 2, 1);
-    grid.attach(&special_check, 2, 2, 1, 1);
-    grid.attach(&extended_check, 0, 3, 2, 1);
-    grid.attach(&ambiguous_check, 2, 3, 1, 1);
-
-    content.append(&grid);
-
-    // Security Tips section
-    let tips_label = Label::builder()
-        .label("Security Tips")
-        .halign(gtk4::Align::Start)
-        .css_classes(["heading"])
-        .margin_top(12)
+    let ambiguous_row = adw::ActionRow::builder()
+        .title("Exclude ambiguous")
+        .subtitle("Avoid 0O, 1lI to prevent confusion")
         .build();
-    content.append(&tips_label);
+    ambiguous_row.add_suffix(&ambiguous_switch);
+    ambiguous_row.set_activatable_widget(Some(&ambiguous_switch));
+    options_group.add(&ambiguous_row);
 
-    let tips_box = GtkBox::new(Orientation::Vertical, 4);
-    tips_box.add_css_class("dim-label");
+    content.append(&options_group);
+
+    // === Security Tips Group ===
+    let tips_group = adw::PreferencesGroup::builder()
+        .title("Security Tips")
+        .build();
 
     let tips = [
-        "• Use 16+ characters for critical accounts (banking, email, admin)",
-        "• Never reuse passwords across different services",
-        "• Store passwords in a password manager, not in plain text files",
-        "• Enable two-factor authentication (2FA) when available",
-        "• Change passwords immediately if a service reports a breach",
+        (
+            "Use 16+ characters",
+            "For critical accounts like banking, email",
+        ),
+        (
+            "Never reuse passwords",
+            "Each service should have unique password",
+        ),
+        ("Use password manager", "Don't store in plain text files"),
+        ("Enable 2FA", "Add extra layer of security when available"),
     ];
 
-    for tip in tips {
-        let tip_item = Label::builder()
-            .label(tip)
-            .halign(gtk4::Align::Start)
-            .wrap(true)
+    for (title, subtitle) in tips {
+        let tip_row = adw::ActionRow::builder()
+            .title(title)
+            .subtitle(subtitle)
             .build();
-        tips_box.append(&tip_item);
+
+        let icon = gtk4::Image::from_icon_name("emblem-ok-symbolic");
+        icon.set_valign(gtk4::Align::Center);
+        icon.add_css_class("success");
+        tip_row.add_prefix(&icon);
+
+        tips_group.add(&tip_row);
     }
 
-    content.append(&tips_box);
-
-    window.set_child(Some(&content));
+    content.append(&tips_group);
 
     // State
     let generator = Rc::new(RefCell::new(PasswordGenerator::with_defaults()));
@@ -210,12 +326,12 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
     // Helper to build config from UI state
     let build_config = {
         let length_spin = length_spin.clone();
-        let lowercase_check = lowercase_check.clone();
-        let uppercase_check = uppercase_check.clone();
-        let digits_check = digits_check.clone();
-        let special_check = special_check.clone();
-        let extended_check = extended_check.clone();
-        let ambiguous_check = ambiguous_check.clone();
+        let lowercase_switch = lowercase_switch.clone();
+        let uppercase_switch = uppercase_switch.clone();
+        let digits_switch = digits_switch.clone();
+        let special_switch = special_switch.clone();
+        let extended_switch = extended_switch.clone();
+        let ambiguous_switch = ambiguous_switch.clone();
 
         move || {
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -223,12 +339,12 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
 
             PasswordGeneratorConfig::new()
                 .with_length(length)
-                .with_lowercase(lowercase_check.is_active())
-                .with_uppercase(uppercase_check.is_active())
-                .with_digits(digits_check.is_active())
-                .with_special(special_check.is_active())
-                .with_extended_special(extended_check.is_active())
-                .with_exclude_ambiguous(ambiguous_check.is_active())
+                .with_lowercase(lowercase_switch.is_active())
+                .with_uppercase(uppercase_switch.is_active())
+                .with_digits(digits_switch.is_active())
+                .with_special(special_switch.is_active())
+                .with_extended_special(extended_switch.is_active())
+                .with_exclude_ambiguous(ambiguous_switch.is_active())
         }
     };
 
@@ -254,10 +370,10 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
             };
             strength_bar.set_value(level);
             strength_label.set_text(strength.description());
-            entropy_label.set_text(&format!("Entropy: {entropy:.0} bits"));
+            entropy_label.set_text(&format!("{entropy:.0} bits"));
 
             let crack_time = estimate_crack_time(entropy, 10_000_000_000.0);
-            crack_time_label.set_text(&format!("Crack time: {crack_time}"));
+            crack_time_label.set_text(&crack_time);
         })
     };
 
@@ -285,8 +401,8 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
                     password_entry.set_text("");
                     strength_label.set_text(&e.to_string());
                     strength_bar.set_value(0.0);
-                    entropy_label.set_text("Entropy: 0 bits");
-                    crack_time_label.set_text("Crack time: N/A");
+                    entropy_label.set_text("0 bits");
+                    crack_time_label.set_text("N/A");
                 }
             }
         })
@@ -313,19 +429,20 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         generate_password_clone();
     });
 
-    // Connect checkbox changes
-    let connect_checkbox = |check: &CheckButton, generate_fn: Rc<dyn Fn()>| {
-        check.connect_toggled(move |_| {
+    // Connect switch changes
+    let connect_switch = |switch: &Switch, generate_fn: Rc<dyn Fn()>| {
+        switch.connect_state_set(move |_, _| {
             generate_fn();
+            glib::Propagation::Proceed
         });
     };
 
-    connect_checkbox(&lowercase_check, generate_password.clone());
-    connect_checkbox(&uppercase_check, generate_password.clone());
-    connect_checkbox(&digits_check, generate_password.clone());
-    connect_checkbox(&special_check, generate_password.clone());
-    connect_checkbox(&extended_check, generate_password.clone());
-    connect_checkbox(&ambiguous_check, generate_password.clone());
+    connect_switch(&lowercase_switch, generate_password.clone());
+    connect_switch(&uppercase_switch, generate_password.clone());
+    connect_switch(&digits_switch, generate_password.clone());
+    connect_switch(&special_switch, generate_password.clone());
+    connect_switch(&extended_switch, generate_password.clone());
+    connect_switch(&ambiguous_switch, generate_password.clone());
 
     // Generate initial password
     generate_password();

@@ -6,8 +6,8 @@
 use crate::sidebar::ConnectionSidebar;
 use crate::state::SharedAppState;
 use crate::window_groups as groups;
+use gtk4::gio;
 use gtk4::prelude::*;
-use gtk4::{gio, ApplicationWindow};
 use std::rc::Rc;
 
 /// Type alias for shared sidebar reference
@@ -15,7 +15,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 
 /// Sets up document management actions on the window
 pub fn setup_document_actions(
-    window: &ApplicationWindow,
+    window: &gtk4::ApplicationWindow,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -60,7 +60,7 @@ pub fn setup_document_actions(
 }
 
 fn setup_open_document_action(
-    window: &ApplicationWindow,
+    window: &gtk4::ApplicationWindow,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -99,7 +99,7 @@ fn setup_open_document_action(
     window.add_action(&open_doc_action);
 }
 
-fn setup_save_document_action(window: &ApplicationWindow, state: &SharedAppState) {
+fn setup_save_document_action(window: &gtk4::ApplicationWindow, state: &SharedAppState) {
     use crate::dialogs::{DocumentDialogResult, SaveDocumentDialog};
 
     let save_doc_action = gio::SimpleAction::new("save-document", None);
@@ -153,7 +153,7 @@ fn setup_save_document_action(window: &ApplicationWindow, state: &SharedAppState
 }
 
 fn setup_close_document_action(
-    window: &ApplicationWindow,
+    window: &gtk4::ApplicationWindow,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {
@@ -209,7 +209,7 @@ fn setup_close_document_action(
     window.add_action(&close_doc_action);
 }
 
-fn setup_export_document_action(window: &ApplicationWindow, state: &SharedAppState) {
+fn setup_export_document_action(window: &gtk4::ApplicationWindow, state: &SharedAppState) {
     let export_doc_action = gio::SimpleAction::new("export-document", None);
     let window_weak = window.downgrade();
     let state_clone = state.clone();
@@ -265,7 +265,7 @@ fn setup_export_document_action(window: &ApplicationWindow, state: &SharedAppSta
 }
 
 fn setup_import_document_action(
-    window: &ApplicationWindow,
+    window: &gtk4::ApplicationWindow,
     state: &SharedAppState,
     sidebar: &SharedSidebar,
 ) {

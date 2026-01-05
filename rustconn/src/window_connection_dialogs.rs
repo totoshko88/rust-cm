@@ -7,8 +7,9 @@ use crate::dialogs::{ConnectionDialog, ImportDialog};
 use crate::sidebar::ConnectionSidebar;
 use crate::state::SharedAppState;
 use crate::window::MainWindow;
+use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, Label};
+use libadwaita as adw;
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -17,7 +18,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 
 /// Shows the new connection dialog (always creates blank connection)
 pub fn show_new_connection_dialog(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
 ) {
@@ -28,7 +29,7 @@ pub fn show_new_connection_dialog(
 /// Internal function to show the new connection dialog with optional template
 #[allow(clippy::too_many_lines)]
 pub fn show_new_connection_dialog_internal(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
     template: Option<rustconn_core::models::ConnectionTemplate>,
@@ -217,35 +218,30 @@ pub fn show_new_connection_dialog_internal(
 }
 
 /// Shows the new group dialog with optional parent selection
-pub fn show_new_group_dialog(
-    window: &ApplicationWindow,
-    state: SharedAppState,
-    sidebar: SharedSidebar,
-) {
+pub fn show_new_group_dialog(window: &gtk4::Window, state: SharedAppState, sidebar: SharedSidebar) {
     show_new_group_dialog_with_parent(window, state, sidebar, None);
 }
 
 /// Shows the new group dialog with parent group selection
 #[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 pub fn show_new_group_dialog_with_parent(
-    window: &ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     sidebar: SharedSidebar,
     preselected_parent: Option<Uuid>,
 ) {
-    let entry = gtk4::Entry::new();
-    entry.set_placeholder_text(Some("Group name"));
-
-    let group_window = gtk4::Window::builder()
+    let group_window = adw::Window::builder()
         .title("New Group")
         .transient_for(window)
         .modal(true)
-        .default_width(750)
+        .default_width(500)
+        .default_height(300)
         .build();
 
     // Create header bar with Close/Create buttons (GNOME HIG)
-    let header = gtk4::HeaderBar::new();
-    header.set_show_title_buttons(false);
+    let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let close_btn = gtk4::Button::builder().label("Close").build();
     let create_btn = gtk4::Button::builder()
         .label("Create")
@@ -253,7 +249,6 @@ pub fn show_new_group_dialog_with_parent(
         .build();
     header.pack_start(&close_btn);
     header.pack_end(&create_btn);
-    group_window.set_titlebar(Some(&header));
 
     // Close button handler
     let window_clone = group_window.clone();
@@ -261,27 +256,42 @@ pub fn show_new_group_dialog_with_parent(
         window_clone.close();
     });
 
-    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    // Scrollable content with clamp
+    let clamp = adw::Clamp::builder()
+        .maximum_size(600)
+        .tightening_threshold(400)
+        .build();
+
+    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    // Group name
-    let name_label = Label::new(Some("Group name:"));
-    name_label.set_halign(gtk4::Align::Start);
-    content.append(&name_label);
-    content.append(&entry);
+    clamp.set_child(Some(&content));
+
+    let main_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    main_box.append(&header);
+    main_box.append(&clamp);
+    group_window.set_content(Some(&main_box));
+
+    // === Group Details ===
+    let details_group = adw::PreferencesGroup::builder()
+        .title("Group Details")
+        .build();
+
+    // Group name using ActionRow with Entry
+    let entry = gtk4::Entry::builder()
+        .hexpand(true)
+        .valign(gtk4::Align::Center)
+        .placeholder_text("Enter group name")
+        .build();
+    let name_row = adw::ActionRow::builder().title("Name").build();
+    name_row.add_suffix(&entry);
+    name_row.set_activatable_widget(Some(&entry));
+    details_group.add(&name_row);
 
     // Parent group dropdown
-    let parent_label = Label::new(Some("Parent group (optional):"));
-    parent_label.set_halign(gtk4::Align::Start);
-    parent_label.set_margin_top(8);
-    content.append(&parent_label);
-
-    let parent_dropdown = gtk4::DropDown::from_strings(&["(None - Root Level)"]);
-
-    // Populate parent dropdown with existing groups
     let state_ref = state.borrow();
     let groups: Vec<_> = state_ref
         .list_groups()
@@ -318,11 +328,20 @@ pub fn show_new_group_dialog_with_parent(
             .map(std::string::String::as_str)
             .collect::<Vec<_>>(),
     );
-    parent_dropdown.set_model(Some(&string_list));
-    parent_dropdown.set_selected(preselected_index);
+    let parent_dropdown = gtk4::DropDown::builder()
+        .model(&string_list)
+        .selected(preselected_index)
+        .valign(gtk4::Align::Center)
+        .build();
 
-    content.append(&parent_dropdown);
-    group_window.set_child(Some(&content));
+    let parent_row = adw::ActionRow::builder()
+        .title("Parent")
+        .subtitle("Optional - leave empty for root level")
+        .build();
+    parent_row.add_suffix(&parent_dropdown);
+    details_group.add(&parent_row);
+
+    content.append(&details_group);
 
     // Connect create button
     let state_clone = state.clone();
@@ -378,11 +397,7 @@ pub fn show_new_group_dialog_with_parent(
 }
 
 /// Shows the import dialog
-pub fn show_import_dialog(
-    window: &ApplicationWindow,
-    state: SharedAppState,
-    sidebar: SharedSidebar,
-) {
+pub fn show_import_dialog(window: &gtk4::Window, state: SharedAppState, sidebar: SharedSidebar) {
     let dialog = ImportDialog::new(Some(&window.clone().upcast()));
 
     let window_clone = window.clone();

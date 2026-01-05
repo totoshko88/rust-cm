@@ -3,11 +3,11 @@
 //! Provides a simple dialog for entering credentials when connecting
 //! to RDP/VNC sessions that require authentication.
 
+use adw::prelude::*;
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, Grid, HeaderBar, Label, Orientation, Spinner, Window,
-};
+use gtk4::{Box as GtkBox, Button, CheckButton, Entry, Grid, Label, Orientation, Spinner};
+use libadwaita as adw;
 use rustconn_core::CancellationToken;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -30,7 +30,7 @@ pub struct PasswordDialogResult {
 /// Password prompt dialog
 #[allow(dead_code)] // Fields kept for GTK widget lifecycle
 pub struct PasswordDialog {
-    window: Window,
+    window: adw::Window,
     username_entry: Entry,
     password_entry: Entry,
     domain_entry: Entry,
@@ -50,7 +50,7 @@ impl PasswordDialog {
     /// Creates a new password dialog
     #[must_use]
     pub fn new(parent: Option<&impl IsA<gtk4::Window>>) -> Self {
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("Authentication Required")
             .modal(true)
             .default_width(400)
@@ -62,8 +62,9 @@ impl PasswordDialog {
         }
 
         // Header bar with Cancel/Connect buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let cancel_btn = Button::builder().label("Cancel").build();
         let connect_btn = Button::builder()
             .label("Connect")
@@ -71,8 +72,6 @@ impl PasswordDialog {
             .build();
         header.pack_start(&cancel_btn);
         header.pack_end(&connect_btn);
-        window.set_titlebar(Some(&header));
-        window.set_default_widget(Some(&connect_btn));
 
         // Content
         let content = GtkBox::new(Orientation::Vertical, 12);
@@ -80,6 +79,12 @@ impl PasswordDialog {
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
+
+        // Use ToolbarView for adw::Window
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&content);
+        window.set_content(Some(&main_box));
 
         // Info label
         let info_label = Label::builder()
@@ -109,8 +114,6 @@ impl PasswordDialog {
 
         let (domain_entry, username_entry, password_entry, save_check, migrate_button) =
             Self::build_form_fields(&grid);
-
-        window.set_child(Some(&content));
 
         let result: Rc<RefCell<Option<PasswordDialogResult>>> = Rc::new(RefCell::new(None));
         let migrate_requested: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
@@ -213,7 +216,7 @@ impl PasswordDialog {
 
     #[allow(clippy::too_many_arguments)]
     fn connect_signals(
-        window: &Window,
+        window: &adw::Window,
         cancel_btn: &Button,
         connect_btn: &Button,
         migrate_button: &Button,
@@ -338,7 +341,7 @@ impl PasswordDialog {
 
     /// Returns the window widget
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 

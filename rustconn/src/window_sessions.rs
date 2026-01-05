@@ -21,7 +21,7 @@ pub type SharedSidebar = Rc<ConnectionSidebar>;
 /// Shows the sessions manager window
 #[allow(clippy::too_many_lines)]
 pub fn show_sessions_manager(
-    window: &gtk4::ApplicationWindow,
+    window: &gtk4::Window,
     state: SharedAppState,
     notebook: SharedNotebook,
     sidebar: SharedSidebar,

@@ -3,11 +3,10 @@
 //! This module provides the main window implementation for `RustConn`,
 //! including the header bar, sidebar, terminal area, and action handling.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{
-    gio, glib, Application, ApplicationWindow, Button, HeaderBar, Label, MenuButton, Orientation,
-    Paned,
-};
+use gtk4::{gio, glib, Button, Label, MenuButton, Orientation, Paned};
+use libadwaita as adw;
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -42,7 +41,7 @@ pub type SharedToastOverlay = Rc<ToastOverlay>;
 /// Provides access to the main window and its components.
 #[allow(dead_code)] // Fields kept for GTK widget lifecycle and future use
 pub struct MainWindow {
-    window: ApplicationWindow,
+    window: adw::ApplicationWindow,
     sidebar: SharedSidebar,
     terminal_notebook: SharedNotebook,
     split_view: SharedSplitView,
@@ -55,12 +54,12 @@ pub struct MainWindow {
 impl MainWindow {
     /// Creates a new main window for the application
     #[must_use]
-    pub fn new(app: &Application, state: SharedAppState) -> Self {
+    pub fn new(app: &adw::Application, state: SharedAppState) -> Self {
         // Register custom icon from assets before creating window
         Self::register_app_icon();
 
         // Create the main window
-        let window = ApplicationWindow::builder()
+        let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("RustConn")
             .default_width(1200)
@@ -85,7 +84,6 @@ impl MainWindow {
 
         // Create header bar
         let header_bar = Self::create_header_bar();
-        window.set_titlebar(Some(&header_bar));
 
         // Create the main layout with paned container
         let paned = Paned::new(Orientation::Horizontal);
@@ -139,7 +137,13 @@ impl MainWindow {
         let toast_overlay = Rc::new(ToastOverlay::new());
         toast_overlay.set_child(Some(&paned));
 
-        window.set_child(Some(toast_overlay.widget()));
+        // Create main layout with header bar for adw::ApplicationWindow
+        let main_box = gtk4::Box::new(Orientation::Vertical, 0);
+        main_box.append(&header_bar);
+        main_box.append(toast_overlay.widget());
+        toast_overlay.widget().set_vexpand(true);
+
+        window.set_content(Some(&main_box));
 
         // Create external window manager
         let external_window_manager = Rc::new(ExternalWindowManager::new());
@@ -168,34 +172,31 @@ impl MainWindow {
     }
 
     /// Creates the header bar with title and controls
-    fn create_header_bar() -> HeaderBar {
-        let header_bar = HeaderBar::new();
-        header_bar.set_show_title_buttons(true);
+    fn create_header_bar() -> adw::HeaderBar {
+        let header_bar = adw::HeaderBar::new();
 
         // Add title
         let title = Label::new(Some("RustConn"));
         title.add_css_class("title");
         header_bar.set_title_widget(Some(&title));
 
-        // Local shell button (leftmost)
-        let local_shell_button = Button::from_icon_name("utilities-terminal-symbolic");
-        local_shell_button.set_tooltip_text(Some("Local Shell"));
-        local_shell_button.set_action_name(Some("win.local-shell"));
-        header_bar.pack_start(&local_shell_button);
+        // === Left side (pack_start) - Primary connection actions ===
 
-        // Add connection button
+        // Add connection button - primary action
         let add_button = Button::from_icon_name("list-add-symbolic");
         add_button.set_tooltip_text(Some("New Connection (Ctrl+N)"));
         add_button.set_action_name(Some("win.new-connection"));
         header_bar.pack_start(&add_button);
 
-        // Add import button
-        let import_button = Button::from_icon_name("document-open-symbolic");
-        import_button.set_tooltip_text(Some("Import Connections (Ctrl+I)"));
-        import_button.set_action_name(Some("win.import"));
-        header_bar.pack_start(&import_button);
+        // Quick connect button
+        let quick_connect_button = Button::from_icon_name("network-transmit-symbolic");
+        quick_connect_button.set_tooltip_text(Some("Quick Connect (Ctrl+Shift+Q)"));
+        quick_connect_button.set_action_name(Some("win.quick-connect"));
+        header_bar.pack_start(&quick_connect_button);
 
-        // Add menu button
+        // === Right side (pack_end) - Secondary actions ===
+
+        // Add menu button (rightmost)
         let menu_button = MenuButton::builder()
             .icon_name("open-menu-symbolic")
             .tooltip_text("Menu")
@@ -211,7 +212,7 @@ impl MainWindow {
         settings_button.set_action_name(Some("win.settings"));
         header_bar.pack_end(&settings_button);
 
-        // Add split view buttons (before settings, so they appear to the left)
+        // Add split view buttons
         let split_vertical_button = Button::from_icon_name("view-dual-symbolic");
         split_vertical_button.set_tooltip_text(Some("Split Vertical (Ctrl+Shift+S)"));
         split_vertical_button.set_action_name(Some("win.split-vertical"));
@@ -281,9 +282,9 @@ impl MainWindow {
         let terminal_notebook = self.terminal_notebook.clone();
 
         // Set up action groups
-        self.setup_connection_actions(window, &state, &sidebar);
+        self.setup_connection_actions(window, &state, &sidebar, &terminal_notebook);
         self.setup_edit_actions(window, &state, &sidebar);
-        self.setup_terminal_actions(window, &terminal_notebook, &sidebar);
+        self.setup_terminal_actions(window, &terminal_notebook, &sidebar, &state);
         self.setup_navigation_actions(window, &terminal_notebook, &sidebar);
         self.setup_group_operations_actions(window, &state, &sidebar);
         self.setup_snippet_actions(window, &state, &terminal_notebook, &sidebar);
@@ -298,9 +299,10 @@ impl MainWindow {
     /// Sets up connection-related actions (new, import, settings)
     fn setup_connection_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
+        notebook: &SharedNotebook,
     ) {
         // New connection action
         let new_conn_action = gio::SimpleAction::new("new-connection", None);
@@ -309,7 +311,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         new_conn_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_new_connection_dialog(&win, state_clone.clone(), sidebar_clone.clone());
+                Self::show_new_connection_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&new_conn_action);
@@ -321,7 +327,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         new_group_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_new_group_dialog(&win, state_clone.clone(), sidebar_clone.clone());
+                Self::show_new_group_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&new_group_action);
@@ -333,7 +343,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         import_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_import_dialog(&win, state_clone.clone(), sidebar_clone.clone());
+                Self::show_import_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&import_action);
@@ -342,9 +356,14 @@ impl MainWindow {
         let settings_action = gio::SimpleAction::new("settings", None);
         let window_weak = window.downgrade();
         let state_clone = state.clone();
+        let notebook_clone = notebook.clone();
         settings_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_settings_dialog(&win, state_clone.clone());
+                Self::show_settings_dialog(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                );
             }
         });
         window.add_action(&settings_action);
@@ -391,7 +410,7 @@ impl MainWindow {
         let state_clone = state.clone();
         export_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_export_dialog(&win, state_clone.clone());
+                Self::show_export_dialog(win.upcast_ref(), state_clone.clone());
             }
         });
         window.add_action(&export_action);
@@ -400,7 +419,7 @@ impl MainWindow {
     /// Sets up edit-related actions (edit, delete, duplicate, move)
     fn setup_edit_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
@@ -421,7 +440,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         edit_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::edit_selected_connection(&win, &state_clone, &sidebar_clone);
+                Self::edit_selected_connection(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&edit_action);
@@ -433,7 +452,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         delete_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::delete_selected_connection(&win, &state_clone, &sidebar_clone);
+                Self::delete_selected_connection(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&delete_action);
@@ -445,7 +464,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         duplicate_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::duplicate_selected_connection(&win, &state_clone, &sidebar_clone);
+                Self::duplicate_selected_connection(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&duplicate_action);
@@ -457,7 +476,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         move_to_group_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                groups::show_move_to_group_dialog(&win, &state_clone, &sidebar_clone);
+                groups::show_move_to_group_dialog(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&move_to_group_action);
@@ -479,7 +498,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         rename_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::rename_selected_item(&win, &state_clone, &sidebar_clone);
+                Self::rename_selected_item(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&rename_action);
@@ -491,7 +510,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         copy_connection_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::copy_selected_connection(&win, &state_clone, &sidebar_clone);
+                Self::copy_selected_connection(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&copy_connection_action);
@@ -503,7 +522,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         paste_connection_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::paste_connection(&win, &state_clone, &sidebar_clone);
+                Self::paste_connection(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&paste_connection_action);
@@ -512,9 +531,10 @@ impl MainWindow {
     /// Sets up terminal-related actions (copy, paste, close tab)
     fn setup_terminal_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         terminal_notebook: &SharedNotebook,
         sidebar: &SharedSidebar,
+        state: &SharedAppState,
     ) {
         // Search action
         let search_action = gio::SimpleAction::new("search", None);
@@ -539,6 +559,17 @@ impl MainWindow {
             notebook_clone.paste_from_clipboard();
         });
         window.add_action(&paste_action);
+
+        // Terminal search action
+        let terminal_search_action = gio::SimpleAction::new("terminal-search", None);
+        let notebook_clone = terminal_notebook.clone();
+        let window_weak = window.downgrade();
+        terminal_search_action.connect_activate(move |_, _| {
+            if let Some(win) = window_weak.upgrade() {
+                Self::show_terminal_search_dialog(win.upcast_ref(), &notebook_clone);
+            }
+        });
+        window.add_action(&terminal_search_action);
 
         // Close tab action - closes the currently active session tab
         let close_tab_action = gio::SimpleAction::new("close-tab", None);
@@ -568,8 +599,13 @@ impl MainWindow {
         let local_shell_action = gio::SimpleAction::new("local-shell", None);
         let notebook_clone = terminal_notebook.clone();
         let split_view_clone = self.split_view.clone();
+        let state_clone = state.clone();
         local_shell_action.connect_activate(move |_, _| {
-            Self::open_local_shell_with_split(&notebook_clone, &split_view_clone);
+            Self::open_local_shell_with_split(
+                &notebook_clone,
+                &split_view_clone,
+                Some(&state_clone),
+            );
         });
         window.add_action(&local_shell_action);
 
@@ -582,7 +618,7 @@ impl MainWindow {
         quick_connect_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
                 Self::show_quick_connect_dialog(
-                    &win,
+                    win.upcast_ref(),
                     notebook_clone.clone(),
                     split_view_clone.clone(),
                     sidebar_clone.clone(),
@@ -595,7 +631,7 @@ impl MainWindow {
     /// Sets up navigation actions (focus, tabs)
     fn setup_navigation_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         terminal_notebook: &SharedNotebook,
         sidebar: &SharedSidebar,
     ) {
@@ -644,12 +680,26 @@ impl MainWindow {
             }
         });
         window.add_action(&prev_tab_action);
+
+        // Toggle fullscreen action
+        let toggle_fullscreen_action = gio::SimpleAction::new("toggle-fullscreen", None);
+        let window_weak = window.downgrade();
+        toggle_fullscreen_action.connect_activate(move |_, _| {
+            if let Some(win) = window_weak.upgrade() {
+                if win.is_fullscreen() {
+                    win.unfullscreen();
+                } else {
+                    win.fullscreen();
+                }
+            }
+        });
+        window.add_action(&toggle_fullscreen_action);
     }
 
     /// Sets up group operations actions (select all, delete selected, etc.)
     fn setup_group_operations_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
@@ -692,7 +742,7 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         delete_selected_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::delete_selected_connections(&win, &state_clone, &sidebar_clone);
+                Self::delete_selected_connections(win.upcast_ref(), &state_clone, &sidebar_clone);
             }
         });
         window.add_action(&delete_selected_action);
@@ -704,7 +754,11 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         move_selected_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                Self::show_move_selected_to_group_dialog(&win, &state_clone, &sidebar_clone);
+                Self::show_move_selected_to_group_dialog(
+                    win.upcast_ref(),
+                    &state_clone,
+                    &sidebar_clone,
+                );
             }
         });
         window.add_action(&move_selected_action);
@@ -731,7 +785,7 @@ impl MainWindow {
     /// Sets up snippet-related actions
     fn setup_snippet_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         terminal_notebook: &SharedNotebook,
         sidebar: &SharedSidebar,
@@ -742,7 +796,7 @@ impl MainWindow {
         let state_clone = state.clone();
         new_snippet_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                snippets::show_new_snippet_dialog(&win, state_clone.clone());
+                snippets::show_new_snippet_dialog(win.upcast_ref(), state_clone.clone());
             }
         });
         window.add_action(&new_snippet_action);
@@ -754,7 +808,11 @@ impl MainWindow {
         let notebook_clone = terminal_notebook.clone();
         manage_snippets_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                snippets::show_snippets_manager(&win, state_clone.clone(), notebook_clone.clone());
+                snippets::show_snippets_manager(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                );
             }
         });
         window.add_action(&manage_snippets_action);
@@ -766,7 +824,11 @@ impl MainWindow {
         let notebook_clone = terminal_notebook.clone();
         execute_snippet_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                snippets::show_snippet_picker(&win, state_clone.clone(), notebook_clone.clone());
+                snippets::show_snippet_picker(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    notebook_clone.clone(),
+                );
             }
         });
         window.add_action(&execute_snippet_action);
@@ -780,7 +842,7 @@ impl MainWindow {
         show_sessions_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
                 sessions::show_sessions_manager(
-                    &win,
+                    win.upcast_ref(),
                     state_clone.clone(),
                     notebook_clone.clone(),
                     sidebar_clone.clone(),
@@ -793,7 +855,7 @@ impl MainWindow {
     /// Sets up cluster-related actions
     fn setup_cluster_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         terminal_notebook: &SharedNotebook,
         sidebar: &SharedSidebar,
@@ -806,7 +868,7 @@ impl MainWindow {
         new_cluster_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
                 clusters::show_new_cluster_dialog(
-                    &win,
+                    win.upcast_ref(),
                     state_clone.clone(),
                     notebook_clone.clone(),
                 );
@@ -823,7 +885,7 @@ impl MainWindow {
         manage_clusters_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
                 clusters::show_clusters_manager(
-                    &win,
+                    win.upcast_ref(),
                     state_clone.clone(),
                     notebook_clone.clone(),
                     sidebar_clone.clone(),
@@ -836,7 +898,7 @@ impl MainWindow {
     /// Sets up template-related actions
     fn setup_template_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
@@ -847,14 +909,18 @@ impl MainWindow {
         let sidebar_clone = sidebar.clone();
         manage_templates_action.connect_activate(move |_, _| {
             if let Some(win) = window_weak.upgrade() {
-                templates::show_templates_manager(&win, state_clone.clone(), sidebar_clone.clone());
+                templates::show_templates_manager(
+                    win.upcast_ref(),
+                    state_clone.clone(),
+                    sidebar_clone.clone(),
+                );
             }
         });
         window.add_action(&manage_templates_action);
     }
 
     /// Sets up history and statistics actions
-    fn setup_history_actions(&self, window: &ApplicationWindow, state: &SharedAppState) {
+    fn setup_history_actions(&self, window: &adw::ApplicationWindow, state: &SharedAppState) {
         use crate::dialogs::{show_password_generator_dialog, HistoryDialog, StatisticsDialog};
 
         // Show history action
@@ -941,7 +1007,7 @@ impl MainWindow {
     }
 
     /// Sets up split view actions
-    fn setup_split_view_actions(&self, window: &ApplicationWindow) {
+    fn setup_split_view_actions(&self, window: &adw::ApplicationWindow) {
         // Split horizontal action
         let split_horizontal_action = gio::SimpleAction::new("split-horizontal", None);
         let split_view_clone = self.split_view.clone();
@@ -1012,17 +1078,19 @@ impl MainWindow {
     /// Sets up document management actions
     fn setup_document_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        doc_actions::setup_document_actions(window, state, sidebar);
+        // adw::ApplicationWindow extends gtk4::ApplicationWindow, so we can use upcast_ref
+        let gtk_app_window: &gtk4::ApplicationWindow = window.upcast_ref();
+        doc_actions::setup_document_actions(gtk_app_window, state, sidebar);
     }
 
     /// Sets up miscellaneous actions (drag-drop)
     fn setup_misc_actions(
         &self,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
         _terminal_notebook: &SharedNotebook,
@@ -1357,16 +1425,6 @@ impl MainWindow {
 
         let state_ref = state.borrow();
 
-        // Parse query and use SearchEngine for advanced search
-        let search_engine = SearchEngine::new();
-        let parsed_query = match SearchEngine::parse_query(query) {
-            Ok(q) => q,
-            Err(_) => {
-                // Fall back to simple text search on parse error
-                rustconn_core::search::SearchQuery::with_text(query)
-            }
-        };
-
         // Get connections and groups for search
         let connections: Vec<_> = state_ref
             .list_connections()
@@ -1376,32 +1434,74 @@ impl MainWindow {
             .collect();
         let groups: Vec<_> = state_ref.list_groups().iter().cloned().cloned().collect();
 
-        // Perform search with ranking
-        let results = search_engine.search(&parsed_query, &connections, &groups);
+        // Check for special multiple protocol filter syntax
+        if let Some(protocols_str) = query.strip_prefix("protocols:") {
+            // Handle multiple protocol filters with OR logic
+            let protocol_names: Vec<&str> = protocols_str.split(',').collect();
+            let mut filtered_connections = Vec::new();
 
-        // Display results sorted by relevance
-        for result in results {
-            if let Some(conn) = connections.iter().find(|c| c.id == result.connection_id) {
+            for conn in &connections {
                 let protocol = get_protocol_string(&conn.protocol_config);
+                let protocol_lower = protocol.to_lowercase();
 
-                // Create display name with relevance indicator
-                let display_name = if result.score >= 0.9 {
-                    format!("★★★ {}", conn.name) // High relevance
-                } else if result.score >= 0.7 {
-                    format!("★★ {}", conn.name) // Medium relevance
-                } else if result.score >= 0.5 {
-                    format!("★ {}", conn.name) // Low relevance
-                } else {
-                    conn.name.clone() // Very low relevance
-                };
+                // Check if connection matches any of the selected protocols
+                if protocol_names
+                    .iter()
+                    .any(|p| p.to_lowercase() == protocol_lower)
+                {
+                    filtered_connections.push(conn);
+                }
+            }
 
+            // Display filtered connections
+            for conn in filtered_connections {
+                let protocol = get_protocol_string(&conn.protocol_config);
                 let item = ConnectionItem::new_connection(
                     &conn.id.to_string(),
-                    &display_name,
+                    &conn.name,
                     &protocol,
                     &conn.host,
                 );
                 store.append(&item);
+            }
+        } else {
+            // Use standard search engine for other queries
+            let search_engine = SearchEngine::new();
+            let parsed_query = match SearchEngine::parse_query(query) {
+                Ok(q) => q,
+                Err(_) => {
+                    // Fall back to simple text search on parse error
+                    rustconn_core::search::SearchQuery::with_text(query)
+                }
+            };
+
+            // Perform search with ranking
+            let results = search_engine.search(&parsed_query, &connections, &groups);
+
+            // Display results sorted by relevance
+            for result in results {
+                if let Some(conn) = connections.iter().find(|c| c.id == result.connection_id) {
+                    let protocol = get_protocol_string(&conn.protocol_config);
+
+                    // Create display name with relevance indicator
+                    let display_name = if result.score >= 0.9 {
+                        format!("★★★ {}", conn.name) // High relevance
+                    } else if result.score >= 0.7 {
+                        format!("★★ {}", conn.name) // Medium relevance
+                    } else if result.score >= 0.5 {
+                        format!("★ {}", conn.name) // Low relevance
+                    } else {
+                        conn.name.clone() // Very low relevance
+                    };
+
+                    let item = ConnectionItem::new_connection(
+                        &conn.id.to_string(),
+                        &display_name,
+                        &protocol,
+                        &conn.host,
+                    );
+                    store.append(&item);
+                }
             }
         }
     }
@@ -1584,8 +1684,11 @@ impl MainWindow {
             }
 
             // Need to prompt for credentials
-            if let Some(window) = notebook.widget().ancestor(ApplicationWindow::static_type()) {
-                if let Some(app_window) = window.downcast_ref::<ApplicationWindow>() {
+            if let Some(window) = notebook
+                .widget()
+                .ancestor(adw::ApplicationWindow::static_type())
+            {
+                if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
                     Self::start_rdp_with_password_dialog(
                         state,
                         notebook,
@@ -1671,8 +1774,11 @@ impl MainWindow {
             }
 
             // Need to prompt for VNC password
-            if let Some(window) = notebook.widget().ancestor(ApplicationWindow::static_type()) {
-                if let Some(app_window) = window.downcast_ref::<ApplicationWindow>() {
+            if let Some(window) = notebook
+                .widget()
+                .ancestor(adw::ApplicationWindow::static_type())
+            {
+                if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
                     Self::start_vnc_with_password_dialog(
                         state,
                         notebook,
@@ -1708,7 +1814,7 @@ impl MainWindow {
         split_view: SharedSplitView,
         sidebar: SharedSidebar,
         connection_id: Uuid,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
     ) {
         rdp_vnc::start_rdp_with_password_dialog(
             state,
@@ -1716,7 +1822,7 @@ impl MainWindow {
             split_view,
             sidebar,
             connection_id,
-            window,
+            window.upcast_ref(),
         );
     }
 
@@ -1751,7 +1857,7 @@ impl MainWindow {
         split_view: SharedSplitView,
         sidebar: SharedSidebar,
         connection_id: Uuid,
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
     ) {
         rdp_vnc::start_vnc_with_password_dialog(
             state,
@@ -1759,7 +1865,7 @@ impl MainWindow {
             split_view,
             sidebar,
             connection_id,
-            window,
+            window.upcast_ref(),
         );
     }
 
@@ -2315,39 +2421,51 @@ impl MainWindow {
 
     /// Shows the new connection dialog with optional template selection
     fn show_new_connection_dialog(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: SharedAppState,
         sidebar: SharedSidebar,
     ) {
-        crate::window_connection_dialogs::show_new_connection_dialog(window, state, sidebar);
+        crate::window_connection_dialogs::show_new_connection_dialog(
+            window.upcast_ref(),
+            state,
+            sidebar,
+        );
     }
 
     /// Shows the new group dialog with optional parent selection
     fn show_new_group_dialog(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: SharedAppState,
         sidebar: SharedSidebar,
     ) {
-        crate::window_connection_dialogs::show_new_group_dialog(window, state, sidebar);
+        crate::window_connection_dialogs::show_new_group_dialog(
+            window.upcast_ref(),
+            state,
+            sidebar,
+        );
     }
 
     /// Shows the import dialog
     fn show_import_dialog(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: SharedAppState,
         sidebar: SharedSidebar,
     ) {
-        crate::window_connection_dialogs::show_import_dialog(window, state, sidebar);
+        crate::window_connection_dialogs::show_import_dialog(window.upcast_ref(), state, sidebar);
     }
 
     /// Shows the settings dialog
-    fn show_settings_dialog(window: &ApplicationWindow, state: SharedAppState) {
-        let dialog = SettingsDialog::new(Some(&window.clone().upcast()));
+    fn show_settings_dialog(
+        window: &adw::ApplicationWindow,
+        state: SharedAppState,
+        notebook: SharedNotebook,
+    ) {
+        let mut dialog = SettingsDialog::new(Some(&window.clone().upcast()));
 
         // Load current settings
         {
             let state_ref = state.borrow();
-            dialog.set_settings(state_ref.settings());
+            dialog.set_settings(state_ref.settings().clone());
         }
 
         let window_clone = window.clone();
@@ -2359,7 +2477,10 @@ impl MainWindow {
                     .secrets
                     .kdbx_path
                     .as_ref()
-                    .is_some_and(|p| p.exists());
+                    .is_some_and(|p: &std::path::PathBuf| p.exists());
+
+                // Apply terminal settings to existing terminals
+                notebook.apply_settings(&settings.terminal);
 
                 if let Ok(mut state_mut) = state.try_borrow_mut() {
                     if let Err(e) = state_mut.update_settings(settings) {
@@ -2382,11 +2503,11 @@ impl MainWindow {
 
     /// Edits the selected connection or group
     fn edit_selected_connection(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        edit_dialogs::edit_selected_connection(window, state, sidebar);
+        edit_dialogs::edit_selected_connection(window.upcast_ref(), state, sidebar);
     }
 
     /// Shows connection details in the main content area (Info view)
@@ -2422,65 +2543,65 @@ impl MainWindow {
 
     /// Renames the selected connection or group
     fn rename_selected_item(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        edit_dialogs::rename_selected_item(window, state, sidebar);
+        edit_dialogs::rename_selected_item(window.upcast_ref(), state, sidebar);
     }
 
     /// Deletes the selected connection or group
     fn delete_selected_connection(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        operations::delete_selected_connection(window, state, sidebar);
+        operations::delete_selected_connection(window.upcast_ref(), state, sidebar);
     }
 
     /// Deletes all selected connections (bulk delete for group operations mode)
     fn delete_selected_connections(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        operations::delete_selected_connections(window, state, sidebar);
+        operations::delete_selected_connections(window.upcast_ref(), state, sidebar);
     }
 
     /// Shows dialog to move selected items to a group
     fn show_move_selected_to_group_dialog(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        operations::show_move_selected_to_group_dialog(window, state, sidebar);
+        operations::show_move_selected_to_group_dialog(window.upcast_ref(), state, sidebar);
     }
 
     /// Duplicates the selected connection
     fn duplicate_selected_connection(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        operations::duplicate_selected_connection(window, state, sidebar);
+        operations::duplicate_selected_connection(window.upcast_ref(), state, sidebar);
     }
 
     /// Copies the selected connection to the internal clipboard
     fn copy_selected_connection(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        operations::copy_selected_connection(window, state, sidebar);
+        operations::copy_selected_connection(window.upcast_ref(), state, sidebar);
     }
 
     /// Pastes a connection from the internal clipboard
     fn paste_connection(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         state: &SharedAppState,
         sidebar: &SharedSidebar,
     ) {
-        operations::paste_connection(window, state, sidebar);
+        operations::paste_connection(window.upcast_ref(), state, sidebar);
     }
 
     /// Reloads the sidebar with current data (preserving hierarchy)
@@ -2511,7 +2632,7 @@ impl MainWindow {
 
     /// Returns a reference to the underlying GTK window
     #[must_use]
-    pub const fn gtk_window(&self) -> &ApplicationWindow {
+    pub const fn gtk_window(&self) -> &adw::ApplicationWindow {
         &self.window
     }
 
@@ -2614,8 +2735,24 @@ impl MainWindow {
     }
 
     /// Opens a local shell terminal with split view integration
-    fn open_local_shell_with_split(notebook: &SharedNotebook, split_view: &SharedSplitView) {
-        let session_id = notebook.create_terminal_tab(Uuid::nil(), "Local Shell", "local", None);
+    fn open_local_shell_with_split(
+        notebook: &SharedNotebook,
+        split_view: &SharedSplitView,
+        state: Option<&SharedAppState>,
+    ) {
+        // Get terminal settings from state if available
+        let terminal_settings = state
+            .and_then(|s| s.try_borrow().ok())
+            .map(|s| s.settings().terminal.clone())
+            .unwrap_or_default();
+
+        let session_id = notebook.create_terminal_tab_with_settings(
+            Uuid::nil(),
+            "Local Shell",
+            "local",
+            None,
+            &terminal_settings,
+        );
 
         // Get user's default shell
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
@@ -2641,12 +2778,12 @@ impl MainWindow {
 
     /// Shows the quick connect dialog with protocol selection
     fn show_quick_connect_dialog(
-        window: &ApplicationWindow,
+        window: &adw::ApplicationWindow,
         notebook: SharedNotebook,
         split_view: SharedSplitView,
         sidebar: SharedSidebar,
     ) {
-        edit_dialogs::show_quick_connect_dialog(window, notebook, split_view, sidebar);
+        edit_dialogs::show_quick_connect_dialog(window.upcast_ref(), notebook, split_view, sidebar);
     }
 
     /// Toggles group operations mode for multi-select
@@ -2678,7 +2815,7 @@ impl MainWindow {
     /// - Asbru-CM (YAML)
     ///
     /// Requirements: 3.1, 4.1, 5.1, 6.1
-    fn show_export_dialog(window: &ApplicationWindow, state: SharedAppState) {
+    fn show_export_dialog(window: &adw::ApplicationWindow, state: SharedAppState) {
         let dialog = ExportDialog::new(Some(&window.clone().upcast()));
 
         // Get connections and groups from state
@@ -2721,5 +2858,14 @@ impl MainWindow {
                 alert.show(Some(&window_clone));
             }
         });
+    }
+
+    /// Shows the terminal search dialog
+    fn show_terminal_search_dialog(window: &adw::ApplicationWindow, notebook: &SharedNotebook) {
+        if let Some(terminal) = notebook.get_active_terminal() {
+            let dialog =
+                crate::dialogs::TerminalSearchDialog::new(Some(&window.clone().upcast()), terminal);
+            dialog.show();
+        }
     }
 }

@@ -457,19 +457,12 @@ pub fn create_bulk_actions_bar() -> GtkBox {
 /// Creates the button box at the bottom of the sidebar
 #[must_use]
 pub fn create_button_box() -> GtkBox {
-    let button_box = GtkBox::new(Orientation::Horizontal, 4);
-    button_box.set_margin_start(8);
-    button_box.set_margin_end(8);
-    button_box.set_margin_top(8);
-    button_box.set_margin_bottom(8);
+    let button_box = GtkBox::new(Orientation::Horizontal, 6);
+    button_box.set_margin_start(12);
+    button_box.set_margin_end(12);
+    button_box.set_margin_top(6);
+    button_box.set_margin_bottom(6);
     button_box.set_halign(gtk4::Align::Center);
-
-    // Add connection button
-    let add_button = Button::from_icon_name("list-add-symbolic");
-    add_button.set_tooltip_text(Some("Add Connection (Ctrl+N)"));
-    add_button.set_action_name(Some("win.new-connection"));
-    add_button.update_property(&[gtk4::accessible::Property::Label("Add new connection")]);
-    button_box.append(&add_button);
 
     // Delete button
     let delete_button = Button::from_icon_name("list-remove-symbolic");
@@ -486,15 +479,6 @@ pub fn create_button_box() -> GtkBox {
     add_group_button.set_action_name(Some("win.new-group"));
     add_group_button.update_property(&[gtk4::accessible::Property::Label("Add new group")]);
     button_box.append(&add_group_button);
-
-    // Quick connect button
-    let quick_connect_button = Button::from_icon_name("network-transmit-symbolic");
-    quick_connect_button.set_tooltip_text(Some("Quick Connect (without saving)"));
-    quick_connect_button.set_action_name(Some("win.quick-connect"));
-    quick_connect_button.update_property(&[gtk4::accessible::Property::Label(
-        "Quick connect without saving",
-    )]);
-    button_box.append(&quick_connect_button);
 
     // Group operations button
     let group_ops_button = Button::from_icon_name("view-list-symbolic");
@@ -531,16 +515,6 @@ pub fn create_button_box() -> GtkBox {
         "Import connections from external sources",
     )]);
     button_box.append(&import_button);
-
-    // KeePass button - opens KeePassXC with configured database
-    let keepass_button = Button::from_icon_name("dialog-password-symbolic");
-    keepass_button.set_tooltip_text(Some("Open KeePass Database"));
-    keepass_button.set_action_name(Some("win.open-keepass"));
-    keepass_button.set_sensitive(false); // Disabled by default, enabled when integration is active
-    keepass_button.update_property(&[gtk4::accessible::Property::Label(
-        "Open KeePassXC password database",
-    )]);
-    button_box.append(&keepass_button);
 
     // Export button
     let export_button = Button::from_icon_name("document-save-symbolic");

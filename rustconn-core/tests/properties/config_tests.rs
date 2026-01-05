@@ -8,11 +8,11 @@
 
 use proptest::prelude::*;
 use rustconn_core::{
-    config::AppSettings, config::ConfigManager, config::LoggingSettings, config::SecretBackendType,
-    config::SecretSettings, config::SessionRestoreSettings, config::TerminalSettings,
-    config::UiSettings, Connection, ConnectionGroup, HistorySettings, ProtocolConfig, RdpConfig,
-    RdpGateway, Resolution, Snippet, SnippetVariable, SshAuthMethod, SshConfig, SshKeySource,
-    VncConfig,
+    config::AppSettings, config::ColorScheme, config::ConfigManager, config::LoggingSettings,
+    config::SecretBackendType, config::SecretSettings, config::SessionRestoreSettings,
+    config::TerminalSettings, config::UiSettings, Connection, ConnectionGroup, HistorySettings,
+    ProtocolConfig, RdpConfig, RdpGateway, Resolution, Snippet, SnippetVariable, SshAuthMethod,
+    SshConfig, SshKeySource, VncConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -357,6 +357,7 @@ fn arb_secret_settings() -> impl Strategy<Value = SecretSettings> {
                 kdbx_password_encrypted: None, // Encrypted password for persistence
                 kdbx_key_file: None,           // Key file path
                 kdbx_use_key_file: false,      // Use key file instead of password
+                kdbx_use_password: true,       // Use password for authentication
             },
         )
 }
@@ -403,6 +404,7 @@ fn arb_full_settings() -> impl Strategy<Value = AppSettings> {
                         font_family,
                         font_size,
                         scrollback_lines,
+                        ..TerminalSettings::default()
                     },
                     logging: LoggingSettings {
                         enabled: logging_enabled,
@@ -421,8 +423,10 @@ fn arb_full_settings() -> impl Strategy<Value = AppSettings> {
                         kdbx_password_encrypted: None,
                         kdbx_key_file: None,
                         kdbx_use_key_file: false,
+                        kdbx_use_password: true,
                     },
                     ui: UiSettings {
+                        color_scheme: ColorScheme::default(),
                         remember_window_geometry,
                         window_width,
                         window_height,
@@ -714,14 +718,15 @@ proptest! {
             "KDBX password must NOT be serialized - should always be None after deserialization"
         );
 
-        // Verify the TOML string does not contain any password-related fields
+        // Verify the TOML string does not contain actual password values
+        // Note: kdbx_use_password is a boolean flag, not a password value
         prop_assert!(
-            !toml_str.contains("kdbx_password"),
-            "Serialized TOML must not contain kdbx_password field"
+            !toml_str.contains("kdbx_password ="),
+            "Serialized TOML must not contain kdbx_password field (actual password)"
         );
         prop_assert!(
-            !toml_str.contains("password"),
-            "Serialized TOML must not contain any password field"
+            !toml_str.contains("kdbx_password_encrypted ="),
+            "Serialized TOML must not contain kdbx_password_encrypted field"
         );
     }
 }

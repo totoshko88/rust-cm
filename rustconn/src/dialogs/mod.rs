@@ -1,5 +1,6 @@
 //! Dialog windows for `RustConn`
 
+mod adw_dialogs;
 mod cluster;
 mod connection;
 mod document;
@@ -15,7 +16,10 @@ mod shortcuts;
 mod snippet;
 mod statistics;
 mod template;
+mod terminal_search;
 mod variables;
+
+pub use adw_dialogs::*;
 
 pub use cluster::{ClusterCallback, ClusterDialog, ClusterListDialog};
 pub use connection::ConnectionDialog;
@@ -35,6 +39,7 @@ pub use shortcuts::{ShortcutsDialog, SHORTCUTS_CSS};
 pub use snippet::SnippetDialog;
 pub use statistics::{empty_statistics, StatisticsDialog};
 pub use template::{TemplateCallback, TemplateDialog, TemplateManagerDialog};
+pub use terminal_search::TerminalSearchDialog;
 pub use variables::VariablesDialog;
 
 use rustconn_core::config::AppSettings;

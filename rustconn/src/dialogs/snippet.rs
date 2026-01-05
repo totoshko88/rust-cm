@@ -4,12 +4,15 @@
 //! and category assignment.
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
+//! Migrated to libadwaita components for GNOME HIG compliance.
 
+use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, Entry, Frame, Grid, HeaderBar, Label, ListBox, ListBoxRow, Orientation,
-    ScrolledWindow, TextView, Window,
+    Box as GtkBox, Button, Entry, Grid, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow,
+    TextView,
 };
+use libadwaita as adw;
 use rustconn_core::models::{Snippet, SnippetVariable};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -17,7 +20,7 @@ use uuid::Uuid;
 
 /// Snippet dialog for creating/editing snippets
 pub struct SnippetDialog {
-    window: Window,
+    window: adw::Window,
     name_entry: Entry,
     description_entry: Entry,
     category_entry: Entry,
@@ -53,13 +56,13 @@ struct VariableRow {
 impl SnippetDialog {
     /// Creates a new snippet dialog
     #[must_use]
-    pub fn new(parent: Option<&Window>) -> Self {
+    pub fn new(parent: Option<&gtk4::Window>) -> Self {
         // Create window instead of deprecated Dialog
-        let window = Window::builder()
+        let window = adw::Window::builder()
             .title("New Snippet")
             .modal(true)
-            .default_width(750)
-            .default_height(500)
+            .default_width(550)
+            .default_height(600)
             .build();
 
         if let Some(p) = parent {
@@ -67,8 +70,9 @@ impl SnippetDialog {
         }
 
         // Create header bar with Close/Create buttons (GNOME HIG)
-        let header = HeaderBar::new();
-        header.set_show_title_buttons(false);
+        let header = adw::HeaderBar::new();
+        header.set_show_end_title_buttons(false);
+        header.set_show_start_title_buttons(false);
         let close_btn = Button::builder().label("Close").build();
         let new_btn = Button::builder()
             .label("Create")
@@ -76,7 +80,6 @@ impl SnippetDialog {
             .build();
         header.pack_start(&close_btn);
         header.pack_end(&new_btn);
-        window.set_titlebar(Some(&header));
 
         // Close button handler
         let window_clone = window.clone();
@@ -84,13 +87,31 @@ impl SnippetDialog {
             window_clone.close();
         });
 
-        // Create main content area
+        // Scrollable content with clamp
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
         let content = GtkBox::new(Orientation::Vertical, 12);
         content.set_margin_top(12);
         content.set_margin_bottom(12);
         content.set_margin_start(12);
         content.set_margin_end(12);
-        window.set_child(Some(&content));
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let main_box = GtkBox::new(Orientation::Vertical, 0);
+        main_box.append(&header);
+        main_box.append(&scrolled);
+        window.set_content(Some(&main_box));
 
         // === Basic Info Section ===
         let (basic_frame, name_entry, description_entry, category_entry, tags_entry) =
@@ -135,73 +156,60 @@ impl SnippetDialog {
         }
     }
 
-    fn create_basic_section() -> (Frame, Entry, Entry, Entry, Entry) {
-        let grid = Grid::builder()
-            .row_spacing(8)
-            .column_spacing(12)
-            .margin_top(8)
-            .margin_bottom(8)
-            .margin_start(8)
-            .margin_end(8)
+    fn create_basic_section() -> (adw::PreferencesGroup, Entry, Entry, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Snippet Info")
             .build();
-
-        let mut row = 0;
 
         // Name
-        let name_label = Label::builder()
-            .label("Name:")
-            .halign(gtk4::Align::End)
-            .build();
         let name_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("Snippet name")
+            .valign(gtk4::Align::Center)
+            .placeholder_text("Enter snippet name")
             .build();
-        grid.attach(&name_label, 0, row, 1, 1);
-        grid.attach(&name_entry, 1, row, 1, 1);
-        row += 1;
+        let name_row = adw::ActionRow::builder().title("Name").build();
+        name_row.add_suffix(&name_entry);
+        name_row.set_activatable_widget(Some(&name_entry));
+        group.add(&name_row);
 
         // Description
-        let desc_label = Label::builder()
-            .label("Description:")
-            .halign(gtk4::Align::End)
-            .build();
         let description_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .placeholder_text("Optional description")
             .build();
-        grid.attach(&desc_label, 0, row, 1, 1);
-        grid.attach(&description_entry, 1, row, 1, 1);
-        row += 1;
+        let desc_row = adw::ActionRow::builder().title("Description").build();
+        desc_row.add_suffix(&description_entry);
+        desc_row.set_activatable_widget(Some(&description_entry));
+        group.add(&desc_row);
 
         // Category
-        let cat_label = Label::builder()
-            .label("Category:")
-            .halign(gtk4::Align::End)
-            .build();
         let category_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("e.g., System, Network, Database")
+            .valign(gtk4::Align::Center)
+            .placeholder_text("e.g., System, Network")
             .build();
-        grid.attach(&cat_label, 0, row, 1, 1);
-        grid.attach(&category_entry, 1, row, 1, 1);
-        row += 1;
+        let cat_row = adw::ActionRow::builder().title("Category").build();
+        cat_row.add_suffix(&category_entry);
+        cat_row.set_activatable_widget(Some(&category_entry));
+        group.add(&cat_row);
 
         // Tags
-        let tags_label = Label::builder()
-            .label("Tags:")
-            .halign(gtk4::Align::End)
-            .build();
         let tags_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .placeholder_text("tag1, tag2, ...")
             .build();
-        grid.attach(&tags_label, 0, row, 1, 1);
-        grid.attach(&tags_entry, 1, row, 1, 1);
-
-        let frame = Frame::builder().label("Snippet Info").child(&grid).build();
+        let tags_row = adw::ActionRow::builder()
+            .title("Tags")
+            .subtitle("Comma-separated")
+            .build();
+        tags_row.add_suffix(&tags_entry);
+        tags_row.set_activatable_widget(Some(&tags_entry));
+        group.add(&tags_row);
 
         (
-            frame,
+            group,
             name_entry,
             description_entry,
             category_entry,
@@ -209,24 +217,16 @@ impl SnippetDialog {
         )
     }
 
-    fn create_command_section() -> (Frame, TextView) {
-        let vbox = GtkBox::new(Orientation::Vertical, 4);
-        vbox.set_margin_top(8);
-        vbox.set_margin_bottom(8);
-        vbox.set_margin_start(8);
-        vbox.set_margin_end(8);
-
-        let hint = Label::builder()
-            .label("Use ${variable_name} for placeholders")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
+    fn create_command_section() -> (adw::PreferencesGroup, TextView) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Command")
+            .description("Use ${variable_name} for placeholders")
             .build();
-        vbox.append(&hint);
 
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Automatic)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
-            .min_content_height(80)
+            .min_content_height(100)
             .build();
 
         let command_view = TextView::builder()
@@ -235,19 +235,16 @@ impl SnippetDialog {
             .build();
         scrolled.set_child(Some(&command_view));
 
-        vbox.append(&scrolled);
+        group.add(&scrolled);
 
-        let frame = Frame::builder().label("Command").child(&vbox).build();
-
-        (frame, command_view)
+        (group, command_view)
     }
 
-    fn create_variables_section() -> (Frame, ListBox, Button) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(8);
-        vbox.set_margin_bottom(8);
-        vbox.set_margin_start(8);
-        vbox.set_margin_end(8);
+    fn create_variables_section() -> (adw::PreferencesGroup, ListBox, Button) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Variables")
+            .description("Variables are auto-detected from command")
+            .build();
 
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -262,7 +259,7 @@ impl SnippetDialog {
             .build();
         scrolled.set_child(Some(&variables_list));
 
-        vbox.append(&scrolled);
+        group.add(&scrolled);
 
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
@@ -270,11 +267,9 @@ impl SnippetDialog {
         let add_var_button = Button::builder().label("Add Variable").build();
         button_box.append(&add_var_button);
 
-        vbox.append(&button_box);
+        group.add(&button_box);
 
-        let frame = Frame::builder().label("Variables").child(&vbox).build();
-
-        (frame, variables_list, add_var_button)
+        (group, variables_list, add_var_button)
     }
 
     fn auto_detect_variables(
@@ -632,7 +627,7 @@ impl SnippetDialog {
 
     /// Returns a reference to the underlying window
     #[must_use]
-    pub const fn window(&self) -> &Window {
+    pub const fn window(&self) -> &adw::Window {
         &self.window
     }
 }
