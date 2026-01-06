@@ -56,8 +56,19 @@ The main window consists of:
 
 - **Header Bar** — Application menu, search field, and action buttons
 - **Sidebar** (left) — Connection tree with groups, sorted alphabetically
+- **Sidebar Toolbar** (bottom of sidebar) — Quick actions including:
+  - Delete, Add Group, Group Operations, Sort, Import, Export
+  - **KeePass Button** — Shows integration status (active/inactive), opens KeePass database
 - **Session Area** (right) — Active sessions in tabs (SSH terminals, embedded RDP/VNC)
 - **Toast Overlay** — Non-blocking notifications for operations
+
+### KeePass Integration Status
+
+The KeePass button in the sidebar toolbar shows the current integration status:
+- **Active (highlighted)** — KeePass integration enabled and database file exists
+- **Inactive (dimmed)** — Integration disabled or database file not found
+
+Click the button to open KeePassXC with the configured database.
 
 ### Color Scheme
 
