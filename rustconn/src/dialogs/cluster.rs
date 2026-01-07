@@ -235,6 +235,7 @@ impl ClusterDialog {
         // Select all / Deselect all buttons
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
+        button_box.set_margin_top(12);
 
         let select_all_btn = Button::builder().label("Select All").build();
         let deselect_all_btn = Button::builder().label("Deselect All").build();

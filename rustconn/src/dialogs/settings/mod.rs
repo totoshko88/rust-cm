@@ -284,15 +284,16 @@ impl SettingsDialog {
             let status_label_clone = self.ssh_agent_status_label.clone();
             let socket_label_clone = self.ssh_agent_socket_label.clone();
 
-            self.ssh_agent_add_key_button.connect_clicked(move |button| {
-                show_add_key_file_chooser(
-                    button,
-                    &manager_clone,
-                    &keys_list_clone,
-                    &status_label_clone,
-                    &socket_label_clone,
-                );
-            });
+            self.ssh_agent_add_key_button
+                .connect_clicked(move |button| {
+                    show_add_key_file_chooser(
+                        button,
+                        &manager_clone,
+                        &keys_list_clone,
+                        &status_label_clone,
+                        &socket_label_clone,
+                    );
+                });
         }
 
         // Connect SSH Agent Refresh button handler

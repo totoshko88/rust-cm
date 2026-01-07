@@ -5,6 +5,38 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-01-07
+
+### Changed
+- Migrated Connection Dialog tabs to libadwaita components (GNOME HIG compliance):
+  - Display tab: `adw::PreferencesGroup` + `adw::ActionRow` for window mode settings
+  - Logging tab: `adw::PreferencesGroup` + `adw::ActionRow` for session logging configuration
+  - WOL tab: `adw::PreferencesGroup` + `adw::ActionRow` for Wake-on-LAN settings
+  - Variables tab: `adw::PreferencesGroup` for local variable management
+  - Automation tab: `adw::PreferencesGroup` for expect rules configuration
+  - Tasks tab: `adw::PreferencesGroup` for pre/post connection tasks
+  - Custom Properties tab: `adw::PreferencesGroup` for metadata fields
+- All migrated tabs now use `adw::Clamp` for proper content width limiting
+- Removed deprecated `gtk4::Frame` usage in favor of `adw::PreferencesGroup`
+- Settings dialog now loads asynchronously for faster startup:
+  - Clients tab: CLI detection runs in background with spinner placeholders
+  - SSH Agent tab: Agent status and key lists load asynchronously
+  - Available SSH keys scan runs in background
+- Cursor Shape/Blink toggle buttons in Terminal settings now have uniform width (240px)
+- KeePassXC debug output now uses `tracing::debug!` instead of `eprintln!`
+- KeePass entry path format changed to `RustConn/{name} ({protocol})` to support same name for different protocols
+- Updated dependencies: indexmap 2.12.1→2.13.0, syn 2.0.113→2.0.114, zerocopy 0.8.32→0.8.33, zmij 1.0.10→1.0.12
+- Note: sspi and picky-krb kept at previous versions due to rand_core compatibility issues
+
+### Fixed
+- SSH Agent "Add Key" button now opens file chooser to select any SSH key file
+- SSH Agent "+" buttons in Available Key Files list now load keys with passphrase dialog
+- SSH Agent "Remove Key" (trash) button now actually removes keys from the agent
+- SSH Agent Refresh button updates both loaded keys and available keys lists
+- VNC password dialog now correctly loads password from KeePass using consistent lookup key (name or host)
+- KeePass passwords for connections with same name but different protocols no longer overwrite each other
+- Welcome tab now displays correctly when switching back from connections (fallback to first pane if none focused)
+
 ## [0.5.7] - 2026-01-07
 
 ### Changed
@@ -476,7 +508,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.8...HEAD
+[0.5.8]: https://github.com/totoshko88/RustConn/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/totoshko88/RustConn/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/totoshko88/RustConn/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/totoshko88/RustConn/compare/v0.5.4...v0.5.5

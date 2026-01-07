@@ -5,6 +5,8 @@
 //!
 //! Updated for GTK 4.10+ compatibility using `DropDown` instead of `ComboBoxText`
 //! and Window instead of Dialog.
+//!
+//! Uses `adw::ViewStack` with `adw::ViewSwitcher` for proper libadwaita theming.
 
 // OCI Bastion has target_id and target_ip fields which are semantically different
 #![allow(clippy::similar_names)]
@@ -12,9 +14,9 @@
 use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Frame, Grid, Label, ListBox,
-    ListBoxRow, Notebook, Orientation, PasswordEntry, ScrolledWindow, SpinButton, Stack,
-    StringList, TextView, WrapMode,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, Grid, Label, ListBox,
+    ListBoxRow, Orientation, PasswordEntry, ScrolledWindow, SpinButton, Stack, StringList,
+    TextView, WrapMode,
 };
 use libadwaita as adw;
 use rustconn_core::automation::{ConnectionTask, ExpectRule, TaskCondition};
@@ -260,7 +262,7 @@ impl ConnectionDialog {
     #[allow(clippy::too_many_lines)]
     pub fn new(parent: Option<&gtk4::Window>) -> Self {
         let (window, header, save_btn, test_btn) = Self::create_window_with_header(parent);
-        let notebook = Self::create_notebook(&window, &header);
+        let view_stack = Self::create_view_stack(&window, &header);
 
         // === Basic Tab ===
         let (
@@ -290,10 +292,12 @@ impl ConnectionDialog {
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .child(&basic_grid)
             .build();
-        notebook.append_page(&basic_scrolled, Some(&Label::new(Some("Basic"))));
+        view_stack
+            .add_titled(&basic_scrolled, Some("basic"), "Basic")
+            .set_icon_name(Some("document-properties-symbolic"));
 
         // === Protocol-specific Tab ===
-        let protocol_stack = Self::create_protocol_stack(&notebook);
+        let protocol_stack = Self::create_protocol_stack(&view_stack);
 
         // SSH options
         let (
@@ -415,7 +419,9 @@ impl ConnectionDialog {
 
         // === Variables Tab ===
         let (variables_tab, variables_list, add_variable_button) = Self::create_variables_tab();
-        notebook.append_page(&variables_tab, Some(&Label::new(Some("Variables"))));
+        view_stack
+            .add_titled(&variables_tab, Some("variables"), "Variables")
+            .set_icon_name(Some("accessories-text-editor-symbolic"));
 
         let variables_rows: Rc<RefCell<Vec<LocalVariableRow>>> = Rc::new(RefCell::new(Vec::new()));
         let global_variables: Rc<RefCell<Vec<Variable>>> = Rc::new(RefCell::new(Vec::new()));
@@ -429,7 +435,9 @@ impl ConnectionDialog {
             logging_max_size_spin,
             logging_retention_spin,
         ) = Self::create_logging_tab();
-        notebook.append_page(&logging_tab, Some(&Label::new(Some("Logging"))));
+        view_stack
+            .add_titled(&logging_tab, Some("logging"), "Logging")
+            .set_icon_name(Some("document-save-symbolic"));
 
         // === Automation Tab (Expect Rules) ===
         let (
@@ -439,7 +447,9 @@ impl ConnectionDialog {
             expect_pattern_test_entry,
             expect_test_result_label,
         ) = Self::create_automation_tab();
-        notebook.append_page(&automation_tab, Some(&Label::new(Some("Automation"))));
+        view_stack
+            .add_titled(&automation_tab, Some("automation"), "Automation")
+            .set_icon_name(Some("system-run-symbolic"));
 
         let expect_rules: Rc<RefCell<Vec<ExpectRule>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -456,20 +466,23 @@ impl ConnectionDialog {
             post_disconnect_timeout_spin,
             post_disconnect_last_only_check,
         ) = Self::create_tasks_tab();
-        notebook.append_page(&tasks_tab, Some(&Label::new(Some("Tasks"))));
+        view_stack
+            .add_titled(&tasks_tab, Some("tasks"), "Tasks")
+            .set_icon_name(Some("emblem-system-symbolic"));
 
         // === Display Tab ===
         let (display_tab, window_mode_dropdown, remember_position_check) =
             Self::create_display_tab();
-        notebook.append_page(&display_tab, Some(&Label::new(Some("Display"))));
+        view_stack
+            .add_titled(&display_tab, Some("display"), "Display")
+            .set_icon_name(Some("video-display-symbolic"));
 
         // === Custom Properties Tab ===
         let (custom_properties_tab, custom_properties_list, add_custom_property_button) =
             Self::create_custom_properties_tab();
-        notebook.append_page(
-            &custom_properties_tab,
-            Some(&Label::new(Some("Properties"))),
-        );
+        view_stack
+            .add_titled(&custom_properties_tab, Some("properties"), "Properties")
+            .set_icon_name(Some("document-properties-symbolic"));
 
         let custom_properties: Rc<RefCell<Vec<CustomProperty>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -482,7 +495,9 @@ impl ConnectionDialog {
             wol_port_spin,
             wol_wait_spin,
         ) = Self::create_wol_tab();
-        notebook.append_page(&wol_tab, Some(&Label::new(Some("WOL"))));
+        view_stack
+            .add_titled(&wol_tab, Some("wol"), "WOL")
+            .set_icon_name(Some("network-wired-symbolic"));
 
         // Wire up add variable button
         Self::wire_add_variable_button(&add_variable_button, &variables_list, &variables_rows);
@@ -745,6 +760,25 @@ impl ConnectionDialog {
             // Validate required fields
             let name = name_entry.text();
             let host = host_entry.text();
+            let protocol_index = protocol_dropdown.selected();
+
+            // Zero Trust connections have different validation requirements
+            if protocol_index == 4 {
+                // Zero Trust - show info message about testing
+                let dialog = gtk4::AlertDialog::builder()
+                    .message("Zero Trust Connection Test")
+                    .detail(
+                        "Zero Trust connections require provider-specific authentication.\n\n\
+                             To test the connection:\n\
+                             1. Save the connection first\n\
+                             2. Use the Connect button to initiate the connection\n\
+                             3. The provider CLI will handle authentication",
+                    )
+                    .modal(true)
+                    .build();
+                dialog.show(Some(&window));
+                return;
+            }
 
             if name.trim().is_empty() || host.trim().is_empty() {
                 let dialog = gtk4::AlertDialog::builder()
@@ -759,7 +793,6 @@ impl ConnectionDialog {
             // Create a minimal connection for testing
             #[allow(clippy::cast_sign_loss)]
             let port = port_spin.value().max(0.0) as u16;
-            let protocol_index = protocol_dropdown.selected();
 
             let protocol_config = match protocol_index {
                 0 => rustconn_core::models::ProtocolConfig::Ssh(
@@ -958,7 +991,7 @@ impl ConnectionDialog {
             .title("New Connection")
             .modal(true)
             .default_width(750)
-            .default_height(500)
+            .default_height(650)
             .build();
 
         if let Some(p) = parent {
@@ -991,28 +1024,45 @@ impl ConnectionDialog {
         (window, header, save_btn, test_btn)
     }
 
-    /// Creates the notebook widget and adds it to the window
-    fn create_notebook(window: &adw::Window, header: &adw::HeaderBar) -> Notebook {
-        let notebook = Notebook::new();
+    /// Creates the view stack widget and adds it to the window with view switcher bar
+    fn create_view_stack(window: &adw::Window, header: &adw::HeaderBar) -> adw::ViewStack {
+        let view_stack = adw::ViewStack::new();
 
-        // Use GtkBox with HeaderBar for adw::Window (libadwaita 0.8)
+        // Create view switcher bar for the bottom of the window
+        let view_switcher_bar = adw::ViewSwitcherBar::builder()
+            .stack(&view_stack)
+            .reveal(true)
+            .build();
+
+        // Create scrolled window for the stack content
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .child(&view_stack)
+            .build();
+
+        // Use GtkBox with HeaderBar, content, and ViewSwitcherBar at bottom
         let main_box = GtkBox::new(Orientation::Vertical, 0);
         main_box.append(header);
-        main_box.append(&notebook);
+        main_box.append(&scrolled);
+        main_box.append(&view_switcher_bar);
         window.set_content(Some(&main_box));
 
-        notebook
+        view_stack
     }
 
-    /// Creates the protocol stack and adds it to the notebook
-    fn create_protocol_stack(notebook: &Notebook) -> Stack {
+    /// Creates the protocol stack and adds it to the view stack
+    fn create_protocol_stack(view_stack: &adw::ViewStack) -> Stack {
         let protocol_stack = Stack::new();
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .child(&protocol_stack)
             .build();
-        notebook.append_page(&scrolled, Some(&Label::new(Some("Protocol"))));
+        view_stack
+            .add_titled(&scrolled, Some("protocol"), "Protocol")
+            .set_icon_name(Some("network-server-symbolic"));
         protocol_stack
     }
 
@@ -2996,30 +3046,36 @@ impl ConnectionDialog {
     }
 
     /// Creates the Variables tab for local variable management
+    ///
+    /// Uses libadwaita components following GNOME HIG.
     fn create_variables_tab() -> (GtkBox, ListBox, Button) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Define local variables that override global variables for this connection.\nUse ${variable_name} syntax in connection fields.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        vbox.append(&info_label);
-
-        // Variables list frame
-        let frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        frame_vbox.set_margin_top(8);
-        frame_vbox.set_margin_bottom(8);
-        frame_vbox.set_margin_start(8);
-        frame_vbox.set_margin_end(8);
-
         let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // Variables group
+        let variables_group = adw::PreferencesGroup::builder()
+            .title("Local Variables")
+            .description(
+                "Define local variables that override global variables.\n\
+                 Use ${variable_name} syntax in connection fields.",
+            )
+            .build();
+
+        let inner_scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .min_content_height(250)
@@ -3030,12 +3086,13 @@ impl ConnectionDialog {
             .selection_mode(gtk4::SelectionMode::None)
             .css_classes(["boxed-list"])
             .build();
-        scrolled.set_child(Some(&variables_list));
+        inner_scrolled.set_child(Some(&variables_list));
 
-        frame_vbox.append(&scrolled);
+        variables_group.add(&inner_scrolled);
 
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
+        button_box.set_margin_top(12);
 
         let add_button = Button::builder()
             .label("Add Variable")
@@ -3043,15 +3100,15 @@ impl ConnectionDialog {
             .build();
         button_box.append(&add_button);
 
-        frame_vbox.append(&button_box);
+        variables_group.add(&button_box);
 
-        let frame = Frame::builder()
-            .label("Local Variables")
-            .child(&frame_vbox)
-            .vexpand(true)
-            .build();
+        content.append(&variables_group);
 
-        vbox.append(&frame);
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (vbox, variables_list, add_button)
     }
@@ -3059,66 +3116,62 @@ impl ConnectionDialog {
     /// Creates the Logging tab for session logging configuration
     #[allow(clippy::type_complexity, clippy::too_many_lines)]
     fn create_logging_tab() -> (GtkBox, CheckButton, Entry, DropDown, SpinButton, SpinButton) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Configure session logging to record terminal output to files.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        vbox.append(&info_label);
-
-        // Main grid for logging options
-        let grid = Grid::builder()
-            .row_spacing(8)
-            .column_spacing(12)
-            .margin_top(8)
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
 
-        let mut row = 0;
-
-        // Enable logging checkbox
-        let enabled_check = CheckButton::builder()
-            .label("Enable session logging")
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
             .build();
-        grid.attach(&enabled_check, 0, row, 3, 1);
-        row += 1;
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // Enable logging group
+        let enable_group = adw::PreferencesGroup::builder()
+            .title("Session Logging")
+            .description("Record terminal output to files")
+            .build();
+
+        let enabled_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+
+        let enable_row = adw::ActionRow::builder()
+            .title("Enable Logging")
+            .subtitle("Record session output to log files")
+            .activatable_widget(&enabled_check)
+            .build();
+        enable_row.add_suffix(&enabled_check);
+        enable_group.add(&enable_row);
+
+        content.append(&enable_group);
+
+        // Log settings group
+        let settings_group = adw::PreferencesGroup::builder()
+            .title("Log Settings")
+            .build();
 
         // Path template
-        let path_label = Label::builder()
-            .label("Log Path:")
-            .halign(gtk4::Align::End)
-            .build();
         let path_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .placeholder_text("${HOME}/.local/share/rustconn/logs/${connection_name}_${date}.log")
-            .tooltip_text("Supported variables: ${connection_name}, ${protocol}, ${date}, ${time}, ${datetime}, ${HOME}")
+            .sensitive(false)
             .build();
-        grid.attach(&path_label, 0, row, 1, 1);
-        grid.attach(&path_entry, 1, row, 2, 1);
-        row += 1;
 
-        // Variable hints
-        let hints_label = Label::builder()
-            .label("Variables: ${connection_name}, ${protocol}, ${date}, ${time}, ${datetime}, ${HOME}")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
-            .wrap(true)
+        let path_row = adw::ActionRow::builder()
+            .title("Log Path")
+            .subtitle("Variables: ${connection_name}, ${protocol}, ${date}, ${time}, ${datetime}, ${HOME}")
             .build();
-        grid.attach(&hints_label, 1, row, 2, 1);
-        row += 1;
+        path_row.add_suffix(&path_entry);
+        settings_group.add(&path_row);
 
         // Timestamp format
-        let timestamp_label = Label::builder()
-            .label("Timestamp Format:")
-            .halign(gtk4::Align::End)
-            .build();
         let timestamp_list = StringList::new(&[
             "%Y-%m-%d %H:%M:%S",     // 2024-01-15 14:30:45
             "%H:%M:%S",              // 14:30:45
@@ -3128,77 +3181,75 @@ impl ConnectionDialog {
         ]);
         let timestamp_dropdown = DropDown::new(Some(timestamp_list), gtk4::Expression::NONE);
         timestamp_dropdown.set_selected(0);
-        grid.attach(&timestamp_label, 0, row, 1, 1);
-        grid.attach(&timestamp_dropdown, 1, row, 2, 1);
-        row += 1;
+        timestamp_dropdown.set_valign(gtk4::Align::Center);
+        timestamp_dropdown.set_sensitive(false);
+
+        let timestamp_row = adw::ActionRow::builder()
+            .title("Timestamp Format")
+            .subtitle("Format for timestamps in log entries")
+            .build();
+        timestamp_row.add_suffix(&timestamp_dropdown);
+        settings_group.add(&timestamp_row);
 
         // Max size
-        let size_label = Label::builder()
-            .label("Max Size (MB):")
-            .halign(gtk4::Align::End)
-            .build();
         let size_adj = gtk4::Adjustment::new(10.0, 0.0, 1000.0, 1.0, 10.0, 0.0);
         let size_spin = SpinButton::builder()
             .adjustment(&size_adj)
             .climb_rate(1.0)
             .digits(0)
-            .tooltip_text("Maximum log file size in MB (0 = no limit)")
+            .valign(gtk4::Align::Center)
+            .sensitive(false)
             .build();
-        let size_hint = Label::builder()
-            .label("(0 = no limit)")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
+
+        let size_row = adw::ActionRow::builder()
+            .title("Max Size (MB)")
+            .subtitle("Maximum log file size (0 = no limit)")
             .build();
-        let size_box = GtkBox::new(Orientation::Horizontal, 8);
-        size_box.append(&size_spin);
-        size_box.append(&size_hint);
-        grid.attach(&size_label, 0, row, 1, 1);
-        grid.attach(&size_box, 1, row, 2, 1);
-        row += 1;
+        size_row.add_suffix(&size_spin);
+        settings_group.add(&size_row);
 
         // Retention days
-        let retention_label = Label::builder()
-            .label("Retention (days):")
-            .halign(gtk4::Align::End)
-            .build();
         let retention_adj = gtk4::Adjustment::new(30.0, 0.0, 365.0, 1.0, 7.0, 0.0);
         let retention_spin = SpinButton::builder()
             .adjustment(&retention_adj)
             .climb_rate(1.0)
             .digits(0)
-            .tooltip_text("Number of days to keep old log files (0 = keep forever)")
+            .valign(gtk4::Align::Center)
+            .sensitive(false)
             .build();
-        let retention_hint = Label::builder()
-            .label("(0 = keep forever)")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label"])
-            .build();
-        let retention_box = GtkBox::new(Orientation::Horizontal, 8);
-        retention_box.append(&retention_spin);
-        retention_box.append(&retention_hint);
-        grid.attach(&retention_label, 0, row, 1, 1);
-        grid.attach(&retention_box, 1, row, 2, 1);
 
-        vbox.append(&grid);
+        let retention_row = adw::ActionRow::builder()
+            .title("Retention (days)")
+            .subtitle("Days to keep old log files (0 = keep forever)")
+            .build();
+        retention_row.add_suffix(&retention_spin);
+        settings_group.add(&retention_row);
+
+        content.append(&settings_group);
 
         // Connect enabled checkbox to enable/disable other fields
         let path_entry_clone = path_entry.clone();
         let timestamp_dropdown_clone = timestamp_dropdown.clone();
         let size_spin_clone = size_spin.clone();
         let retention_spin_clone = retention_spin.clone();
+        let settings_group_clone = settings_group.clone();
         enabled_check.connect_toggled(move |check| {
             let enabled = check.is_active();
             path_entry_clone.set_sensitive(enabled);
             timestamp_dropdown_clone.set_sensitive(enabled);
             size_spin_clone.set_sensitive(enabled);
             retention_spin_clone.set_sensitive(enabled);
+            settings_group_clone.set_sensitive(enabled);
         });
 
-        // Initially disable fields since logging is off by default
-        path_entry.set_sensitive(false);
-        timestamp_dropdown.set_sensitive(false);
-        size_spin.set_sensitive(false);
-        retention_spin.set_sensitive(false);
+        // Initially disable settings group since logging is off by default
+        settings_group.set_sensitive(false);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -3213,29 +3264,33 @@ impl ConnectionDialog {
     /// Creates the Automation tab for expect rules configuration
     #[allow(clippy::type_complexity)]
     fn create_automation_tab() -> (GtkBox, ListBox, Button, Entry, Label) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Configure expect rules to automatically respond to terminal patterns.\nRules are matched in priority order (highest first).")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        vbox.append(&info_label);
-
-        // Expect rules list frame
-        let frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        frame_vbox.set_margin_top(8);
-        frame_vbox.set_margin_bottom(8);
-        frame_vbox.set_margin_start(8);
-        frame_vbox.set_margin_end(8);
-
         let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // Expect rules group
+        let rules_group = adw::PreferencesGroup::builder()
+            .title("Expect Rules")
+            .description(
+                "Automatically respond to terminal patterns.\n\
+                 Rules are matched in priority order (highest first).",
+            )
+            .build();
+
+        let inner_scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .min_content_height(200)
@@ -3247,12 +3302,13 @@ impl ConnectionDialog {
             .css_classes(["boxed-list"])
             .build();
         expect_rules_list.set_placeholder(Some(&Label::new(Some("No expect rules configured"))));
-        scrolled.set_child(Some(&expect_rules_list));
+        inner_scrolled.set_child(Some(&expect_rules_list));
 
-        frame_vbox.append(&scrolled);
+        rules_group.add(&inner_scrolled);
 
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
+        button_box.set_margin_top(12);
 
         let add_button = Button::builder()
             .label("Add Rule")
@@ -3260,58 +3316,44 @@ impl ConnectionDialog {
             .build();
         button_box.append(&add_button);
 
-        frame_vbox.append(&button_box);
+        rules_group.add(&button_box);
 
-        let frame = Frame::builder()
-            .label("Expect Rules")
-            .child(&frame_vbox)
-            .vexpand(true)
+        content.append(&rules_group);
+
+        // Pattern tester group
+        let tester_group = adw::PreferencesGroup::builder()
+            .title("Pattern Tester")
+            .description("Test your patterns against sample input")
             .build();
 
-        vbox.append(&frame);
-
-        // Pattern tester section
-        let tester_frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        tester_frame_vbox.set_margin_top(8);
-        tester_frame_vbox.set_margin_bottom(8);
-        tester_frame_vbox.set_margin_start(8);
-        tester_frame_vbox.set_margin_end(8);
-
-        let tester_grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-
-        let test_label = Label::builder()
-            .label("Test Input:")
-            .halign(gtk4::Align::End)
-            .build();
         let test_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .placeholder_text("Enter text to test against patterns")
             .build();
-        tester_grid.attach(&test_label, 0, 0, 1, 1);
-        tester_grid.attach(&test_entry, 1, 0, 1, 1);
 
-        let result_title_label = Label::builder()
-            .label("Result:")
-            .halign(gtk4::Align::End)
-            .valign(gtk4::Align::Start)
-            .build();
+        let test_row = adw::ActionRow::builder().title("Test Input").build();
+        test_row.add_suffix(&test_entry);
+        tester_group.add(&test_row);
+
         let result_label = Label::builder()
             .label("Enter text above to test patterns")
             .halign(gtk4::Align::Start)
             .wrap(true)
             .css_classes(["dim-label"])
             .build();
-        tester_grid.attach(&result_title_label, 0, 1, 1, 1);
-        tester_grid.attach(&result_label, 1, 1, 1, 1);
 
-        tester_frame_vbox.append(&tester_grid);
+        let result_row = adw::ActionRow::builder().title("Result").build();
+        result_row.add_suffix(&result_label);
+        tester_group.add(&result_row);
 
-        let tester_frame = Frame::builder()
-            .label("Pattern Tester")
-            .child(&tester_frame_vbox)
-            .build();
+        content.append(&tester_group);
 
-        vbox.append(&tester_frame);
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -3336,42 +3378,50 @@ impl ConnectionDialog {
         SpinButton,
         CheckButton,
     ) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Configure commands to run before connecting and after disconnecting.\nCommands support ${variable} substitution.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
-        vbox.append(&info_label);
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
 
         // Pre-connect task section
         let (
-            pre_connect_frame,
+            pre_connect_group,
             pre_connect_enabled_check,
             pre_connect_command_entry,
             pre_connect_timeout_spin,
             pre_connect_abort_check,
             pre_connect_first_only_check,
         ) = Self::create_task_section("Pre-Connect Task", true);
-        vbox.append(&pre_connect_frame);
+        content.append(&pre_connect_group);
 
         // Post-disconnect task section
         let (
-            post_disconnect_frame,
+            post_disconnect_group,
             post_disconnect_enabled_check,
             post_disconnect_command_entry,
             post_disconnect_timeout_spin,
             _post_disconnect_abort_check, // Not used for post-disconnect
             post_disconnect_last_only_check,
         ) = Self::create_task_section("Post-Disconnect Task", false);
-        vbox.append(&post_disconnect_frame);
+        content.append(&post_disconnect_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -3388,92 +3438,114 @@ impl ConnectionDialog {
     }
 
     /// Creates a task section (pre-connect or post-disconnect)
+    ///
+    /// Uses libadwaita components following GNOME HIG.
     fn create_task_section(
         title: &str,
         is_pre_connect: bool,
     ) -> (
-        Frame,
+        adw::PreferencesGroup,
         CheckButton,
         Entry,
         SpinButton,
         CheckButton,
         CheckButton,
     ) {
-        let frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        frame_vbox.set_margin_top(8);
-        frame_vbox.set_margin_bottom(8);
-        frame_vbox.set_margin_start(8);
-        frame_vbox.set_margin_end(8);
+        let description = if is_pre_connect {
+            "Run command before connecting. Supports ${variable} substitution."
+        } else {
+            "Run command after disconnecting. Supports ${variable} substitution."
+        };
 
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-
-        // Row 0: Enable checkbox
-        let enabled_check = CheckButton::builder().label("Enable task").build();
-        grid.attach(&enabled_check, 0, 0, 3, 1);
-
-        // Row 1: Command
-        let command_label = Label::builder()
-            .label("Command:")
-            .halign(gtk4::Align::End)
+        let group = adw::PreferencesGroup::builder()
+            .title(title)
+            .description(description)
             .build();
+
+        // Enable checkbox
+        let enabled_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+
+        let enable_row = adw::ActionRow::builder()
+            .title("Enable Task")
+            .activatable_widget(&enabled_check)
+            .build();
+        enable_row.add_suffix(&enabled_check);
+        group.add(&enable_row);
+
+        // Command entry
         let command_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .placeholder_text("e.g., /path/to/script.sh or vpn-connect ${host}")
-            .tooltip_text("Shell command to execute (supports ${variable} syntax)")
             .sensitive(false)
             .build();
-        grid.attach(&command_label, 0, 1, 1, 1);
-        grid.attach(&command_entry, 1, 1, 2, 1);
 
-        // Row 2: Timeout
-        let timeout_label = Label::builder()
-            .label("Timeout (ms):")
-            .halign(gtk4::Align::End)
+        let command_row = adw::ActionRow::builder()
+            .title("Command")
+            .subtitle("Shell command to execute (supports ${variable} syntax)")
             .build();
+        command_row.add_suffix(&command_entry);
+        group.add(&command_row);
+
+        // Timeout
         let timeout_adj = gtk4::Adjustment::new(0.0, 0.0, 300_000.0, 1000.0, 5000.0, 0.0);
         let timeout_spin = SpinButton::builder()
             .adjustment(&timeout_adj)
             .climb_rate(1.0)
             .digits(0)
-            .tooltip_text("Timeout in milliseconds (0 = no timeout)")
+            .valign(gtk4::Align::Center)
             .sensitive(false)
             .build();
-        grid.attach(&timeout_label, 0, 2, 1, 1);
-        grid.attach(&timeout_spin, 1, 2, 1, 1);
 
-        // Row 3: Abort on failure (pre-connect only) or placeholder
+        let timeout_row = adw::ActionRow::builder()
+            .title("Timeout (ms)")
+            .subtitle("0 = no timeout")
+            .build();
+        timeout_row.add_suffix(&timeout_spin);
+        group.add(&timeout_row);
+
+        // Abort on failure (pre-connect only)
         let abort_check = CheckButton::builder()
-            .label("Abort connection on failure")
+            .valign(gtk4::Align::Center)
             .active(true)
             .sensitive(false)
             .build();
+
         if is_pre_connect {
-            abort_check.set_tooltip_text(Some(
-                "If enabled, connection will be aborted if this task fails",
-            ));
-            grid.attach(&abort_check, 1, 3, 2, 1);
+            let abort_row = adw::ActionRow::builder()
+                .title("Abort on Failure")
+                .subtitle("Cancel connection if this task fails")
+                .activatable_widget(&abort_check)
+                .build();
+            abort_row.add_suffix(&abort_check);
+            group.add(&abort_row);
         }
 
-        // Row 4: Condition checkbox
-        let condition_label = if is_pre_connect {
-            "Execute only for first connection in folder"
-        } else {
-            "Execute only for last connection in folder"
-        };
+        // Condition checkbox
         let condition_check = CheckButton::builder()
-            .label(condition_label)
+            .valign(gtk4::Align::Center)
             .sensitive(false)
             .build();
-        let condition_tooltip = if is_pre_connect {
-            "Only run this task when opening the first connection in a folder (useful for VPN setup)"
-        } else {
-            "Only run this task when closing the last connection in a folder (useful for cleanup)"
-        };
-        condition_check.set_tooltip_text(Some(condition_tooltip));
-        let condition_row = if is_pre_connect { 4 } else { 3 };
-        grid.attach(&condition_check, 1, condition_row, 2, 1);
 
-        frame_vbox.append(&grid);
+        let (condition_title, condition_subtitle) = if is_pre_connect {
+            (
+                "First Connection Only",
+                "Only run when opening the first connection in a folder (useful for VPN setup)",
+            )
+        } else {
+            (
+                "Last Connection Only",
+                "Only run when closing the last connection in a folder (useful for cleanup)",
+            )
+        };
+
+        let condition_row = adw::ActionRow::builder()
+            .title(condition_title)
+            .subtitle(condition_subtitle)
+            .activatable_widget(&condition_check)
+            .build();
+        condition_row.add_suffix(&condition_check);
+        group.add(&condition_row);
 
         // Connect enabled checkbox to enable/disable other fields
         let command_entry_clone = command_entry.clone();
@@ -3488,10 +3560,8 @@ impl ConnectionDialog {
             condition_check_clone.set_sensitive(enabled);
         });
 
-        let frame = Frame::builder().label(title).child(&frame_vbox).build();
-
         (
-            frame,
+            group,
             enabled_check,
             command_entry,
             timeout_spin,
@@ -3501,107 +3571,113 @@ impl ConnectionDialog {
     }
 
     /// Creates the Display tab for window mode configuration
+    ///
+    /// Uses libadwaita components following GNOME HIG.
     fn create_display_tab() -> (GtkBox, DropDown, CheckButton) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Configure how the connection window is displayed.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        vbox.append(&info_label);
-
-        // Main grid for display options
-        let grid = Grid::builder()
-            .row_spacing(8)
-            .column_spacing(12)
-            .margin_top(8)
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
 
-        let mut row = 0;
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // Window Mode group
+        let mode_group = adw::PreferencesGroup::builder()
+            .title("Window Mode")
+            .description("Configure how the connection window is displayed")
+            .build();
 
         // Window mode dropdown
-        let mode_label = Label::builder()
-            .label("Window Mode:")
-            .halign(gtk4::Align::End)
-            .build();
         let mode_list = StringList::new(&["Embedded", "External Window", "Fullscreen"]);
         let mode_dropdown = DropDown::new(Some(mode_list), gtk4::Expression::NONE);
         mode_dropdown.set_selected(0);
-        mode_dropdown.set_tooltip_text(Some(
-            "Embedded: Display in main window\n\
-             External Window: Open in separate window\n\
-             Fullscreen: Open in fullscreen mode",
-        ));
-        grid.attach(&mode_label, 0, row, 1, 1);
-        grid.attach(&mode_dropdown, 1, row, 2, 1);
-        row += 1;
+        mode_dropdown.set_valign(gtk4::Align::Center);
 
-        // Mode description
-        let mode_desc_label = Label::builder()
-            .label("Embedded displays in the main window. External opens a separate window. Fullscreen opens without decorations.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
+        let mode_row = adw::ActionRow::builder()
+            .title("Window Mode")
+            .subtitle(
+                "Embedded: main window • External: separate window • Fullscreen: no decorations",
+            )
             .build();
-        grid.attach(&mode_desc_label, 1, row, 2, 1);
-        row += 1;
+        mode_row.add_suffix(&mode_dropdown);
+        mode_group.add(&mode_row);
 
         // Remember position checkbox (only relevant for External mode)
         let remember_check = CheckButton::builder()
-            .label("Remember window position and size")
-            .tooltip_text("Save window geometry when closing and restore on reconnection")
+            .valign(gtk4::Align::Center)
             .sensitive(false) // Initially disabled since default is Embedded
             .build();
-        grid.attach(&remember_check, 1, row, 2, 1);
+
+        let remember_row = adw::ActionRow::builder()
+            .title("Remember Position")
+            .subtitle("Save window geometry when closing and restore on reconnection")
+            .activatable_widget(&remember_check)
+            .build();
+        remember_row.add_suffix(&remember_check);
+        mode_group.add(&remember_row);
 
         // Connect mode dropdown to enable/disable remember checkbox
         let remember_check_clone = remember_check.clone();
+        let remember_row_clone = remember_row.clone();
         mode_dropdown.connect_selected_notify(move |dropdown| {
             // Only enable remember position for External mode (index 1)
             let is_external = dropdown.selected() == 1;
             remember_check_clone.set_sensitive(is_external);
+            remember_row_clone.set_sensitive(is_external);
             if !is_external {
                 remember_check_clone.set_active(false);
             }
         });
 
-        vbox.append(&grid);
+        content.append(&mode_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (vbox, mode_dropdown, remember_check)
     }
 
     /// Creates the Custom Properties tab for adding metadata to connections
+    ///
+    /// Uses libadwaita components following GNOME HIG.
     fn create_custom_properties_tab() -> (GtkBox, ListBox, Button) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Add custom metadata fields to this connection.\nSupported types: Text, URL (clickable), Protected (masked).")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        vbox.append(&info_label);
-
-        // Custom properties list frame
-        let frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        frame_vbox.set_margin_top(8);
-        frame_vbox.set_margin_bottom(8);
-        frame_vbox.set_margin_start(8);
-        frame_vbox.set_margin_end(8);
-
         let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // Custom properties group
+        let properties_group = adw::PreferencesGroup::builder()
+            .title("Custom Properties")
+            .description("Add custom metadata fields: Text, URL (clickable), or Protected (masked)")
+            .build();
+
+        let inner_scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .min_content_height(250)
@@ -3613,12 +3689,13 @@ impl ConnectionDialog {
             .css_classes(["boxed-list"])
             .build();
         properties_list.set_placeholder(Some(&Label::new(Some("No custom properties"))));
-        scrolled.set_child(Some(&properties_list));
+        inner_scrolled.set_child(Some(&properties_list));
 
-        frame_vbox.append(&scrolled);
+        properties_group.add(&inner_scrolled);
 
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
+        button_box.set_margin_top(12);
 
         let add_button = Button::builder()
             .label("Add Property")
@@ -3626,15 +3703,15 @@ impl ConnectionDialog {
             .build();
         button_box.append(&add_button);
 
-        frame_vbox.append(&button_box);
+        properties_group.add(&button_box);
 
-        let frame = Frame::builder()
-            .label("Custom Properties")
-            .child(&frame_vbox)
-            .vexpand(true)
-            .build();
+        content.append(&properties_group);
 
-        vbox.append(&frame);
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (vbox, properties_list, add_button)
     }
@@ -3863,104 +3940,97 @@ impl ConnectionDialog {
     }
 
     /// Creates the WOL (Wake On LAN) tab for configuring wake-on-lan settings
+    ///
+    /// Uses libadwaita components following GNOME HIG.
     #[allow(clippy::type_complexity)]
     fn create_wol_tab() -> (GtkBox, CheckButton, Entry, Entry, SpinButton, SpinButton) {
-        let vbox = GtkBox::new(Orientation::Vertical, 12);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Info label
-        let info_label = Label::builder()
-            .label("Wake On LAN sends a magic packet to wake sleeping machines before connecting.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
-        vbox.append(&info_label);
 
-        // Enable checkbox
-        let enabled_check = CheckButton::builder()
-            .label("Enable Wake On LAN")
-            .margin_top(8)
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
             .build();
-        vbox.append(&enabled_check);
 
-        // Settings frame
-        let frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        frame_vbox.set_margin_top(8);
-        frame_vbox.set_margin_bottom(8);
-        frame_vbox.set_margin_start(8);
-        frame_vbox.set_margin_end(8);
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
 
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-
-        // Row 0: MAC Address
-        let mac_label = Label::builder()
-            .label("MAC Address:")
-            .halign(gtk4::Align::End)
+        // Enable WOL group
+        let enable_group = adw::PreferencesGroup::builder()
+            .title("Wake On LAN")
+            .description("Send magic packet to wake sleeping machines before connecting")
             .build();
+
+        let enabled_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+
+        let enable_row = adw::ActionRow::builder()
+            .title("Enable Wake On LAN")
+            .subtitle("Send WOL packet before connecting")
+            .activatable_widget(&enabled_check)
+            .build();
+        enable_row.add_suffix(&enabled_check);
+        enable_group.add(&enable_row);
+
+        content.append(&enable_group);
+
+        // WOL Settings group
+        let settings_group = adw::PreferencesGroup::builder()
+            .title("WOL Settings")
+            .sensitive(false)
+            .build();
+
+        // MAC Address
         let mac_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF")
-            .tooltip_text("Hardware address of the target machine (6 hex octets)")
-            .sensitive(false)
-            .build();
-        let mac_hint = Label::builder()
-            .label("Format: AA:BB:CC:DD:EE:FF")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label", "caption"])
+            .valign(gtk4::Align::Center)
+            .placeholder_text("AA:BB:CC:DD:EE:FF")
             .build();
 
-        grid.attach(&mac_label, 0, 0, 1, 1);
-        grid.attach(&mac_entry, 1, 0, 2, 1);
-        grid.attach(&mac_hint, 1, 1, 2, 1);
-
-        // Row 2: Broadcast Address
-        let broadcast_label = Label::builder()
-            .label("Broadcast Address:")
-            .halign(gtk4::Align::End)
+        let mac_row = adw::ActionRow::builder()
+            .title("MAC Address")
+            .subtitle("Hardware address (format: AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF)")
             .build();
+        mac_row.add_suffix(&mac_entry);
+        settings_group.add(&mac_row);
+
+        // Broadcast Address
         let broadcast_entry = Entry::builder()
             .hexpand(true)
+            .valign(gtk4::Align::Center)
             .text(DEFAULT_BROADCAST_ADDRESS)
             .placeholder_text("255.255.255.255")
-            .tooltip_text("Network broadcast address for the magic packet")
-            .sensitive(false)
             .build();
 
-        grid.attach(&broadcast_label, 0, 2, 1, 1);
-        grid.attach(&broadcast_entry, 1, 2, 2, 1);
-
-        // Row 3: Port
-        let port_label = Label::builder()
-            .label("UDP Port:")
-            .halign(gtk4::Align::End)
+        let broadcast_row = adw::ActionRow::builder()
+            .title("Broadcast Address")
+            .subtitle("Network broadcast address for the magic packet")
             .build();
+        broadcast_row.add_suffix(&broadcast_entry);
+        settings_group.add(&broadcast_row);
+
+        // UDP Port
         let port_adjustment =
             gtk4::Adjustment::new(f64::from(DEFAULT_WOL_PORT), 1.0, 65535.0, 1.0, 10.0, 0.0);
         let port_spin = SpinButton::builder()
             .adjustment(&port_adjustment)
             .digits(0)
-            .tooltip_text("UDP port for magic packet (typically 7 or 9)")
-            .sensitive(false)
-            .build();
-        let port_hint = Label::builder()
-            .label("Default: 9 (discard protocol)")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label", "caption"])
+            .valign(gtk4::Align::Center)
             .build();
 
-        grid.attach(&port_label, 0, 3, 1, 1);
-        grid.attach(&port_spin, 1, 3, 1, 1);
-        grid.attach(&port_hint, 2, 3, 1, 1);
-
-        // Row 4: Wait Time
-        let wait_label = Label::builder()
-            .label("Wait Time (seconds):")
-            .halign(gtk4::Align::End)
+        let port_row = adw::ActionRow::builder()
+            .title("UDP Port")
+            .subtitle("Default: 9 (discard protocol)")
             .build();
+        port_row.add_suffix(&port_spin);
+        settings_group.add(&port_row);
+
+        // Wait Time
         let wait_adjustment = gtk4::Adjustment::new(
             f64::from(DEFAULT_WOL_WAIT_SECONDS),
             0.0,
@@ -3972,61 +4042,40 @@ impl ConnectionDialog {
         let wait_spin = SpinButton::builder()
             .adjustment(&wait_adjustment)
             .digits(0)
-            .tooltip_text("Seconds to wait after sending WOL packet before connecting")
-            .sensitive(false)
-            .build();
-        let wait_hint = Label::builder()
-            .label("Time to wait for machine to boot")
-            .halign(gtk4::Align::Start)
-            .css_classes(["dim-label", "caption"])
+            .valign(gtk4::Align::Center)
             .build();
 
-        grid.attach(&wait_label, 0, 4, 1, 1);
-        grid.attach(&wait_spin, 1, 4, 1, 1);
-        grid.attach(&wait_hint, 2, 4, 1, 1);
-
-        frame_vbox.append(&grid);
-
-        let frame = Frame::builder()
-            .label("WOL Settings")
-            .child(&frame_vbox)
+        let wait_row = adw::ActionRow::builder()
+            .title("Wait Time (seconds)")
+            .subtitle("Time to wait for machine to boot before connecting")
             .build();
-        vbox.append(&frame);
+        wait_row.add_suffix(&wait_spin);
+        settings_group.add(&wait_row);
 
-        // Connect enabled checkbox to enable/disable fields
-        let mac_entry_clone = mac_entry.clone();
-        let broadcast_entry_clone = broadcast_entry.clone();
-        let port_spin_clone = port_spin.clone();
-        let wait_spin_clone = wait_spin.clone();
+        content.append(&settings_group);
+
+        // Status info group
+        let status_group = adw::PreferencesGroup::builder()
+            .title("Status")
+            .description(
+                "WOL packets will be sent automatically when connecting.\n\
+                 Status feedback will be shown in the connection progress dialog.",
+            )
+            .build();
+
+        content.append(&status_group);
+
+        // Connect enabled checkbox to enable/disable settings group
+        let settings_group_clone = settings_group.clone();
         enabled_check.connect_toggled(move |check| {
-            let enabled = check.is_active();
-            mac_entry_clone.set_sensitive(enabled);
-            broadcast_entry_clone.set_sensitive(enabled);
-            port_spin_clone.set_sensitive(enabled);
-            wait_spin_clone.set_sensitive(enabled);
+            settings_group_clone.set_sensitive(check.is_active());
         });
 
-        // Status section for feedback
-        let status_frame_vbox = GtkBox::new(Orientation::Vertical, 8);
-        status_frame_vbox.set_margin_top(8);
-        status_frame_vbox.set_margin_bottom(8);
-        status_frame_vbox.set_margin_start(8);
-        status_frame_vbox.set_margin_end(8);
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
 
-        let status_info = Label::builder()
-            .label("WOL packets will be sent automatically when connecting to this host.\nStatus feedback will be shown in the connection progress dialog.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        status_frame_vbox.append(&status_info);
-
-        let status_frame = Frame::builder()
-            .label("Status")
-            .child(&status_frame_vbox)
-            .margin_top(12)
-            .build();
-        vbox.append(&status_frame);
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -5522,9 +5571,9 @@ impl ConnectionDialog {
 
     /// Sets up the callback for the "Load from `KeePass`" button
     ///
-    /// The callback receives the connection name, host, and protocol, and should return the password.
-    /// If the password is found, it will be set in the password entry.
-    pub fn connect_load_from_keepass<F: Fn(&str, &str, &str) -> Option<String> + 'static>(
+    /// The callback receives the connection name, host, protocol, password entry, and window.
+    /// The callback should handle the async loading and update the password entry when done.
+    pub fn connect_load_from_keepass<F: Fn(&str, &str, &str, Entry, gtk4::Window) + 'static>(
         &self,
         callback: F,
     ) {
@@ -5557,15 +5606,13 @@ impl ConnectionDialog {
                 return;
             }
 
-            if let Some(password) = callback(&name, &host, protocol) {
-                password_entry.set_text(&password);
-            } else {
-                crate::toast::show_toast_on_window(
-                    &window,
-                    "No password found in KeePass for this connection",
-                    crate::toast::ToastType::Info,
-                );
-            }
+            callback(
+                &name,
+                &host,
+                protocol,
+                password_entry.clone(),
+                window.clone().into(),
+            );
         });
     }
 

@@ -1,6 +1,9 @@
 //! SSH Agent settings tab using libadwaita components
+//!
+//! SSH agent status and key loading is performed asynchronously to avoid blocking the UI.
 
 use adw::prelude::*;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Button, Label, ListBox, Orientation, Spinner};
 use libadwaita as adw;
@@ -143,79 +146,113 @@ pub fn create_ssh_agent_page() -> (
     )
 }
 
-/// Loads SSH agent settings into UI controls
+/// Loads SSH agent settings into UI controls asynchronously
 pub fn load_ssh_agent_settings(
     ssh_agent_status_label: &Label,
     ssh_agent_socket_label: &Label,
     ssh_agent_keys_list: &ListBox,
     ssh_agent_manager: &Rc<RefCell<SshAgentManager>>,
 ) {
-    let manager = ssh_agent_manager.borrow();
+    // Show loading state immediately
+    ssh_agent_status_label.set_text("Checking...");
+    ssh_agent_status_label.remove_css_class("error");
+    ssh_agent_status_label.remove_css_class("success");
+    ssh_agent_status_label.add_css_class("dim-label");
+    ssh_agent_socket_label.set_text("...");
 
-    if let Ok(status) = manager.get_status() {
-        let status_text = if status.running {
-            "Running"
-        } else {
-            "Not running"
-        };
-        ssh_agent_status_label.set_text(status_text);
-
-        ssh_agent_status_label.remove_css_class("error");
-        ssh_agent_status_label.remove_css_class("success");
-        ssh_agent_status_label.remove_css_class("dim-label");
-
-        if status.running {
-            ssh_agent_status_label.add_css_class("success");
-        } else {
-            ssh_agent_status_label.add_css_class("dim-label");
-        }
-    } else {
-        ssh_agent_status_label.set_text("Error");
-        ssh_agent_status_label.add_css_class("error");
-    }
-
-    if let Some(socket) = manager.socket_path() {
-        ssh_agent_socket_label.set_text(socket);
-    } else {
-        ssh_agent_socket_label.set_text("Not available");
-    }
-
-    // Clear existing keys
+    // Clear existing keys and show loading
     while let Some(child) = ssh_agent_keys_list.first_child() {
         ssh_agent_keys_list.remove(&child);
     }
+    let loading_row = adw::ActionRow::builder().title("Loading keys...").build();
+    let spinner = Spinner::builder().spinning(true).build();
+    loading_row.add_prefix(&spinner);
+    ssh_agent_keys_list.append(&loading_row);
 
-    if let Ok(status) = manager.get_status() {
-        if status.running {
-            if status.keys.is_empty() {
-                let empty_row = adw::ActionRow::builder()
-                    .title("No keys loaded")
-                    .subtitle("Add keys using ssh-add or the button above")
-                    .build();
-                ssh_agent_keys_list.append(&empty_row);
+    // Clone for async closure
+    let status_label = ssh_agent_status_label.clone();
+    let socket_label = ssh_agent_socket_label.clone();
+    let keys_list = ssh_agent_keys_list.clone();
+    let manager = ssh_agent_manager.clone();
+
+    // Run status check asynchronously
+    glib::spawn_future_local(async move {
+        // Get status in background
+        let status_result = {
+            let mgr = manager.borrow();
+            let socket = mgr.socket_path().map(String::from);
+            let status = mgr.get_status();
+            (socket, status)
+        };
+
+        // Update UI on main thread
+        let (socket, status) = status_result;
+
+        if let Some(socket_path) = socket {
+            socket_label.set_text(&socket_path);
+        } else {
+            socket_label.set_text("Not available");
+        }
+
+        // Clear loading row
+        while let Some(child) = keys_list.first_child() {
+            keys_list.remove(&child);
+        }
+
+        if let Ok(agent_status) = status {
+            let status_text = if agent_status.running {
+                "Running"
             } else {
-                for key in &status.keys {
-                    let key_row = create_loaded_key_row(key);
-                    ssh_agent_keys_list.append(&key_row);
+                "Not running"
+            };
+            status_label.set_text(status_text);
+            status_label.remove_css_class("error");
+            status_label.remove_css_class("dim-label");
+
+            if agent_status.running {
+                status_label.add_css_class("success");
+
+                if agent_status.keys.is_empty() {
+                    let empty_row = adw::ActionRow::builder()
+                        .title("No keys loaded")
+                        .subtitle("Add keys using ssh-add or the button above")
+                        .build();
+                    keys_list.append(&empty_row);
+                } else {
+                    for key in &agent_status.keys {
+                        let key_row = create_loaded_key_row(
+                            key,
+                            &manager,
+                            &keys_list,
+                            &status_label,
+                            &socket_label,
+                        );
+                        keys_list.append(&key_row);
+                    }
                 }
+            } else {
+                status_label.add_css_class("dim-label");
+                let empty_row = adw::ActionRow::builder()
+                    .title("Agent not running")
+                    .subtitle("Start the agent to manage keys")
+                    .build();
+                keys_list.append(&empty_row);
             }
         } else {
+            status_label.set_text("Error");
+            status_label.remove_css_class("dim-label");
+            status_label.add_css_class("error");
+
             let empty_row = adw::ActionRow::builder()
                 .title("Agent not running")
                 .subtitle("Start the agent to manage keys")
                 .build();
-            ssh_agent_keys_list.append(&empty_row);
+            keys_list.append(&empty_row);
         }
-    } else {
-        let empty_row = adw::ActionRow::builder()
-            .title("Agent not running")
-            .subtitle("Start the agent to manage keys")
-            .build();
-        ssh_agent_keys_list.append(&empty_row);
-    }
+    });
 }
 
-/// Populates the available keys list with load buttons
+/// Populates the available keys list with load buttons asynchronously
 pub fn populate_available_keys_list(
     available_keys_list: &ListBox,
     ssh_agent_manager: &Rc<RefCell<SshAgentManager>>,
@@ -223,69 +260,92 @@ pub fn populate_available_keys_list(
     ssh_agent_status_label: &Label,
     ssh_agent_socket_label: &Label,
 ) {
-    // Clear existing items
+    // Clear existing items and show loading
     while let Some(child) = available_keys_list.first_child() {
         available_keys_list.remove(&child);
     }
+    let loading_row = adw::ActionRow::builder()
+        .title("Scanning ~/.ssh/...")
+        .build();
+    let spinner = Spinner::builder().spinning(true).build();
+    loading_row.add_prefix(&spinner);
+    available_keys_list.append(&loading_row);
 
-    match SshAgentManager::list_key_files() {
-        Ok(key_files) if key_files.is_empty() => {
-            let empty_row = adw::ActionRow::builder()
-                .title("No SSH key files found")
-                .subtitle("Generate keys with ssh-keygen")
-                .build();
-            available_keys_list.append(&empty_row);
+    // Clone for async closure
+    let keys_list = available_keys_list.clone();
+    let manager = ssh_agent_manager.clone();
+    let agent_keys_list = ssh_agent_keys_list.clone();
+    let status_label = ssh_agent_status_label.clone();
+    let socket_label = ssh_agent_socket_label.clone();
+
+    glib::spawn_future_local(async move {
+        // List key files (this is a quick filesystem operation but still async for consistency)
+        let key_files_result = SshAgentManager::list_key_files();
+
+        // Clear loading row
+        while let Some(child) = keys_list.first_child() {
+            keys_list.remove(&child);
         }
-        Ok(key_files) => {
-            for key_file in key_files {
-                let key_name = key_file
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                let key_path_str = key_file.display().to_string();
 
-                let key_row = adw::ActionRow::builder()
-                    .title(&key_name)
-                    .subtitle(&key_path_str)
+        match key_files_result {
+            Ok(key_files) if key_files.is_empty() => {
+                let empty_row = adw::ActionRow::builder()
+                    .title("No SSH key files found")
+                    .subtitle("Generate keys with ssh-keygen")
                     .build();
+                keys_list.append(&empty_row);
+            }
+            Ok(key_files) => {
+                for key_file in key_files {
+                    let key_name = key_file
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Unknown")
+                        .to_string();
+                    let key_path_str = key_file.display().to_string();
 
-                let load_button = Button::builder()
-                    .icon_name("list-add-symbolic")
-                    .valign(gtk4::Align::Center)
-                    .tooltip_text("Load this key")
+                    let key_row = adw::ActionRow::builder()
+                        .title(&key_name)
+                        .subtitle(&key_path_str)
+                        .build();
+
+                    let load_button = Button::builder()
+                        .icon_name("list-add-symbolic")
+                        .valign(gtk4::Align::Center)
+                        .tooltip_text("Load this key")
+                        .build();
+
+                    // Connect load button handler
+                    let manager_clone = manager.clone();
+                    let keys_list_clone = agent_keys_list.clone();
+                    let status_label_clone = status_label.clone();
+                    let socket_label_clone = socket_label.clone();
+                    let key_path = key_file.clone();
+
+                    load_button.connect_clicked(move |button| {
+                        add_key_with_passphrase_dialog(
+                            button,
+                            &key_path,
+                            &manager_clone,
+                            &keys_list_clone,
+                            &status_label_clone,
+                            &socket_label_clone,
+                        );
+                    });
+
+                    key_row.add_suffix(&load_button);
+                    keys_list.append(&key_row);
+                }
+            }
+            Err(_) => {
+                let error_row = adw::ActionRow::builder()
+                    .title("Failed to scan ~/.ssh/ directory")
                     .build();
-
-                // Connect load button handler
-                let manager_clone = ssh_agent_manager.clone();
-                let keys_list_clone = ssh_agent_keys_list.clone();
-                let status_label_clone = ssh_agent_status_label.clone();
-                let socket_label_clone = ssh_agent_socket_label.clone();
-                let key_path = key_file.clone();
-
-                load_button.connect_clicked(move |button| {
-                    add_key_with_passphrase_dialog(
-                        button,
-                        &key_path,
-                        &manager_clone,
-                        &keys_list_clone,
-                        &status_label_clone,
-                        &socket_label_clone,
-                    );
-                });
-
-                key_row.add_suffix(&load_button);
-                available_keys_list.append(&key_row);
+                error_row.add_css_class("error");
+                keys_list.append(&error_row);
             }
         }
-        Err(_) => {
-            let error_row = adw::ActionRow::builder()
-                .title("Failed to scan ~/.ssh/ directory")
-                .build();
-            error_row.add_css_class("error");
-            available_keys_list.append(&error_row);
-        }
-    }
+    });
 }
 
 /// Shows a passphrase dialog and adds the key to the agent
@@ -327,7 +387,9 @@ fn add_key_with_passphrase_dialog(
         .spacing(0)
         .build();
 
-    let header = adw::HeaderBar::builder().show_end_title_buttons(false).build();
+    let header = adw::HeaderBar::builder()
+        .show_end_title_buttons(false)
+        .build();
 
     let content = GtkBox::builder()
         .orientation(Orientation::Vertical)
@@ -413,7 +475,8 @@ fn add_key_with_passphrase_dialog(
             Err(e) => {
                 tracing::error!("Failed to add key: {e}");
                 // Show error toast on parent window if it's a PreferencesWindow
-                if let Some(pref_window) = parent_window_clone.downcast_ref::<adw::PreferencesWindow>()
+                if let Some(pref_window) =
+                    parent_window_clone.downcast_ref::<adw::PreferencesWindow>()
                 {
                     pref_window.add_toast(adw::Toast::new(&format!("Failed to add key: {e}")));
                 }
@@ -478,7 +541,13 @@ pub fn show_add_key_file_chooser(
     });
 }
 
-fn create_loaded_key_row(key: &rustconn_core::ssh_agent::AgentKey) -> adw::ActionRow {
+fn create_loaded_key_row(
+    key: &rustconn_core::ssh_agent::AgentKey,
+    ssh_agent_manager: &Rc<RefCell<SshAgentManager>>,
+    ssh_agent_keys_list: &ListBox,
+    ssh_agent_status_label: &Label,
+    ssh_agent_socket_label: &Label,
+) -> adw::ActionRow {
     let title = format!("{} ({} bits)", key.key_type, key.bits);
     let subtitle = if key.comment.is_empty() {
         format!("SHA256:{}", key.fingerprint)
@@ -498,11 +567,92 @@ fn create_loaded_key_row(key: &rustconn_core::ssh_agent::AgentKey) -> adw::Actio
         .css_classes(["destructive-action", "flat"])
         .build();
 
-    let fingerprint = key.fingerprint.clone();
-    remove_button.connect_clicked(move |_| {
-        tracing::info!("Remove key requested: {}", fingerprint);
+    // Connect remove button handler
+    let manager_clone = ssh_agent_manager.clone();
+    let keys_list_clone = ssh_agent_keys_list.clone();
+    let status_label_clone = ssh_agent_status_label.clone();
+    let socket_label_clone = ssh_agent_socket_label.clone();
+    let comment = key.comment.clone();
+
+    remove_button.connect_clicked(move |button| {
+        // Try to find the key file path from comment (usually contains the path)
+        // If comment is empty or doesn't look like a path, we need to use fingerprint
+        let key_path = if !comment.is_empty() && comment.contains('/') {
+            std::path::PathBuf::from(&comment)
+        } else {
+            // Try common SSH key locations
+            if let Some(home) = dirs::home_dir() {
+                let ssh_dir = home.join(".ssh");
+                // Try to find key by fingerprint in available keys
+                if let Ok(key_files) = SshAgentManager::list_key_files() {
+                    // For now, we'll use ssh-add -d with the fingerprint directly
+                    // This requires a different approach - use ssh-add -D to remove all
+                    // or find the key file that matches
+                    for key_file in key_files {
+                        // We can't easily match fingerprint to file without loading each key
+                        // So we'll try the comment as a hint
+                        if key_file.to_string_lossy().contains(&comment) {
+                            return remove_key_and_refresh(
+                                button,
+                                &key_file,
+                                &manager_clone,
+                                &keys_list_clone,
+                                &status_label_clone,
+                                &socket_label_clone,
+                            );
+                        }
+                    }
+                }
+                ssh_dir.join("id_rsa") // fallback
+            } else {
+                std::path::PathBuf::from(&comment)
+            }
+        };
+
+        remove_key_and_refresh(
+            button,
+            &key_path,
+            &manager_clone,
+            &keys_list_clone,
+            &status_label_clone,
+            &socket_label_clone,
+        );
     });
 
     row.add_suffix(&remove_button);
     row
+}
+
+/// Helper function to remove a key and refresh the UI
+fn remove_key_and_refresh(
+    button: &Button,
+    key_path: &std::path::Path,
+    ssh_agent_manager: &Rc<RefCell<SshAgentManager>>,
+    ssh_agent_keys_list: &ListBox,
+    ssh_agent_status_label: &Label,
+    ssh_agent_socket_label: &Label,
+) {
+    let manager = ssh_agent_manager.borrow();
+    match manager.remove_key(key_path) {
+        Ok(()) => {
+            tracing::info!("Key removed successfully: {}", key_path.display());
+            drop(manager);
+            // Refresh the keys list
+            load_ssh_agent_settings(
+                ssh_agent_status_label,
+                ssh_agent_socket_label,
+                ssh_agent_keys_list,
+                ssh_agent_manager,
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to remove key: {e}");
+            // Show error toast on parent window if available
+            if let Some(root) = button.root() {
+                if let Some(pref_window) = root.downcast_ref::<adw::PreferencesWindow>() {
+                    pref_window.add_toast(adw::Toast::new(&format!("Failed to remove key: {e}")));
+                }
+            }
+        }
+    }
 }

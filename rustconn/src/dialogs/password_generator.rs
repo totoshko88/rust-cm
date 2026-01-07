@@ -22,7 +22,7 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
     let window = adw::Window::builder()
         .title("Password Generator")
         .modal(true)
-        .default_width(500)
+        .default_width(750)
         .default_height(700)
         .resizable(true)
         .build();
@@ -247,7 +247,7 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         .build();
     let special_row = adw::ActionRow::builder()
         .title("Special")
-        .subtitle("!@#$%^&*")
+        .subtitle("!@#$%^&amp;*")
         .build();
     special_row.add_suffix(&special_switch);
     special_row.set_activatable_widget(Some(&special_switch));
@@ -260,7 +260,7 @@ pub fn show_password_generator_dialog(parent: Option<&impl IsA<gtk4::Window>>) {
         .build();
     let extended_row = adw::ActionRow::builder()
         .title("Extended")
-        .subtitle("()[]{}|;:,.<>?/")
+        .subtitle("()[]{}|;:,.&lt;&gt;?/")
         .build();
     extended_row.add_suffix(&extended_switch);
     extended_row.set_activatable_widget(Some(&extended_switch));

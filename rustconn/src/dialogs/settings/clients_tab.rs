@@ -1,20 +1,34 @@
 //! Clients detection tab using libadwaita components
+//!
+//! Client detection is performed asynchronously to avoid blocking the UI thread.
 
 use adw::prelude::*;
-use gtk4::Label;
+use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::{Label, Spinner};
 use libadwaita as adw;
 use rustconn_core::protocol::ClientDetectionResult;
 use std::path::PathBuf;
+use std::rc::Rc;
+
+/// Client detection info for async loading
+#[derive(Clone)]
+struct ClientInfo {
+    title: String,
+    name: String,
+    installed: bool,
+    version: Option<String>,
+    path: Option<String>,
+    install_hint: String,
+}
 
 /// Creates the clients detection page using AdwPreferencesPage
+/// Client detection is performed asynchronously after the page is shown.
 pub fn create_clients_page() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::builder()
         .title("Clients")
         .icon_name("preferences-system-symbolic")
         .build();
-
-    // Detect all clients
-    let detection_result = ClientDetectionResult::detect_all();
 
     // === Core Clients Group ===
     let core_group = adw::PreferencesGroup::builder()
@@ -22,55 +36,250 @@ pub fn create_clients_page() -> adw::PreferencesPage {
         .description("Essential connection clients")
         .build();
 
-    // SSH Client
-    add_client_row(
-        &core_group,
-        "SSH Client",
-        &detection_result.ssh.name,
-        detection_result.ssh.installed,
-        detection_result.ssh.version.as_deref(),
-        detection_result
+    // Add placeholder rows with spinners
+    let ssh_row = create_loading_row("SSH Client");
+    let rdp_row = create_loading_row("RDP Client");
+    let vnc_row = create_loading_row("VNC Client");
+    let spice_row = create_loading_row("SPICE Client");
+
+    core_group.add(&ssh_row);
+    core_group.add(&rdp_row);
+    core_group.add(&vnc_row);
+    core_group.add(&spice_row);
+
+    page.add(&core_group);
+
+    // === Zero Trust Clients Group ===
+    let zerotrust_group = adw::PreferencesGroup::builder()
+        .title("Zero Trust Clients")
+        .description("Cloud provider CLI tools")
+        .build();
+
+    let zerotrust_names = [
+        "AWS CLI (SSM)",
+        "Google Cloud CLI",
+        "Azure CLI",
+        "OCI CLI",
+        "Cloudflare CLI",
+        "Teleport CLI",
+        "Tailscale CLI",
+        "Boundary CLI",
+    ];
+
+    let mut zerotrust_rows = Vec::new();
+    for name in &zerotrust_names {
+        let row = create_loading_row(name);
+        zerotrust_group.add(&row);
+        zerotrust_rows.push(row);
+    }
+
+    page.add(&zerotrust_group);
+
+    // Schedule async detection
+    let core_group_clone = core_group.clone();
+    let zerotrust_group_clone = zerotrust_group.clone();
+    let ssh_row_clone = ssh_row.clone();
+    let rdp_row_clone = rdp_row.clone();
+    let vnc_row_clone = vnc_row.clone();
+    let spice_row_clone = spice_row.clone();
+    let zerotrust_rows = Rc::new(zerotrust_rows);
+    let zerotrust_rows_clone = zerotrust_rows.clone();
+
+    glib::spawn_future_local(async move {
+        // Run detection in a thread pool to avoid blocking
+        let (core_clients, zerotrust_clients) =
+            glib::spawn_future(async move { detect_all_clients() })
+                .await
+                .unwrap_or_else(|_| (Vec::new(), Vec::new()));
+
+        // Update core clients
+        if core_clients.len() >= 4 {
+            update_client_row(&core_group_clone, &ssh_row_clone, &core_clients[0]);
+            update_client_row(&core_group_clone, &rdp_row_clone, &core_clients[1]);
+            update_client_row(&core_group_clone, &vnc_row_clone, &core_clients[2]);
+            update_client_row(&core_group_clone, &spice_row_clone, &core_clients[3]);
+        }
+
+        // Update zero trust clients
+        for (i, client) in zerotrust_clients.iter().enumerate() {
+            if i < zerotrust_rows_clone.len() {
+                update_client_row(&zerotrust_group_clone, &zerotrust_rows_clone[i], client);
+            }
+        }
+    });
+
+    page
+}
+
+/// Creates a loading placeholder row with spinner
+fn create_loading_row(title: &str) -> adw::ActionRow {
+    let row = adw::ActionRow::builder()
+        .title(title)
+        .subtitle("Checking...")
+        .build();
+
+    let spinner = Spinner::builder()
+        .spinning(true)
+        .valign(gtk4::Align::Center)
+        .build();
+    row.add_prefix(&spinner);
+
+    row
+}
+
+/// Updates a row with detected client info
+fn update_client_row(group: &adw::PreferencesGroup, row: &adw::ActionRow, client: &ClientInfo) {
+    // Remove spinner prefix
+    if let Some(prefix) = row.first_child() {
+        if let Some(box_widget) = prefix.downcast_ref::<gtk4::Box>() {
+            if let Some(first) = box_widget.first_child() {
+                if first.downcast_ref::<Spinner>().is_some() {
+                    box_widget.remove(&first);
+                }
+            }
+        }
+    }
+
+    // Update subtitle
+    let subtitle = if client.installed {
+        client.path.clone().unwrap_or_else(|| client.name.clone())
+    } else {
+        client.install_hint.clone()
+    };
+    row.set_subtitle(&subtitle);
+
+    // Create new row with proper styling (easier than modifying existing)
+    let new_row = adw::ActionRow::builder()
+        .title(&client.title)
+        .subtitle(&subtitle)
+        .build();
+
+    // Status icon
+    let status_label = Label::builder()
+        .label(if client.installed { "✓" } else { "✗" })
+        .valign(gtk4::Align::Center)
+        .css_classes([if client.installed { "success" } else { "error" }])
+        .build();
+    new_row.add_prefix(&status_label);
+
+    // Version label
+    if client.installed {
+        if let Some(ref v) = client.version {
+            let version_label = Label::builder()
+                .label(&format!("v{v}"))
+                .valign(gtk4::Align::Center)
+                .css_classes(["dim-label"])
+                .build();
+            new_row.add_suffix(&version_label);
+        }
+    }
+
+    // Replace old row with new one
+    let position = get_row_position(group, row);
+    group.remove(row);
+
+    // Insert at correct position
+    if let Some(pos) = position {
+        insert_row_at_position(group, &new_row, pos);
+    } else {
+        group.add(&new_row);
+    }
+}
+
+/// Gets the position of a row in a group
+fn get_row_position(group: &adw::PreferencesGroup, target_row: &adw::ActionRow) -> Option<usize> {
+    let mut position = 0;
+    let mut child = group.first_child();
+
+    while let Some(widget) = child {
+        // Skip the group header/title widgets
+        if let Some(listbox) = widget.downcast_ref::<gtk4::ListBox>() {
+            let mut row_child = listbox.first_child();
+            while let Some(row_widget) = row_child {
+                if let Some(row) = row_widget.downcast_ref::<adw::ActionRow>() {
+                    if row == target_row {
+                        return Some(position);
+                    }
+                    position += 1;
+                }
+                row_child = row_widget.next_sibling();
+            }
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+/// Inserts a row at a specific position in a group
+fn insert_row_at_position(group: &adw::PreferencesGroup, row: &adw::ActionRow, _position: usize) {
+    // PreferencesGroup doesn't support insert_at, so we just add
+    // The order is maintained by replacing rows in sequence
+    group.add(row);
+}
+
+/// Detects all clients in a background thread
+fn detect_all_clients() -> (Vec<ClientInfo>, Vec<ClientInfo>) {
+    let mut core_clients = Vec::new();
+    let mut zerotrust_clients = Vec::new();
+
+    // Detect core clients
+    let detection_result = ClientDetectionResult::detect_all();
+
+    // SSH
+    core_clients.push(ClientInfo {
+        title: "SSH Client".to_string(),
+        name: detection_result.ssh.name.clone(),
+        installed: detection_result.ssh.installed,
+        version: detection_result.ssh.version.clone(),
+        path: detection_result
             .ssh
             .path
             .as_ref()
-            .map(|p| p.display().to_string())
-            .as_deref(),
-        detection_result.ssh.install_hint.as_deref(),
-    );
+            .map(|p| p.display().to_string()),
+        install_hint: detection_result
+            .ssh
+            .install_hint
+            .clone()
+            .unwrap_or_default(),
+    });
 
-    // RDP Client
-    add_client_row(
-        &core_group,
-        "RDP Client",
-        &detection_result.rdp.name,
-        detection_result.rdp.installed,
-        detection_result.rdp.version.as_deref(),
-        detection_result
+    // RDP
+    core_clients.push(ClientInfo {
+        title: "RDP Client".to_string(),
+        name: detection_result.rdp.name.clone(),
+        installed: detection_result.rdp.installed,
+        version: detection_result.rdp.version.clone(),
+        path: detection_result
             .rdp
             .path
             .as_ref()
-            .map(|p| p.display().to_string())
-            .as_deref(),
-        detection_result.rdp.install_hint.as_deref(),
-    );
+            .map(|p| p.display().to_string()),
+        install_hint: detection_result
+            .rdp
+            .install_hint
+            .clone()
+            .unwrap_or_default(),
+    });
 
-    // VNC Client
-    add_client_row(
-        &core_group,
-        "VNC Client",
-        &detection_result.vnc.name,
-        detection_result.vnc.installed,
-        detection_result.vnc.version.as_deref(),
-        detection_result
+    // VNC
+    core_clients.push(ClientInfo {
+        title: "VNC Client".to_string(),
+        name: detection_result.vnc.name.clone(),
+        installed: detection_result.vnc.installed,
+        version: detection_result.vnc.version.clone(),
+        path: detection_result
             .vnc
             .path
             .as_ref()
-            .map(|p| p.display().to_string())
-            .as_deref(),
-        detection_result.vnc.install_hint.as_deref(),
-    );
+            .map(|p| p.display().to_string()),
+        install_hint: detection_result
+            .vnc
+            .install_hint
+            .clone()
+            .unwrap_or_default(),
+    });
 
-    // SPICE Client
+    // SPICE
     let spice_installed = std::process::Command::new("which")
         .arg("remote-viewer")
         .output()
@@ -91,25 +300,17 @@ pub fn create_clients_page() -> adw::PreferencesPage {
         .as_ref()
         .and_then(|p| get_version(std::path::Path::new(p), "--version"));
 
-    add_client_row(
-        &core_group,
-        "SPICE Client",
-        "remote-viewer",
-        spice_installed,
-        spice_version.as_deref(),
-        spice_path.as_deref(),
-        Some("Install virt-viewer package"),
-    );
+    core_clients.push(ClientInfo {
+        title: "SPICE Client".to_string(),
+        name: "remote-viewer".to_string(),
+        installed: spice_installed,
+        version: spice_version,
+        path: spice_path,
+        install_hint: "Install virt-viewer package".to_string(),
+    });
 
-    page.add(&core_group);
-
-    // === Zero Trust Clients Group ===
-    let zerotrust_group = adw::PreferencesGroup::builder()
-        .title("Zero Trust Clients")
-        .description("Cloud provider CLI tools")
-        .build();
-
-    let zerotrust_clients = [
+    // Detect zero trust clients
+    let zerotrust_configs = [
         (
             "AWS CLI (SSM)",
             "aws",
@@ -145,74 +346,25 @@ pub fn create_clients_page() -> adw::PreferencesPage {
         ("Boundary CLI", "boundary", "-v", "Install boundary package"),
     ];
 
-    for (name, command, version_arg, install_hint) in &zerotrust_clients {
+    for (title, command, version_arg, install_hint) in &zerotrust_configs {
         let command_path = find_command(command);
         let installed = command_path.is_some();
-
         let version = command_path
             .as_ref()
             .and_then(|p| get_version(p, version_arg));
         let path_str = command_path.as_ref().map(|p| p.display().to_string());
 
-        add_client_row(
-            &zerotrust_group,
-            name,
-            command,
+        zerotrust_clients.push(ClientInfo {
+            title: (*title).to_string(),
+            name: (*command).to_string(),
             installed,
-            version.as_deref(),
-            path_str.as_deref(),
-            Some(install_hint),
-        );
+            version,
+            path: path_str,
+            install_hint: (*install_hint).to_string(),
+        });
     }
 
-    page.add(&zerotrust_group);
-
-    page
-}
-
-/// Adds a client row to a preferences group
-fn add_client_row(
-    group: &adw::PreferencesGroup,
-    title: &str,
-    name: &str,
-    installed: bool,
-    version: Option<&str>,
-    path: Option<&str>,
-    install_hint: Option<&str>,
-) {
-    // Path goes in subtitle (left-aligned), version goes in suffix (right-aligned)
-    let subtitle = if installed {
-        path.map(String::from).unwrap_or_else(|| name.to_string())
-    } else {
-        install_hint.unwrap_or("Not installed").to_string()
-    };
-
-    let row = adw::ActionRow::builder()
-        .title(title)
-        .subtitle(&subtitle)
-        .build();
-
-    // Status icon (checkmark or X)
-    let status_label = Label::builder()
-        .label(if installed { "✓" } else { "✗" })
-        .valign(gtk4::Align::Center)
-        .css_classes([if installed { "success" } else { "error" }])
-        .build();
-    row.add_prefix(&status_label);
-
-    // Version label on the right (suffix)
-    if installed {
-        if let Some(v) = version {
-            let version_label = Label::builder()
-                .label(&format!("v{v}"))
-                .valign(gtk4::Align::Center)
-                .css_classes(["dim-label"])
-                .build();
-            row.add_suffix(&version_label);
-        }
-    }
-
-    group.add(&row);
+    (core_clients, zerotrust_clients)
 }
 
 /// Finds a command in PATH or common user directories

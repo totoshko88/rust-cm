@@ -85,7 +85,7 @@ pub fn create_terminal_page() -> (
         .spacing(0)
         .valign(gtk4::Align::Center)
         .css_classes(["linked"])
-        .width_request(255)
+        .width_request(240)
         .build();
 
     let shape_block_btn = ToggleButton::builder()
@@ -118,7 +118,7 @@ pub fn create_terminal_page() -> (
         .spacing(0)
         .valign(gtk4::Align::Center)
         .css_classes(["linked"])
-        .width_request(255)
+        .width_request(240)
         .build();
 
     let blink_on_btn = ToggleButton::builder()
