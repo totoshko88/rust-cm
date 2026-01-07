@@ -1,4 +1,12 @@
 -------------------------------------------------------------------
+Tue Jan 07 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.7
+
+- Update to version 0.5.7
+  * Fixed Test button in New Connection dialog (async runtime issue with GTK)
+  * Updated dependencies: h2, proc-macro2, quote, rsa, rustls, serde_json, url, zerocopy
+  * Note: sspi and picky-krb kept at previous versions due to rand_core compatibility
+
+-------------------------------------------------------------------
 Sun Jan 04 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.6
 
 - Update to version 0.5.6

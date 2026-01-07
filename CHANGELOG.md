@@ -5,6 +5,15 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-01-07
+
+### Changed
+- Updated dependencies: h2 0.4.12→0.4.13, proc-macro2 1.0.104→1.0.105, quote 1.0.42→1.0.43, rsa 0.9.9→0.9.10, rustls 0.23.35→0.23.36, serde_json 1.0.148→1.0.149, url 2.5.7→2.5.8, zerocopy 0.8.31→0.8.32
+- Note: sspi and picky-krb kept at previous versions due to rand_core compatibility issues
+
+### Fixed
+- Test button in New Connection dialog now works correctly (fixed async runtime issue with GTK)
+
 ## [0.5.6] - 2026-01-07
 
 ### Added
@@ -467,7 +476,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/totoshko88/RustConn/compare/v0.5.6...v0.5.7
+[0.5.6]: https://github.com/totoshko88/RustConn/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/totoshko88/RustConn/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/totoshko88/RustConn/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/totoshko88/RustConn/compare/v0.5.2...v0.5.3
