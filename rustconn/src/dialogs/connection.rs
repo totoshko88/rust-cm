@@ -790,36 +790,119 @@ impl ConnectionDialog {
             btn.set_sensitive(false);
             btn.set_label("Testing...");
 
-            // Perform the test asynchronously
-            let connection_clone = connection.clone();
+            // Clone data needed for the test (not GTK widgets)
+            let host = connection.host.clone();
+            let port = connection.port;
+            let conn_id = connection.id;
+            let conn_name = connection.name.clone();
+            let protocol = connection.protocol;
+
+            // Perform the test in a background thread with tokio runtime
             let test_button_clone = btn.clone();
             let window_clone = window.clone();
 
-            gtk4::glib::spawn_future_local(async move {
+            // Use Arc to share result between threads
+            let result_holder: std::sync::Arc<
+                std::sync::Mutex<Option<rustconn_core::testing::TestResult>>,
+            > = std::sync::Arc::new(std::sync::Mutex::new(None));
+            let result_holder_clone = result_holder.clone();
+
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
                 let tester = rustconn_core::testing::ConnectionTester::new();
-                let result = tester.test_connection(&connection_clone).await;
 
-                // Update UI on main thread
-                test_button_clone.set_sensitive(true);
-                test_button_clone.set_label("Test");
+                // Create a minimal connection for testing
+                let protocol_config = match protocol {
+                    rustconn_core::models::ProtocolType::Ssh => {
+                        rustconn_core::models::ProtocolConfig::Ssh(
+                            rustconn_core::models::SshConfig::default(),
+                        )
+                    }
+                    rustconn_core::models::ProtocolType::Rdp => {
+                        rustconn_core::models::ProtocolConfig::Rdp(
+                            rustconn_core::models::RdpConfig::default(),
+                        )
+                    }
+                    rustconn_core::models::ProtocolType::Vnc => {
+                        rustconn_core::models::ProtocolConfig::Vnc(
+                            rustconn_core::models::VncConfig::default(),
+                        )
+                    }
+                    rustconn_core::models::ProtocolType::Spice => {
+                        rustconn_core::models::ProtocolConfig::Spice(
+                            rustconn_core::models::SpiceConfig::default(),
+                        )
+                    }
+                    rustconn_core::models::ProtocolType::ZeroTrust => {
+                        rustconn_core::models::ProtocolConfig::Ssh(
+                            rustconn_core::models::SshConfig::default(),
+                        )
+                    }
+                };
+                let mut test_conn =
+                    rustconn_core::models::Connection::new(conn_name, host, port, protocol_config);
+                test_conn.id = conn_id;
 
-                if result.is_success() {
-                    let latency = result.latency_ms.unwrap_or(0);
-                    let dialog = gtk4::AlertDialog::builder()
-                        .message("Connection Test Successful")
-                        .detail(&format!("Connection successful! Latency: {}ms", latency))
-                        .modal(true)
-                        .build();
-                    dialog.show(Some(&window_clone));
-                } else {
-                    let error = result.error.unwrap_or_else(|| "Unknown error".to_string());
+                let result = rt.block_on(tester.test_connection(&test_conn));
+
+                // Store result
+                if let Ok(mut guard) = result_holder_clone.lock() {
+                    *guard = Some(result);
+                }
+            });
+
+            // Poll for result using timeout_add
+            let poll_count = std::rc::Rc::new(std::cell::RefCell::new(0u32));
+            let poll_count_clone = poll_count.clone();
+
+            gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                *poll_count_clone.borrow_mut() += 1;
+
+                // Check if result is ready
+                if let Ok(guard) = result_holder.lock() {
+                    if let Some(ref result) = *guard {
+                        // Update UI
+                        test_button_clone.set_sensitive(true);
+                        test_button_clone.set_label("Test");
+
+                        if result.is_success() {
+                            let latency = result.latency_ms.unwrap_or(0);
+                            let dialog = gtk4::AlertDialog::builder()
+                                .message("Connection Test Successful")
+                                .detail(&format!("Connection successful! Latency: {}ms", latency))
+                                .modal(true)
+                                .build();
+                            dialog.show(Some(&window_clone));
+                        } else {
+                            let error = result
+                                .error
+                                .clone()
+                                .unwrap_or_else(|| "Unknown error".to_string());
+                            let dialog = gtk4::AlertDialog::builder()
+                                .message("Connection Test Failed")
+                                .detail(&error)
+                                .modal(true)
+                                .build();
+                            dialog.show(Some(&window_clone));
+                        }
+                        return gtk4::glib::ControlFlow::Break;
+                    }
+                }
+
+                // Timeout after 15 seconds (150 * 100ms)
+                if *poll_count_clone.borrow() > 150 {
+                    test_button_clone.set_sensitive(true);
+                    test_button_clone.set_label("Test");
                     let dialog = gtk4::AlertDialog::builder()
                         .message("Connection Test Failed")
-                        .detail(&error)
+                        .detail("Test timed out")
                         .modal(true)
                         .build();
                     dialog.show(Some(&window_clone));
+                    return gtk4::glib::ControlFlow::Break;
                 }
+
+                gtk4::glib::ControlFlow::Continue
             });
         });
 
