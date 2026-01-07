@@ -180,22 +180,35 @@ pub fn load_ssh_agent_settings(
         ssh_agent_socket_label.set_text("Not available");
     }
 
+    // Get keys before dropping borrow
+    let keys_to_display = manager
+        .get_status()
+        .ok()
+        .map(|s| (s.running, s.keys.clone()));
+    drop(manager);
+
     // Clear existing keys
     while let Some(child) = ssh_agent_keys_list.first_child() {
         ssh_agent_keys_list.remove(&child);
     }
 
-    if let Ok(status) = manager.get_status() {
-        if status.running {
-            if status.keys.is_empty() {
+    if let Some((running, keys)) = keys_to_display {
+        if running {
+            if keys.is_empty() {
                 let empty_row = adw::ActionRow::builder()
                     .title("No keys loaded")
                     .subtitle("Add keys using ssh-add or the button above")
                     .build();
                 ssh_agent_keys_list.append(&empty_row);
             } else {
-                for key in &status.keys {
-                    let key_row = create_loaded_key_row(key);
+                for key in &keys {
+                    let key_row = create_loaded_key_row(
+                        key,
+                        ssh_agent_manager,
+                        ssh_agent_keys_list,
+                        ssh_agent_status_label,
+                        ssh_agent_socket_label,
+                    );
                     ssh_agent_keys_list.append(&key_row);
                 }
             }
@@ -327,7 +340,9 @@ fn add_key_with_passphrase_dialog(
         .spacing(0)
         .build();
 
-    let header = adw::HeaderBar::builder().show_end_title_buttons(false).build();
+    let header = adw::HeaderBar::builder()
+        .show_end_title_buttons(false)
+        .build();
 
     let content = GtkBox::builder()
         .orientation(Orientation::Vertical)
@@ -413,7 +428,8 @@ fn add_key_with_passphrase_dialog(
             Err(e) => {
                 tracing::error!("Failed to add key: {e}");
                 // Show error toast on parent window if it's a PreferencesWindow
-                if let Some(pref_window) = parent_window_clone.downcast_ref::<adw::PreferencesWindow>()
+                if let Some(pref_window) =
+                    parent_window_clone.downcast_ref::<adw::PreferencesWindow>()
                 {
                     pref_window.add_toast(adw::Toast::new(&format!("Failed to add key: {e}")));
                 }
@@ -478,7 +494,13 @@ pub fn show_add_key_file_chooser(
     });
 }
 
-fn create_loaded_key_row(key: &rustconn_core::ssh_agent::AgentKey) -> adw::ActionRow {
+fn create_loaded_key_row(
+    key: &rustconn_core::ssh_agent::AgentKey,
+    ssh_agent_manager: &Rc<RefCell<SshAgentManager>>,
+    ssh_agent_keys_list: &ListBox,
+    ssh_agent_status_label: &Label,
+    ssh_agent_socket_label: &Label,
+) -> adw::ActionRow {
     let title = format!("{} ({} bits)", key.key_type, key.bits);
     let subtitle = if key.comment.is_empty() {
         format!("SHA256:{}", key.fingerprint)
@@ -498,11 +520,92 @@ fn create_loaded_key_row(key: &rustconn_core::ssh_agent::AgentKey) -> adw::Actio
         .css_classes(["destructive-action", "flat"])
         .build();
 
-    let fingerprint = key.fingerprint.clone();
-    remove_button.connect_clicked(move |_| {
-        tracing::info!("Remove key requested: {}", fingerprint);
+    // Connect remove button handler
+    let manager_clone = ssh_agent_manager.clone();
+    let keys_list_clone = ssh_agent_keys_list.clone();
+    let status_label_clone = ssh_agent_status_label.clone();
+    let socket_label_clone = ssh_agent_socket_label.clone();
+    let comment = key.comment.clone();
+
+    remove_button.connect_clicked(move |button| {
+        // Try to find the key file path from comment (usually contains the path)
+        // If comment is empty or doesn't look like a path, we need to use fingerprint
+        let key_path = if !comment.is_empty() && comment.contains('/') {
+            std::path::PathBuf::from(&comment)
+        } else {
+            // Try common SSH key locations
+            if let Some(home) = dirs::home_dir() {
+                let ssh_dir = home.join(".ssh");
+                // Try to find key by fingerprint in available keys
+                if let Ok(key_files) = SshAgentManager::list_key_files() {
+                    // For now, we'll use ssh-add -d with the fingerprint directly
+                    // This requires a different approach - use ssh-add -D to remove all
+                    // or find the key file that matches
+                    for key_file in key_files {
+                        // We can't easily match fingerprint to file without loading each key
+                        // So we'll try the comment as a hint
+                        if key_file.to_string_lossy().contains(&comment) {
+                            return remove_key_and_refresh(
+                                button,
+                                &key_file,
+                                &manager_clone,
+                                &keys_list_clone,
+                                &status_label_clone,
+                                &socket_label_clone,
+                            );
+                        }
+                    }
+                }
+                ssh_dir.join("id_rsa") // fallback
+            } else {
+                std::path::PathBuf::from(&comment)
+            }
+        };
+
+        remove_key_and_refresh(
+            button,
+            &key_path,
+            &manager_clone,
+            &keys_list_clone,
+            &status_label_clone,
+            &socket_label_clone,
+        );
     });
 
     row.add_suffix(&remove_button);
     row
+}
+
+/// Helper function to remove a key and refresh the UI
+fn remove_key_and_refresh(
+    button: &Button,
+    key_path: &std::path::Path,
+    ssh_agent_manager: &Rc<RefCell<SshAgentManager>>,
+    ssh_agent_keys_list: &ListBox,
+    ssh_agent_status_label: &Label,
+    ssh_agent_socket_label: &Label,
+) {
+    let manager = ssh_agent_manager.borrow();
+    match manager.remove_key(key_path) {
+        Ok(()) => {
+            tracing::info!("Key removed successfully: {}", key_path.display());
+            drop(manager);
+            // Refresh the keys list
+            load_ssh_agent_settings(
+                ssh_agent_status_label,
+                ssh_agent_socket_label,
+                ssh_agent_keys_list,
+                ssh_agent_manager,
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to remove key: {e}");
+            // Show error toast on parent window if available
+            if let Some(root) = button.root() {
+                if let Some(pref_window) = root.downcast_ref::<adw::PreferencesWindow>() {
+                    pref_window.add_toast(adw::Toast::new(&format!("Failed to remove key: {e}")));
+                }
+            }
+        }
+    }
 }

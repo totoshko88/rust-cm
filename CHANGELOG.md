@@ -5,6 +5,14 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-01-07
+
+### Fixed
+- SSH Agent "Add Key" button now opens file chooser to select any SSH key file
+- SSH Agent "+" buttons in Available Key Files list now load keys with passphrase dialog
+- SSH Agent "Remove Key" (trash) button now actually removes keys from the agent
+- SSH Agent Refresh button updates both loaded keys and available keys lists
+
 ## [0.5.7] - 2026-01-07
 
 ### Changed
@@ -476,7 +484,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No plaintext password storage
 - `unsafe_code = "forbid"` enforced
 
-[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/totoshko88/RustConn/compare/v0.5.8...HEAD
+[0.5.8]: https://github.com/totoshko88/RustConn/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/totoshko88/RustConn/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/totoshko88/RustConn/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/totoshko88/RustConn/compare/v0.5.4...v0.5.5

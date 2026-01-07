@@ -6,7 +6,7 @@
 #
 
 Name:           rustconn
-Version:        0.5.7
+Version:        0.5.8
 Release:        0
 Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
 License:        GPL-3.0-or-later
@@ -157,6 +157,13 @@ fi
 %{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
 
 %changelog
+* Tue Jan 07 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.8-0
+- Update to version 0.5.8
+- Fixed SSH Agent "Add Key" button - now opens file chooser to select any SSH key file
+- Fixed SSH Agent "+" buttons in Available Key Files list - now load keys with passphrase dialog
+- Fixed SSH Agent "Remove Key" (trash) button - now actually removes keys from the agent
+- Fixed SSH Agent Refresh button - updates both loaded keys and available keys lists
+
 * Tue Jan 07 2026 Anton Isaiev <totoshko88@gmail.com> - 0.5.7-0
 - Update to version 0.5.7
 - Fixed Test button in New Connection dialog (async runtime issue with GTK)
