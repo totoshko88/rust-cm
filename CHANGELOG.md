@@ -5,7 +5,67 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.5] - 2026-01-02
+## [0.5.6] - 2026-01-07
+
+### Added
+- Enhanced terminal settings with color themes, cursor options, and behavior controls
+- Six built-in terminal color themes: Dark, Light, Solarized Dark/Light, Monokai, Dracula
+- Cursor shape options (Block, IBeam, Underline) and blink modes (On, Off, System)
+- Terminal behavior settings: scroll on output/keystroke, hyperlinks, mouse autohide, audible bell
+- Scrollable terminal settings dialog with organized sections
+- Security Tips section in Password Generator dialog with 5 best practice recommendations
+- Quick Filter functionality in sidebar for protocol filtering (SSH, RDP, VNC, SPICE, ZeroTrust)
+- Protocol filter buttons with icons and visual feedback (highlighted when active)
+- CSS styling for Quick Filter buttons with hover and active states
+- Enhanced Quick Filter with proper OR logic for multiple protocol selection
+- Visual feedback for multiple active filters with special styling (`filter-active-multiple` CSS class)
+- API methods for accessing active protocol filters (`get_active_protocol_filters`, `has_active_protocol_filters`, `active_protocol_filter_count`)
+- Fullscreen mode toggle with F11 keyboard shortcut
+- KeePass status button in sidebar toolbar with visual integration status indicator
+
+### Changed
+- Migrated to native libadwaita architecture:
+  - Application now uses `adw::Application` and `adw::ApplicationWindow` for proper theme integration
+  - All dialogs redesigned to use `adw::Window` with `adw::HeaderBar` following GNOME HIG
+  - Proper dark/light theme support via libadwaita StyleManager
+- Unified dialog widths: Rename and Edit Group dialogs now use 750px width (matching Move dialog)
+- Updated USER_GUIDE.md with complete documentation for all v0.5.5+ features
+- Updated dependencies: tokio 1.48→1.49, notify 7.0→8.2, thiserror 2.0→2.0.17, clap 4.5→4.5.23, quick-xml 0.37→0.38
+- Settings dialog UI refactored for lighter appearance:
+  - Removed Frame widgets from all tabs (SSH Agent, Terminal, Logging, Secrets, UI, Clients)
+  - Replaced with section headers using Label with `heading` CSS class
+  - Removed `boxed-list` CSS class from ListBox widgets
+  - Removed nested ScrolledWindow wrappers
+- Theme switching now uses libadwaita StyleManager instead of GTK Settings
+- Clients tab version parsing improved for all Zero Trust CLIs:
+  - OCI CLI: parses "3.71.4" format
+  - Tailscale: parses "1.92.3" format
+  - SPICE remote-viewer: parses "remote-viewer, версія 11.0" format
+
+### Fixed
+- Terminal settings now properly apply to all terminal sessions:
+  - SSH connections use user-configured terminal settings
+  - Zero Trust connections use user-configured terminal settings
+  - Quick Connect SSH sessions use user-configured terminal settings
+  - Local Shell uses user-configured terminal settings
+  - Saving settings in Settings dialog immediately applies to all existing terminals
+- Clients tab CLI version parsing:
+  - AWS CLI: parses "aws-cli/2.32.28 ..." format
+  - GCP CLI: parses "Google Cloud SDK 550.0.0" format
+  - Azure CLI: parses "azure-cli 2.81.0" format
+  - Cloudflare CLI: parses "cloudflared version 2025.11.1 ..." format
+  - Teleport: parses "Teleport v18.6.2 ..." format
+  - Boundary: parses "Version Number: 0.21.0" format
+- Clients tab now searches ~/bin/, ~/.local/bin/, ~/.cargo/bin/ for CLI tools
+- Fixed quick-xml 0.38 API compatibility in Royal TS import (replaced deprecated `unescape()` method)
+- Fixed Quick Filter logic to use proper OR logic for multiple protocol selection (connections matching ANY selected protocol are shown)
+- Improved Quick Filter visual feedback with enhanced styling for multiple active filters
+- Quick Filter now properly handles multiple protocol selection with clear visual indication
+- Removed redundant clear filter button from Quick Filter bar (search entry can be cleared manually)
+- Fixed Quick Filter button state synchronization - buttons are now properly cleared when search field is manually cleared
+- Fixed RefCell borrow conflict panic when toggling protocol filters - resolved recursive update issue
+
+## [0.5.5] - 2026-01-03
 
 ### Added
 - Kiro steering rules for development workflow:
