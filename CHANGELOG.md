@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.8] - 2026-01-07
 
+### Changed
+- Migrated Connection Dialog tabs to libadwaita components (GNOME HIG compliance):
+  - Display tab: `adw::PreferencesGroup` + `adw::ActionRow` for window mode settings
+  - Logging tab: `adw::PreferencesGroup` + `adw::ActionRow` for session logging configuration
+  - WOL tab: `adw::PreferencesGroup` + `adw::ActionRow` for Wake-on-LAN settings
+  - Variables tab: `adw::PreferencesGroup` for local variable management
+  - Automation tab: `adw::PreferencesGroup` for expect rules configuration
+  - Tasks tab: `adw::PreferencesGroup` for pre/post connection tasks
+  - Custom Properties tab: `adw::PreferencesGroup` for metadata fields
+- All migrated tabs now use `adw::Clamp` for proper content width limiting
+- Removed deprecated `gtk4::Frame` usage in favor of `adw::PreferencesGroup`
+- Settings dialog now loads asynchronously for faster startup:
+  - Clients tab: CLI detection runs in background with spinner placeholders
+  - SSH Agent tab: Agent status and key lists load asynchronously
+  - Available SSH keys scan runs in background
+- Cursor Shape/Blink toggle buttons in Terminal settings now have uniform width (240px)
+- Updated dependencies: indexmap 2.12.1→2.13.0, syn 2.0.113→2.0.114, zerocopy 0.8.32→0.8.33, zmij 1.0.10→1.0.12
+- Note: sspi and picky-krb kept at previous versions due to rand_core compatibility issues
+
 ### Fixed
 - SSH Agent "Add Key" button now opens file chooser to select any SSH key file
 - SSH Agent "+" buttons in Available Key Files list now load keys with passphrase dialog

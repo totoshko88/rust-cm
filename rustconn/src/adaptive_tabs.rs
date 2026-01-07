@@ -280,6 +280,7 @@ impl AdaptiveTabBar {
         // Overflow popover
         let overflow_popover = Popover::new();
         overflow_popover.set_parent(&overflow_button);
+        overflow_popover.set_autohide(true);
 
         let overflow_scroll = ScrolledWindow::new();
         overflow_scroll.set_max_content_height(400);

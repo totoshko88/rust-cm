@@ -7,12 +7,13 @@
 //! - Protocol-specific configuration tabs
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
+//! Uses `adw::ViewStack` with `adw::ViewSwitcher` for proper libadwaita theming.
 
 use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, Button, CheckButton, DropDown, Entry, Grid, Label, ListBox, ListBoxRow,
-    Notebook, Orientation, ScrolledWindow, SpinButton, Stack, StringList,
+    Orientation, ScrolledWindow, SpinButton, Stack, StringList,
 };
 use libadwaita as adw;
 use rustconn_core::models::{
@@ -118,7 +119,7 @@ impl TemplateDialog {
             .title("New Template")
             .modal(true)
             .default_width(750)
-            .default_height(550)
+            .default_height(650)
             .build();
 
         if let Some(p) = parent {
@@ -143,23 +144,25 @@ impl TemplateDialog {
             window_clone.close();
         });
 
-        // Create main content area
-        let content = GtkBox::new(Orientation::Vertical, 12);
-        content.set_margin_top(12);
-        content.set_margin_bottom(12);
-        content.set_margin_start(12);
-        content.set_margin_end(12);
+        // Create ViewStack for tabs (libadwaita style)
+        let view_stack = adw::ViewStack::new();
+        view_stack.set_vexpand(true);
+
+        // Create ViewSwitcherBar for bottom navigation (like Settings)
+        let view_switcher_bar = adw::ViewSwitcherBar::builder()
+            .stack(&view_stack)
+            .reveal(true)
+            .build();
 
         // Use ToolbarView for adw::Window
         let main_box = GtkBox::new(Orientation::Vertical, 0);
+        let content_box = GtkBox::new(Orientation::Vertical, 0);
+        content_box.set_vexpand(true);
+        content_box.append(&view_stack);
+        content_box.append(&view_switcher_bar);
         main_box.append(&header);
-        main_box.append(&content);
+        main_box.append(&content_box);
         window.set_content(Some(&main_box));
-
-        // Create notebook for tabs
-        let notebook = Notebook::new();
-        notebook.set_vexpand(true);
-        content.append(&notebook);
 
         // === Basic Tab ===
         let (
@@ -172,7 +175,9 @@ impl TemplateDialog {
             username_entry,
             tags_entry,
         ) = Self::create_basic_tab();
-        notebook.append_page(&basic_scrolled, Some(&Label::new(Some("Basic"))));
+        view_stack
+            .add_titled(&basic_scrolled, Some("basic"), "Basic")
+            .set_icon_name(Some("document-properties-symbolic"));
 
         // === Protocol Tab ===
         let protocol_stack = Stack::new();
@@ -181,7 +186,9 @@ impl TemplateDialog {
             .vscrollbar_policy(gtk4::PolicyType::Automatic)
             .child(&protocol_stack)
             .build();
-        notebook.append_page(&protocol_scrolled, Some(&Label::new(Some("Protocol"))));
+        view_stack
+            .add_titled(&protocol_scrolled, Some("protocol"), "Protocol")
+            .set_icon_name(Some("network-server-symbolic"));
 
         // SSH options
         let (

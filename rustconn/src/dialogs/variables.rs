@@ -4,12 +4,13 @@
 //! with support for secret variable masking.
 //!
 //! Updated for GTK 4.10+ compatibility using Window instead of Dialog.
+//! Uses libadwaita components for GNOME HIG compliance.
 
 use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, Entry, Frame, Grid, Label, ListBox, ListBoxRow,
-    Orientation, PasswordEntry, ScrolledWindow,
+    Box as GtkBox, Button, CheckButton, Entry, Grid, Label, ListBox, ListBoxRow, Orientation,
+    PasswordEntry, ScrolledWindow,
 };
 use libadwaita as adw;
 use rustconn_core::variables::Variable;
@@ -85,18 +86,9 @@ impl VariablesDialog {
         main_box.append(&content);
         window.set_content(Some(&main_box));
 
-        // Info label
-        let info_label = Label::builder()
-            .label("Define variables that can be used in connections with ${variable_name} syntax.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        content.append(&info_label);
-
-        // Variables list frame
-        let (frame, variables_list, add_button) = Self::create_variables_section();
-        content.append(&frame);
+        // Variables list in PreferencesGroup
+        let (group, variables_list, add_button) = Self::create_variables_section();
+        content.append(&group);
 
         let on_save: VariablesCallback = Rc::new(RefCell::new(None));
         let variables: Rc<RefCell<Vec<VariableRow>>> = Rc::new(RefCell::new(Vec::new()));
@@ -133,12 +125,13 @@ impl VariablesDialog {
     }
 
     /// Creates the variables section with list and add button
-    fn create_variables_section() -> (Frame, ListBox, Button) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(8);
-        vbox.set_margin_bottom(8);
-        vbox.set_margin_start(8);
-        vbox.set_margin_end(8);
+    fn create_variables_section() -> (adw::PreferencesGroup, ListBox, Button) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Variables")
+            .description(
+                "Define variables that can be used in connections with ${variable_name} syntax",
+            )
+            .build();
 
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -153,10 +146,11 @@ impl VariablesDialog {
             .build();
         scrolled.set_child(Some(&variables_list));
 
-        vbox.append(&scrolled);
+        group.add(&scrolled);
 
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
         button_box.set_halign(gtk4::Align::End);
+        button_box.set_margin_top(12);
 
         let add_button = Button::builder()
             .label("Add Variable")
@@ -164,15 +158,9 @@ impl VariablesDialog {
             .build();
         button_box.append(&add_button);
 
-        vbox.append(&button_box);
+        group.add(&button_box);
 
-        let frame = Frame::builder()
-            .label("Variables")
-            .child(&vbox)
-            .vexpand(true)
-            .build();
-
-        (frame, variables_list, add_button)
+        (group, variables_list, add_button)
     }
 
     /// Creates a variable row widget
