@@ -329,7 +329,7 @@ impl RdpClientMode {
     #[must_use]
     pub const fn display_name(&self) -> &'static str {
         match self {
-            Self::Embedded => "Embedded (dynamic resolution)",
+            Self::Embedded => "Embedded",
             Self::External => "External RDP client",
         }
     }
@@ -401,7 +401,7 @@ impl VncClientMode {
     #[must_use]
     pub const fn display_name(&self) -> &'static str {
         match self {
-            Self::Embedded => "Embedded (dynamic resolution)",
+            Self::Embedded => "Embedded",
             Self::External => "External VNC client",
         }
     }

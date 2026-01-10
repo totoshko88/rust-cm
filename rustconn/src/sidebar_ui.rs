@@ -313,6 +313,7 @@ pub fn show_context_menu_for_item(widget: &impl IsA<gtk4::Widget>, x: f64, y: f6
 
     let delete_btn = create_menu_button("Delete");
     delete_btn.add_css_class("destructive-action");
+    delete_btn.add_css_class("context-menu-destructive");
     let win = window_clone;
     let popover_c = popover_ref;
     delete_btn.connect_clicked(move |_| {
@@ -455,7 +456,9 @@ pub fn create_bulk_actions_bar() -> GtkBox {
 }
 
 /// Creates the button box at the bottom of the sidebar with KeePass button reference
+/// DEPRECATED: Use create_sidebar_toolbar() instead
 #[must_use]
+#[allow(dead_code)]
 pub fn create_button_box_with_keepass() -> (GtkBox, Button) {
     let button_box = GtkBox::new(Orientation::Horizontal, 6);
     button_box.set_margin_start(12);
@@ -463,67 +466,6 @@ pub fn create_button_box_with_keepass() -> (GtkBox, Button) {
     button_box.set_margin_top(6);
     button_box.set_margin_bottom(6);
     button_box.set_halign(gtk4::Align::Center);
-
-    // Delete button
-    let delete_button = Button::from_icon_name("list-remove-symbolic");
-    delete_button.set_tooltip_text(Some("Delete Selected (Delete)"));
-    delete_button.set_action_name(Some("win.delete-connection"));
-    delete_button.update_property(&[gtk4::accessible::Property::Label(
-        "Delete selected connection or group",
-    )]);
-    button_box.append(&delete_button);
-
-    // Add group button
-    let add_group_button = Button::from_icon_name("folder-new-symbolic");
-    add_group_button.set_tooltip_text(Some("Add Group (Ctrl+Shift+N)"));
-    add_group_button.set_action_name(Some("win.new-group"));
-    add_group_button.update_property(&[gtk4::accessible::Property::Label("Add new group")]);
-    button_box.append(&add_group_button);
-
-    // Group operations button
-    let group_ops_button = Button::from_icon_name("view-list-symbolic");
-    group_ops_button.set_tooltip_text(Some("Group Operations Mode"));
-    group_ops_button.set_action_name(Some("win.group-operations"));
-    group_ops_button.update_property(&[gtk4::accessible::Property::Label(
-        "Enable group operations mode for multi-select",
-    )]);
-    button_box.append(&group_ops_button);
-
-    // Sort button
-    let sort_button = Button::from_icon_name("view-sort-ascending-symbolic");
-    sort_button.set_tooltip_text(Some("Sort Alphabetically"));
-    sort_button.set_action_name(Some("win.sort-connections"));
-    sort_button.update_property(&[gtk4::accessible::Property::Label(
-        "Sort connections alphabetically",
-    )]);
-    button_box.append(&sort_button);
-
-    // Sort Recent button
-    let sort_recent_button = Button::from_icon_name("document-open-recent-symbolic");
-    sort_recent_button.set_tooltip_text(Some("Sort by Recent Usage"));
-    sort_recent_button.set_action_name(Some("win.sort-recent"));
-    sort_recent_button.update_property(&[gtk4::accessible::Property::Label(
-        "Sort connections by recent usage",
-    )]);
-    button_box.append(&sort_recent_button);
-
-    // Import button
-    let import_button = Button::from_icon_name("document-open-symbolic");
-    import_button.set_tooltip_text(Some("Import Connections (Ctrl+I)"));
-    import_button.set_action_name(Some("win.import"));
-    import_button.update_property(&[gtk4::accessible::Property::Label(
-        "Import connections from external sources",
-    )]);
-    button_box.append(&import_button);
-
-    // Export button
-    let export_button = Button::from_icon_name("document-save-symbolic");
-    export_button.set_tooltip_text(Some("Export Configuration"));
-    export_button.set_action_name(Some("win.export"));
-    export_button.update_property(&[gtk4::accessible::Property::Label(
-        "Export configuration to file",
-    )]);
-    button_box.append(&export_button);
 
     // KeePass button - shows integration status
     let keepass_button = Button::from_icon_name("dialog-password-symbolic");
@@ -536,4 +478,200 @@ pub fn create_button_box_with_keepass() -> (GtkBox, Button) {
     button_box.append(&keepass_button);
 
     (button_box, keepass_button)
+}
+
+/// Creates the sidebar bottom toolbar with secondary actions
+///
+/// Layout: [Group Ops] [A-Z Sort] [Recent] [Import] [Export] [KeePass]
+#[must_use]
+pub fn create_sidebar_bottom_toolbar() -> (GtkBox, Button) {
+    let toolbar = GtkBox::new(Orientation::Horizontal, 4);
+    toolbar.set_margin_start(8);
+    toolbar.set_margin_end(8);
+    toolbar.set_margin_top(6);
+    toolbar.set_margin_bottom(6);
+    toolbar.set_halign(gtk4::Align::Center);
+
+    // Group operations button
+    let group_ops_button = Button::from_icon_name("view-list-symbolic");
+    group_ops_button.set_tooltip_text(Some("Group Operations Mode"));
+    group_ops_button.set_action_name(Some("win.group-operations"));
+    group_ops_button.update_property(&[gtk4::accessible::Property::Label(
+        "Enable group operations mode for multi-select",
+    )]);
+    toolbar.append(&group_ops_button);
+
+    // Sort alphabetically button
+    let sort_button = Button::from_icon_name("view-sort-ascending-symbolic");
+    sort_button.set_tooltip_text(Some("Sort Alphabetically"));
+    sort_button.set_action_name(Some("win.sort-connections"));
+    sort_button.update_property(&[gtk4::accessible::Property::Label(
+        "Sort connections alphabetically",
+    )]);
+    toolbar.append(&sort_button);
+
+    // Sort by recent usage button
+    let sort_recent_button = Button::from_icon_name("document-open-recent-symbolic");
+    sort_recent_button.set_tooltip_text(Some("Sort by Recent Usage"));
+    sort_recent_button.set_action_name(Some("win.sort-recent"));
+    sort_recent_button.update_property(&[gtk4::accessible::Property::Label(
+        "Sort connections by recent usage",
+    )]);
+    toolbar.append(&sort_recent_button);
+
+    // Import button
+    let import_button = Button::from_icon_name("document-open-symbolic");
+    import_button.set_tooltip_text(Some("Import Connections (Ctrl+I)"));
+    import_button.set_action_name(Some("win.import"));
+    import_button.update_property(&[gtk4::accessible::Property::Label(
+        "Import connections from external sources",
+    )]);
+    toolbar.append(&import_button);
+
+    // Export button
+    let export_button = Button::from_icon_name("document-save-symbolic");
+    export_button.set_tooltip_text(Some("Export Connections"));
+    export_button.set_action_name(Some("win.export"));
+    export_button.update_property(&[gtk4::accessible::Property::Label(
+        "Export connections to file",
+    )]);
+    toolbar.append(&export_button);
+
+    // KeePass button - shows integration status
+    let keepass_button = Button::from_icon_name("dialog-password-symbolic");
+    keepass_button.set_tooltip_text(Some("Open KeePass Database"));
+    keepass_button.set_action_name(Some("win.open-keepass"));
+    keepass_button.add_css_class("keepass-button");
+    keepass_button.update_property(&[gtk4::accessible::Property::Label(
+        "Open KeePass database for credential management",
+    )]);
+    toolbar.append(&keepass_button);
+
+    (toolbar, keepass_button)
+}
+
+/// Shows the context menu for empty space in the sidebar
+pub fn show_empty_space_context_menu(widget: &impl IsA<gtk4::Widget>, x: f64, y: f64) {
+    let Some(root) = widget.root() else { return };
+    let Some(window) = root.downcast_ref::<gtk4::ApplicationWindow>() else {
+        return;
+    };
+
+    let popover = gtk4::Popover::new();
+
+    let menu_box = GtkBox::new(Orientation::Vertical, 0);
+    menu_box.set_margin_top(6);
+    menu_box.set_margin_bottom(6);
+    menu_box.set_margin_start(6);
+    menu_box.set_margin_end(6);
+
+    // Helper to create menu button
+    let create_menu_button = |label: &str| -> Button {
+        let btn = Button::with_label(label);
+        btn.set_has_frame(false);
+        btn.add_css_class("flat");
+        btn.set_halign(gtk4::Align::Start);
+        btn
+    };
+
+    let popover_ref = popover.downgrade();
+    let window_clone = window.clone();
+
+    // Quick Connect
+    let quick_connect_btn = create_menu_button("Quick Connect");
+    let win = window_clone.clone();
+    let popover_c = popover_ref.clone();
+    quick_connect_btn.connect_clicked(move |_| {
+        if let Some(p) = popover_c.upgrade() {
+            p.popdown();
+        }
+        if let Some(action) = win.lookup_action("quick-connect") {
+            action.activate(None);
+        }
+    });
+    menu_box.append(&quick_connect_btn);
+
+    // New Connection
+    let new_conn_btn = create_menu_button("New Connection");
+    let win = window_clone.clone();
+    let popover_c = popover_ref.clone();
+    new_conn_btn.connect_clicked(move |_| {
+        if let Some(p) = popover_c.upgrade() {
+            p.popdown();
+        }
+        if let Some(action) = win.lookup_action("new-connection") {
+            action.activate(None);
+        }
+    });
+    menu_box.append(&new_conn_btn);
+
+    // New Group
+    let new_group_btn = create_menu_button("New Group");
+    let win = window_clone.clone();
+    let popover_c = popover_ref.clone();
+    new_group_btn.connect_clicked(move |_| {
+        if let Some(p) = popover_c.upgrade() {
+            p.popdown();
+        }
+        if let Some(action) = win.lookup_action("new-group") {
+            action.activate(None);
+        }
+    });
+    menu_box.append(&new_group_btn);
+
+    // Separator
+    let sep = gtk4::Separator::new(Orientation::Horizontal);
+    sep.set_margin_top(6);
+    sep.set_margin_bottom(6);
+    menu_box.append(&sep);
+
+    // Import
+    let import_btn = create_menu_button("Import...");
+    let win = window_clone.clone();
+    let popover_c = popover_ref.clone();
+    import_btn.connect_clicked(move |_| {
+        if let Some(p) = popover_c.upgrade() {
+            p.popdown();
+        }
+        if let Some(action) = win.lookup_action("import") {
+            action.activate(None);
+        }
+    });
+    menu_box.append(&import_btn);
+
+    // Export
+    let export_btn = create_menu_button("Export...");
+    let win = window_clone;
+    let popover_c = popover_ref;
+    export_btn.connect_clicked(move |_| {
+        if let Some(p) = popover_c.upgrade() {
+            p.popdown();
+        }
+        if let Some(action) = win.lookup_action("export") {
+            action.activate(None);
+        }
+    });
+    menu_box.append(&export_btn);
+
+    popover.set_child(Some(&menu_box));
+    popover.set_parent(window);
+
+    // Calculate position
+    let widget_bounds = widget.compute_bounds(window);
+    #[allow(clippy::cast_possible_truncation)]
+    let (popup_x, popup_y) = if let Some(bounds) = widget_bounds {
+        (bounds.x() as i32 + x as i32, bounds.y() as i32 + y as i32)
+    } else {
+        (x as i32, y as i32)
+    };
+
+    popover.set_pointing_to(Some(&gdk::Rectangle::new(popup_x, popup_y, 1, 1)));
+    popover.set_autohide(true);
+    popover.set_has_arrow(true);
+
+    popover.connect_closed(|p| {
+        p.unparent();
+    });
+
+    popover.popup();
 }

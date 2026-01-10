@@ -185,18 +185,31 @@ impl MainWindow {
         header_bar.set_title_widget(Some(&title));
 
         // === Left side (pack_start) - Primary connection actions ===
-
-        // Add connection button - primary action
-        let add_button = Button::from_icon_name("list-add-symbolic");
-        add_button.set_tooltip_text(Some("New Connection (Ctrl+N)"));
-        add_button.set_action_name(Some("win.new-connection"));
-        header_bar.pack_start(&add_button);
+        // Order: Quick Connect, Add, Remove, Add Group
 
         // Quick connect button
         let quick_connect_button = Button::from_icon_name("go-jump-symbolic");
         quick_connect_button.set_tooltip_text(Some("Quick Connect (Ctrl+Shift+Q)"));
         quick_connect_button.set_action_name(Some("win.quick-connect"));
         header_bar.pack_start(&quick_connect_button);
+
+        // Add connection button
+        let add_button = Button::from_icon_name("list-add-symbolic");
+        add_button.set_tooltip_text(Some("New Connection (Ctrl+N)"));
+        add_button.set_action_name(Some("win.new-connection"));
+        header_bar.pack_start(&add_button);
+
+        // Remove button (sensitive only when item selected)
+        let remove_button = Button::from_icon_name("list-remove-symbolic");
+        remove_button.set_tooltip_text(Some("Delete Selected (Delete)"));
+        remove_button.set_action_name(Some("win.delete-connection"));
+        header_bar.pack_start(&remove_button);
+
+        // Add group button
+        let add_group_button = Button::from_icon_name("folder-new-symbolic");
+        add_group_button.set_tooltip_text(Some("New Group (Ctrl+Shift+N)"));
+        add_group_button.set_action_name(Some("win.new-group"));
+        header_bar.pack_start(&add_group_button);
 
         // === Right side (pack_end) - Secondary actions ===
 

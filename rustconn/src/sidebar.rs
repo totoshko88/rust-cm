@@ -511,6 +511,17 @@ impl ConnectionSidebar {
             .child(&list_view)
             .build();
 
+        // Add right-click handler for empty space context menu
+        let empty_space_gesture = GestureClick::new();
+        empty_space_gesture.set_button(gdk::BUTTON_SECONDARY);
+        empty_space_gesture.connect_pressed(move |gesture, _n_press, x, y| {
+            if let Some(widget) = gesture.widget() {
+                // Show context menu for empty space
+                sidebar_ui::show_empty_space_context_menu(&widget, x, y);
+            }
+        });
+        scrolled_window.add_controller(empty_space_gesture);
+
         overlay.set_child(Some(&scrolled_window));
 
         // Add drop indicator as overlay - it will be positioned via margin_top
@@ -618,9 +629,9 @@ impl ConnectionSidebar {
 
         container.append(&overlay);
 
-        // Add buttons at the bottom (with KeePass button reference)
-        let (button_box, keepass_button) = sidebar_ui::create_button_box_with_keepass();
-        container.append(&button_box);
+        // Add bottom toolbar with secondary actions
+        let (bottom_toolbar, keepass_button) = sidebar_ui::create_sidebar_bottom_toolbar();
+        container.append(&bottom_toolbar);
 
         // Create debouncer for search with 100ms delay
         let search_debouncer = Rc::new(Debouncer::for_search());

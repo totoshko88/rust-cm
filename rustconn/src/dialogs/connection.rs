@@ -418,14 +418,16 @@ impl ConnectionDialog {
             &save_to_keepass_button,
         );
 
-        // === Variables Tab ===
-        let (variables_tab, variables_list, add_variable_button) = Self::create_variables_tab();
+        // === Data Tab (Variables + Custom Properties) ===
+        let (data_tab, variables_list, add_variable_button, custom_properties_list, add_custom_property_button) = 
+            Self::create_data_tab();
         view_stack
-            .add_titled(&variables_tab, Some("variables"), "Variables")
+            .add_titled(&data_tab, Some("data"), "Data")
             .set_icon_name(Some("accessories-text-editor-symbolic"));
 
         let variables_rows: Rc<RefCell<Vec<LocalVariableRow>>> = Rc::new(RefCell::new(Vec::new()));
         let global_variables: Rc<RefCell<Vec<Variable>>> = Rc::new(RefCell::new(Vec::new()));
+        let custom_properties: Rc<RefCell<Vec<CustomProperty>>> = Rc::new(RefCell::new(Vec::new()));
 
         // === Logging Tab ===
         let (
@@ -440,23 +442,13 @@ impl ConnectionDialog {
             .add_titled(&logging_tab, Some("logging"), "Logging")
             .set_icon_name(Some("document-save-symbolic"));
 
-        // === Automation Tab (Expect Rules) ===
+        // === Automation Tab (Expect Rules + Tasks) ===
         let (
             automation_tab,
             expect_rules_list,
             add_expect_rule_button,
             expect_pattern_test_entry,
             expect_test_result_label,
-        ) = Self::create_automation_tab();
-        view_stack
-            .add_titled(&automation_tab, Some("automation"), "Automation")
-            .set_icon_name(Some("system-run-symbolic"));
-
-        let expect_rules: Rc<RefCell<Vec<ExpectRule>>> = Rc::new(RefCell::new(Vec::new()));
-
-        // === Tasks Tab ===
-        let (
-            tasks_tab,
             pre_connect_enabled_check,
             pre_connect_command_entry,
             pre_connect_timeout_spin,
@@ -466,39 +458,27 @@ impl ConnectionDialog {
             post_disconnect_command_entry,
             post_disconnect_timeout_spin,
             post_disconnect_last_only_check,
-        ) = Self::create_tasks_tab();
+        ) = Self::create_automation_combined_tab();
         view_stack
-            .add_titled(&tasks_tab, Some("tasks"), "Tasks")
-            .set_icon_name(Some("emblem-system-symbolic"));
+            .add_titled(&automation_tab, Some("automation"), "Automation")
+            .set_icon_name(Some("system-run-symbolic"));
 
-        // === Display Tab ===
-        let (display_tab, window_mode_dropdown, remember_position_check) =
-            Self::create_display_tab();
-        view_stack
-            .add_titled(&display_tab, Some("display"), "Display")
-            .set_icon_name(Some("video-display-symbolic"));
+        let expect_rules: Rc<RefCell<Vec<ExpectRule>>> = Rc::new(RefCell::new(Vec::new()));
 
-        // === Custom Properties Tab ===
-        let (custom_properties_tab, custom_properties_list, add_custom_property_button) =
-            Self::create_custom_properties_tab();
-        view_stack
-            .add_titled(&custom_properties_tab, Some("properties"), "Properties")
-            .set_icon_name(Some("document-properties-symbolic"));
-
-        let custom_properties: Rc<RefCell<Vec<CustomProperty>>> = Rc::new(RefCell::new(Vec::new()));
-
-        // === WOL Tab ===
+        // === Advanced Tab (Display + WOL) ===
         let (
-            wol_tab,
+            advanced_tab,
+            window_mode_dropdown,
+            remember_position_check,
             wol_enabled_check,
             wol_mac_entry,
             wol_broadcast_entry,
             wol_port_spin,
             wol_wait_spin,
-        ) = Self::create_wol_tab();
+        ) = Self::create_advanced_tab();
         view_stack
-            .add_titled(&wol_tab, Some("wol"), "WOL")
-            .set_icon_name(Some("network-wired-symbolic"));
+            .add_titled(&advanced_tab, Some("advanced"), "Advanced")
+            .set_icon_name(Some("preferences-system-symbolic"));
 
         // Wire up add variable button
         Self::wire_add_variable_button(&add_variable_button, &variables_list, &variables_rows);
@@ -1575,13 +1555,13 @@ impl ConnectionDialog {
         grid.attach(&password_source_dropdown, 1, row, 2, 1);
         row += 1;
 
-        // Password Value with KeePass buttons
+        // Password with KeePass buttons
         let password_entry_label = Label::builder()
-            .label("Password Value:")
+            .label("Password:")
             .halign(gtk4::Align::End)
             .build();
         let password_entry = Entry::builder()
-            .placeholder_text("Enter password (for Stored or KeePass)")
+            .placeholder_text("Password")
             .hexpand(true)
             .visibility(false)
             .build();
@@ -1719,6 +1699,12 @@ impl ConnectionDialog {
         }
     }
 
+    /// Creates the SSH options panel using libadwaita components following GNOME HIG.
+    ///
+    /// Layout:
+    /// - Authentication group: Auth Method, Key Source, Key File, Agent Key
+    /// - Connection group: ProxyJump, IdentitiesOnly, ControlMaster
+    /// - Session group: Agent Forwarding, Startup Command, Custom Options
     #[allow(clippy::type_complexity)]
     fn create_ssh_options() -> (
         GtkBox,
@@ -1734,22 +1720,29 @@ impl ConnectionDialog {
         Entry,
         Entry,
     ) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        // Auth method - using DropDown
-        let auth_label = Label::builder()
-            .label("Auth Method:")
-            .halign(gtk4::Align::End)
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Authentication Group ===
+        let auth_group = adw::PreferencesGroup::builder()
+            .title("Authentication")
+            .build();
+
+        // Auth method dropdown
         let auth_list = StringList::new(&[
             "Password",
             "Public Key",
@@ -1757,54 +1750,65 @@ impl ConnectionDialog {
             "SSH Agent",
         ]);
         let auth_dropdown = DropDown::new(Some(auth_list), gtk4::Expression::NONE);
-        auth_dropdown.set_selected(0); // Password by default
-        grid.attach(&auth_label, 0, row, 1, 1);
-        grid.attach(&auth_dropdown, 1, row, 2, 1);
-        row += 1;
+        auth_dropdown.set_selected(0);
 
-        // Key source dropdown (Default, File, Agent)
-        let key_source_label = Label::builder()
-            .label("Key Source:")
-            .halign(gtk4::Align::End)
+        let auth_row = adw::ActionRow::builder()
+            .title("Method")
+            .subtitle("How to authenticate with the server")
             .build();
+        auth_row.add_suffix(&auth_dropdown);
+        auth_group.add(&auth_row);
+
+        // Key source dropdown
         let key_source_list = StringList::new(&["Default", "File", "Agent"]);
         let key_source_dropdown = DropDown::new(Some(key_source_list), gtk4::Expression::NONE);
-        key_source_dropdown.set_selected(0); // Default by default
-        grid.attach(&key_source_label, 0, row, 1, 1);
-        grid.attach(&key_source_dropdown, 1, row, 2, 1);
-        row += 1;
+        key_source_dropdown.set_selected(0);
 
-        // Key path with file chooser button (uses portal on Wayland)
-        let key_label = Label::builder()
-            .label("Key File:")
-            .halign(gtk4::Align::End)
+        let key_source_row = adw::ActionRow::builder()
+            .title("Key Source")
+            .subtitle("Where to get the SSH key from")
             .build();
-        let key_hbox = GtkBox::new(Orientation::Horizontal, 4);
+        key_source_row.add_suffix(&key_source_dropdown);
+        auth_group.add(&key_source_row);
+
+        // Key file entry with browse button
         let key_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("Path to SSH key")
+            .valign(gtk4::Align::Center)
             .build();
-        let key_button = Button::builder().label("Browse...").build();
-        key_hbox.append(&key_entry);
-        key_hbox.append(&key_button);
-        grid.attach(&key_label, 0, row, 1, 1);
-        grid.attach(&key_hbox, 1, row, 2, 1);
-        row += 1;
+        let key_button = Button::builder()
+            .icon_name("folder-open-symbolic")
+            .tooltip_text("Browse for key file")
+            .valign(gtk4::Align::Center)
+            .build();
 
-        // Agent key dropdown (populated dynamically from ssh-agent)
-        let agent_key_label = Label::builder()
-            .label("Agent Key:")
-            .halign(gtk4::Align::End)
+        let key_file_row = adw::ActionRow::builder()
+            .title("Key File")
+            .subtitle("Path to private key file")
             .build();
+        key_file_row.add_suffix(&key_entry);
+        key_file_row.add_suffix(&key_button);
+        auth_group.add(&key_file_row);
+
+        // Agent key dropdown
         let agent_key_list = StringList::new(&["(No keys loaded)"]);
         let agent_key_dropdown = DropDown::new(Some(agent_key_list), gtk4::Expression::NONE);
         agent_key_dropdown.set_selected(0);
-        agent_key_dropdown.set_sensitive(false); // Disabled until Agent source is selected
-        grid.attach(&agent_key_label, 0, row, 1, 1);
-        grid.attach(&agent_key_dropdown, 1, row, 2, 1);
-        row += 1;
+        agent_key_dropdown.set_sensitive(false);
+
+        let agent_key_row = adw::ActionRow::builder()
+            .title("Agent Key")
+            .subtitle("Select key from SSH agent")
+            .build();
+        agent_key_row.add_suffix(&agent_key_dropdown);
+        auth_group.add(&agent_key_row);
+
+        content.append(&auth_group);
 
         // Connect key source dropdown to show/hide appropriate fields
+        let key_file_row_clone = key_file_row.clone();
+        let agent_key_row_clone = agent_key_row.clone();
         let key_entry_clone = key_entry.clone();
         let key_button_clone = key_button.clone();
         let agent_key_dropdown_clone = agent_key_dropdown.clone();
@@ -1812,19 +1816,25 @@ impl ConnectionDialog {
             let selected = dropdown.selected();
             match selected {
                 0 => {
-                    // Default - hide both
+                    // Default - hide both rows
+                    key_file_row_clone.set_visible(false);
+                    agent_key_row_clone.set_visible(false);
                     key_entry_clone.set_sensitive(false);
                     key_button_clone.set_sensitive(false);
                     agent_key_dropdown_clone.set_sensitive(false);
                 }
                 1 => {
-                    // File - show file chooser, hide agent dropdown
+                    // File - show file row, hide agent row
+                    key_file_row_clone.set_visible(true);
+                    agent_key_row_clone.set_visible(false);
                     key_entry_clone.set_sensitive(true);
                     key_button_clone.set_sensitive(true);
                     agent_key_dropdown_clone.set_sensitive(false);
                 }
                 2 => {
-                    // Agent - hide file chooser, show agent dropdown
+                    // Agent - hide file row, show agent row
+                    key_file_row_clone.set_visible(false);
+                    agent_key_row_clone.set_visible(true);
                     key_entry_clone.set_sensitive(false);
                     key_button_clone.set_sensitive(false);
                     agent_key_dropdown_clone.set_sensitive(true);
@@ -1833,71 +1843,140 @@ impl ConnectionDialog {
             }
         });
 
-        // Set initial state (Default selected)
+        // Set initial state (Default selected - hide both key rows)
+        key_file_row.set_visible(false);
+        agent_key_row.set_visible(false);
         key_entry.set_sensitive(false);
         key_button.set_sensitive(false);
         agent_key_dropdown.set_sensitive(false);
 
-        // ProxyJump
-        let proxy_label = Label::builder()
-            .label("ProxyJump:")
-            .halign(gtk4::Align::End)
+        // Connect auth method dropdown to show/hide key-related rows
+        // Password (0) - hide all key rows
+        // Public Key (1) - show key source
+        // Keyboard Interactive (2) - show key source
+        // SSH Agent (3) - hide key source, show agent key directly
+        let key_source_row_clone = key_source_row.clone();
+        let key_file_row_for_auth = key_file_row.clone();
+        let agent_key_row_for_auth = agent_key_row.clone();
+        let agent_key_dropdown_for_auth = agent_key_dropdown.clone();
+        auth_dropdown.connect_selected_notify(move |dropdown| {
+            let selected = dropdown.selected();
+            match selected {
+                0 => {
+                    // Password - hide all key-related rows
+                    key_source_row_clone.set_visible(false);
+                    key_file_row_for_auth.set_visible(false);
+                    agent_key_row_for_auth.set_visible(false);
+                }
+                3 => {
+                    // SSH Agent - hide key source, show agent key directly
+                    key_source_row_clone.set_visible(false);
+                    key_file_row_for_auth.set_visible(false);
+                    agent_key_row_for_auth.set_visible(true);
+                    agent_key_dropdown_for_auth.set_sensitive(true);
+                }
+                _ => {
+                    // Public Key, Keyboard Interactive - show key source row
+                    key_source_row_clone.set_visible(true);
+                    // Key file/agent rows visibility is controlled by key_source_dropdown
+                }
+            }
+        });
+
+        // Set initial state for auth method (Password selected - hide key source)
+        key_source_row.set_visible(false);
+
+        // === Connection Options Group ===
+        let connection_group = adw::PreferencesGroup::builder()
+            .title("Connection")
             .build();
+
+        // ProxyJump entry
         let proxy_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("user@jumphost")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&proxy_label, 0, row, 1, 1);
-        grid.attach(&proxy_entry, 1, row, 2, 1);
-        row += 1;
 
-        // IdentitiesOnly - prevents "Too many authentication failures" errors
-        let identities_only = CheckButton::builder()
-            .label("Use only specified key (IdentitiesOnly)")
-            .tooltip_text("Prevents SSH from trying other keys from the agent")
+        let proxy_row = adw::ActionRow::builder()
+            .title("ProxyJump")
+            .subtitle("Jump host for tunneling (-J)")
             .build();
-        grid.attach(&identities_only, 1, row, 2, 1);
-        row += 1;
+        proxy_row.add_suffix(&proxy_entry);
+        connection_group.add(&proxy_row);
 
-        // ControlMaster
-        let control_master = CheckButton::builder()
-            .label("Enable ControlMaster (connection multiplexing)")
+        // IdentitiesOnly switch
+        let identities_only = CheckButton::new();
+        let identities_row = adw::ActionRow::builder()
+            .title("Use Only Specified Key")
+            .subtitle("Prevents trying other keys (IdentitiesOnly)")
+            .activatable_widget(&identities_only)
             .build();
-        grid.attach(&control_master, 1, row, 2, 1);
-        row += 1;
+        identities_row.add_suffix(&identities_only);
+        connection_group.add(&identities_row);
 
-        // Agent Forwarding
-        let agent_forwarding = CheckButton::builder()
-            .label("Enable Agent Forwarding (-A)")
-            .tooltip_text("Forward local SSH agent to remote host for authentication")
+        // ControlMaster switch
+        let control_master = CheckButton::new();
+        let control_master_row = adw::ActionRow::builder()
+            .title("Connection Multiplexing")
+            .subtitle("Reuse connections (ControlMaster)")
+            .activatable_widget(&control_master)
             .build();
-        grid.attach(&agent_forwarding, 1, row, 2, 1);
-        row += 1;
+        control_master_row.add_suffix(&control_master);
+        connection_group.add(&control_master_row);
 
-        // Startup command
-        let startup_label = Label::builder()
-            .label("Startup Command:")
-            .halign(gtk4::Align::End)
+        content.append(&connection_group);
+
+        // === Session Group ===
+        let session_group = adw::PreferencesGroup::builder()
+            .title("Session")
             .build();
+
+        // Agent Forwarding switch
+        let agent_forwarding = CheckButton::new();
+        let agent_forwarding_row = adw::ActionRow::builder()
+            .title("Agent Forwarding")
+            .subtitle("Forward SSH agent to remote host (-A)")
+            .activatable_widget(&agent_forwarding)
+            .build();
+        agent_forwarding_row.add_suffix(&agent_forwarding);
+        session_group.add(&agent_forwarding_row);
+
+        // Startup command entry
         let startup_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("Command to run on connect")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&startup_label, 0, row, 1, 1);
-        grid.attach(&startup_entry, 1, row, 2, 1);
-        row += 1;
 
-        // Custom options
-        let options_label = Label::builder()
-            .label("Custom Options:")
-            .halign(gtk4::Align::End)
+        let startup_row = adw::ActionRow::builder()
+            .title("Startup Command")
+            .subtitle("Execute after connection established")
             .build();
+        startup_row.add_suffix(&startup_entry);
+        session_group.add(&startup_row);
+
+        // Custom options entry
         let options_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("Key=Value, Key2=Value2")
+            .placeholder_text("-o Key=Value")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&options_label, 0, row, 1, 1);
-        grid.attach(&options_entry, 1, row, 2, 1);
+
+        let options_row = adw::ActionRow::builder()
+            .title("Custom Options")
+            .subtitle("Additional SSH command-line options")
+            .build();
+        options_row.add_suffix(&options_entry);
+        session_group.add(&options_row);
+
+        content.append(&session_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -1915,6 +1994,7 @@ impl ConnectionDialog {
         )
     }
 
+    /// Creates the RDP options panel using libadwaita components following GNOME HIG.
     #[allow(clippy::type_complexity)]
     fn create_rdp_options() -> (
         GtkBox,
@@ -1928,107 +2008,73 @@ impl ConnectionDialog {
         gtk4::ListBox,
         Entry,
     ) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        // Client mode (embedded vs external)
-        let client_mode_label = Label::builder()
-            .label("Client mode:")
-            .halign(gtk4::Align::End)
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Display Group ===
+        let display_group = adw::PreferencesGroup::builder()
+            .title("Display")
+            .build();
+
+        // Client mode dropdown
         let client_mode_list = StringList::new(&[
             RdpClientMode::Embedded.display_name(),
             RdpClientMode::External.display_name(),
         ]);
         let client_mode_dropdown = DropDown::builder()
             .model(&client_mode_list)
-            .hexpand(true)
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&client_mode_label, 0, row, 1, 1);
-        grid.attach(&client_mode_dropdown, 1, row, 2, 1);
-        row += 1;
+
+        let client_mode_row = adw::ActionRow::builder()
+            .title("Client Mode")
+            .subtitle("Embedded renders in tab, External opens separate window")
+            .build();
+        client_mode_row.add_suffix(&client_mode_dropdown);
+        display_group.add(&client_mode_row);
 
         // Resolution
-        let (width_spin, height_spin) = Self::create_rdp_resolution_row(&grid, &mut row);
-
-        // Color depth
-        let color_dropdown = Self::create_rdp_color_depth_row(&grid, &mut row);
-
-        // Audio redirect
-        let audio_check = CheckButton::builder()
-            .label("Enable audio redirection")
-            .build();
-        grid.attach(&audio_check, 1, row, 2, 1);
-        row += 1;
-
-        // Gateway
-        let gateway_entry = Self::create_rdp_gateway_row(&grid, &mut row);
-
-        // Shared Folders section
-        let (shared_folders, folders_list) =
-            Self::create_rdp_shared_folders_section(&grid, &mut row);
-
-        // Custom args
-        let args_entry = Self::create_custom_args_row(&grid, &mut row);
-
-        (
-            vbox,
-            client_mode_dropdown,
-            width_spin,
-            height_spin,
-            color_dropdown,
-            audio_check,
-            gateway_entry,
-            shared_folders,
-            folders_list,
-            args_entry,
-        )
-    }
-
-    /// Creates the RDP resolution row
-    fn create_rdp_resolution_row(grid: &Grid, row: &mut i32) -> (SpinButton, SpinButton) {
-        let res_label = Label::builder()
-            .label("Resolution:")
-            .halign(gtk4::Align::End)
-            .build();
-        let res_hbox = GtkBox::new(Orientation::Horizontal, 4);
+        let res_box = GtkBox::new(Orientation::Horizontal, 4);
+        res_box.set_valign(gtk4::Align::Center);
         let width_adj = gtk4::Adjustment::new(1920.0, 640.0, 7680.0, 1.0, 100.0, 0.0);
         let width_spin = SpinButton::builder()
             .adjustment(&width_adj)
             .climb_rate(1.0)
             .digits(0)
             .build();
-        let x_label = Label::new(Some("x"));
+        let x_label = Label::new(Some("×"));
         let height_adj = gtk4::Adjustment::new(1080.0, 480.0, 4320.0, 1.0, 100.0, 0.0);
         let height_spin = SpinButton::builder()
             .adjustment(&height_adj)
             .climb_rate(1.0)
             .digits(0)
             .build();
-        res_hbox.append(&width_spin);
-        res_hbox.append(&x_label);
-        res_hbox.append(&height_spin);
-        grid.attach(&res_label, 0, *row, 1, 1);
-        grid.attach(&res_hbox, 1, *row, 2, 1);
-        *row += 1;
+        res_box.append(&width_spin);
+        res_box.append(&x_label);
+        res_box.append(&height_spin);
 
-        (width_spin, height_spin)
-    }
-
-    /// Creates the RDP color depth row
-    fn create_rdp_color_depth_row(grid: &Grid, row: &mut i32) -> DropDown {
-        let color_label = Label::builder()
-            .label("Color Depth:")
-            .halign(gtk4::Align::End)
+        let resolution_row = adw::ActionRow::builder()
+            .title("Resolution")
+            .subtitle("Width × Height in pixels")
             .build();
+        resolution_row.add_suffix(&res_box);
+        display_group.add(&resolution_row);
+
+        // Color depth
         let color_list = StringList::new(&[
             "32-bit (True Color)",
             "24-bit",
@@ -2038,44 +2084,68 @@ impl ConnectionDialog {
         ]);
         let color_dropdown = DropDown::new(Some(color_list), gtk4::Expression::NONE);
         color_dropdown.set_selected(0);
-        grid.attach(&color_label, 0, *row, 1, 1);
-        grid.attach(&color_dropdown, 1, *row, 2, 1);
-        *row += 1;
+        color_dropdown.set_valign(gtk4::Align::Center);
 
-        color_dropdown
-    }
-
-    /// Creates the RDP gateway row
-    fn create_rdp_gateway_row(grid: &Grid, row: &mut i32) -> Entry {
-        let gateway_label = Label::builder()
-            .label("RDP Gateway:")
-            .halign(gtk4::Align::End)
+        let color_row = adw::ActionRow::builder()
+            .title("Color Depth")
+            .subtitle("Higher values provide better quality")
             .build();
+        color_row.add_suffix(&color_dropdown);
+        display_group.add(&color_row);
+
+        // Connect client mode dropdown to show/hide resolution/color rows
+        // Embedded (0) - hide resolution and color depth (dynamic resolution)
+        // External (1) - show resolution and color depth
+        let resolution_row_clone = resolution_row.clone();
+        let color_row_clone = color_row.clone();
+        client_mode_dropdown.connect_selected_notify(move |dropdown| {
+            let is_embedded = dropdown.selected() == 0;
+            resolution_row_clone.set_visible(!is_embedded);
+            color_row_clone.set_visible(!is_embedded);
+        });
+
+        // Set initial state (Embedded - hide resolution/color)
+        resolution_row.set_visible(false);
+        color_row.set_visible(false);
+
+        content.append(&display_group);
+
+        // === Features Group ===
+        let features_group = adw::PreferencesGroup::builder()
+            .title("Features")
+            .build();
+
+        // Audio redirect
+        let audio_check = CheckButton::new();
+        let audio_row = adw::ActionRow::builder()
+            .title("Audio Redirection")
+            .subtitle("Play remote audio locally")
+            .activatable_widget(&audio_check)
+            .build();
+        audio_row.add_suffix(&audio_check);
+        features_group.add(&audio_row);
+
+        // Gateway
         let gateway_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("gateway.example.com")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&gateway_label, 0, *row, 1, 1);
-        grid.attach(&gateway_entry, 1, *row, 2, 1);
-        *row += 1;
 
-        gateway_entry
-    }
-
-    /// Creates the shared folders section for RDP
-    fn create_rdp_shared_folders_section(
-        grid: &Grid,
-        row: &mut i32,
-    ) -> (Rc<RefCell<Vec<SharedFolder>>>, gtk4::ListBox) {
-        let folders_label = Label::builder()
-            .label("Shared Folders:")
-            .halign(gtk4::Align::End)
-            .valign(gtk4::Align::Start)
+        let gateway_row = adw::ActionRow::builder()
+            .title("RDP Gateway")
+            .subtitle("Remote Desktop Gateway server")
             .build();
-        grid.attach(&folders_label, 0, *row, 1, 1);
+        gateway_row.add_suffix(&gateway_entry);
+        features_group.add(&gateway_row);
 
-        let folders_vbox = GtkBox::new(Orientation::Vertical, 4);
-        folders_vbox.set_hexpand(true);
+        content.append(&features_group);
+
+        // === Shared Folders Group ===
+        let folders_group = adw::PreferencesGroup::builder()
+            .title("Shared Folders")
+            .description("Local folders accessible from remote session")
+            .build();
 
         let folders_list = gtk4::ListBox::builder()
             .selection_mode(gtk4::SelectionMode::Single)
@@ -2090,17 +2160,24 @@ impl ConnectionDialog {
             .max_content_height(120)
             .child(&folders_list)
             .build();
-        folders_vbox.append(&folders_scrolled);
+        folders_group.add(&folders_scrolled);
 
-        let folders_buttons = GtkBox::new(Orientation::Horizontal, 4);
-        let add_folder_btn = Button::builder().label("Add...").build();
-        let remove_folder_btn = Button::builder().label("Remove").sensitive(false).build();
+        let folders_buttons = GtkBox::new(Orientation::Horizontal, 8);
+        folders_buttons.set_halign(gtk4::Align::End);
+        folders_buttons.set_margin_top(8);
+        let add_folder_btn = Button::builder()
+            .label("Add")
+            .css_classes(["suggested-action"])
+            .build();
+        let remove_folder_btn = Button::builder()
+            .label("Remove")
+            .sensitive(false)
+            .build();
         folders_buttons.append(&add_folder_btn);
         folders_buttons.append(&remove_folder_btn);
-        folders_vbox.append(&folders_buttons);
+        folders_group.add(&folders_buttons);
 
-        grid.attach(&folders_vbox, 1, *row, 2, 1);
-        *row += 1;
+        content.append(&folders_group);
 
         let shared_folders: Rc<RefCell<Vec<SharedFolder>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -2116,7 +2193,44 @@ impl ConnectionDialog {
             remove_btn_for_selection.set_sensitive(row.is_some());
         });
 
-        (shared_folders, folders_list)
+        // === Advanced Group ===
+        let advanced_group = adw::PreferencesGroup::builder()
+            .title("Advanced")
+            .build();
+
+        let args_entry = Entry::builder()
+            .hexpand(true)
+            .placeholder_text("Additional command-line arguments")
+            .valign(gtk4::Align::Center)
+            .build();
+
+        let args_row = adw::ActionRow::builder()
+            .title("Custom Arguments")
+            .subtitle("Extra FreeRDP command-line options")
+            .build();
+        args_row.add_suffix(&args_entry);
+        advanced_group.add(&args_row);
+
+        content.append(&advanced_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
+
+        (
+            vbox,
+            client_mode_dropdown,
+            width_spin,
+            height_spin,
+            color_dropdown,
+            audio_check,
+            gateway_entry,
+            shared_folders,
+            folders_list,
+            args_entry,
+        )
     }
 
     /// Connects the add folder button to show file dialog and add folder
@@ -2210,23 +2324,7 @@ impl ConnectionDialog {
         });
     }
 
-    /// Creates a custom args row for protocol options
-    fn create_custom_args_row(grid: &Grid, row: &mut i32) -> Entry {
-        let args_label = Label::builder()
-            .label("Custom Args:")
-            .halign(gtk4::Align::End)
-            .build();
-        let args_entry = Entry::builder()
-            .hexpand(true)
-            .placeholder_text("Additional command-line arguments")
-            .build();
-        grid.attach(&args_label, 0, *row, 1, 1);
-        grid.attach(&args_entry, 1, *row, 2, 1);
-        *row += 1;
-
-        args_entry
-    }
-
+    /// Creates the VNC options panel using libadwaita components following GNOME HIG.
     #[allow(clippy::type_complexity)]
     fn create_vnc_options() -> (
         GtkBox,
@@ -2239,111 +2337,164 @@ impl ConnectionDialog {
         CheckButton,
         Entry,
     ) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        // Client mode (embedded vs external)
-        let client_mode_label = Label::builder()
-            .label("Client mode:")
-            .halign(gtk4::Align::End)
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Display Group ===
+        let display_group = adw::PreferencesGroup::builder()
+            .title("Display")
+            .build();
+
+        // Client mode dropdown
         let client_mode_list = StringList::new(&[
             VncClientMode::Embedded.display_name(),
             VncClientMode::External.display_name(),
         ]);
         let client_mode_dropdown = DropDown::builder()
             .model(&client_mode_list)
-            .hexpand(true)
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&client_mode_label, 0, row, 1, 1);
-        grid.attach(&client_mode_dropdown, 1, row, 2, 1);
-        row += 1;
+
+        let client_mode_row = adw::ActionRow::builder()
+            .title("Client Mode")
+            .subtitle("Embedded renders in tab, External opens separate window")
+            .build();
+        client_mode_row.add_suffix(&client_mode_dropdown);
+        display_group.add(&client_mode_row);
 
         // Encoding
-        let encoding_label = Label::builder()
-            .label("Encoding:")
-            .halign(gtk4::Align::End)
-            .build();
         let encoding_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("tight, zrle, hextile")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&encoding_label, 0, row, 1, 1);
-        grid.attach(&encoding_entry, 1, row, 2, 1);
-        row += 1;
+
+        let encoding_row = adw::ActionRow::builder()
+            .title("Encoding")
+            .subtitle("Preferred encoding methods (comma-separated)")
+            .build();
+        encoding_row.add_suffix(&encoding_entry);
+        display_group.add(&encoding_row);
+
+        content.append(&display_group);
+
+        // === Quality Group ===
+        let quality_group = adw::PreferencesGroup::builder()
+            .title("Quality")
+            .build();
 
         // Compression
-        let compression_label = Label::builder()
-            .label("Compression:")
-            .halign(gtk4::Align::End)
-            .build();
         let compression_adj = gtk4::Adjustment::new(6.0, 0.0, 9.0, 1.0, 1.0, 0.0);
         let compression_spin = SpinButton::builder()
             .adjustment(&compression_adj)
             .climb_rate(1.0)
             .digits(0)
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&compression_label, 0, row, 1, 1);
-        grid.attach(&compression_spin, 1, row, 1, 1);
-        row += 1;
+
+        let compression_row = adw::ActionRow::builder()
+            .title("Compression")
+            .subtitle("0 (none) to 9 (maximum)")
+            .build();
+        compression_row.add_suffix(&compression_spin);
+        quality_group.add(&compression_row);
 
         // Quality
-        let quality_label = Label::builder()
-            .label("Quality:")
-            .halign(gtk4::Align::End)
-            .build();
         let quality_adj = gtk4::Adjustment::new(6.0, 0.0, 9.0, 1.0, 1.0, 0.0);
         let quality_spin = SpinButton::builder()
             .adjustment(&quality_adj)
             .climb_rate(1.0)
             .digits(0)
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&quality_label, 0, row, 1, 1);
-        grid.attach(&quality_spin, 1, row, 1, 1);
-        row += 1;
+
+        let quality_row = adw::ActionRow::builder()
+            .title("Quality")
+            .subtitle("0 (lowest) to 9 (highest)")
+            .build();
+        quality_row.add_suffix(&quality_spin);
+        quality_group.add(&quality_row);
+
+        content.append(&quality_group);
+
+        // === Features Group ===
+        let features_group = adw::PreferencesGroup::builder()
+            .title("Features")
+            .build();
 
         // View-only mode
-        let view_only_check = CheckButton::builder()
-            .label("View-only mode (no input)")
+        let view_only_check = CheckButton::new();
+        let view_only_row = adw::ActionRow::builder()
+            .title("View-Only Mode")
+            .subtitle("Disable keyboard and mouse input")
+            .activatable_widget(&view_only_check)
             .build();
-        grid.attach(&view_only_check, 1, row, 2, 1);
-        row += 1;
+        view_only_row.add_suffix(&view_only_check);
+        features_group.add(&view_only_row);
 
-        // Scaling (for embedded mode)
-        let scaling_check = CheckButton::builder()
-            .label("Scale display to fit window (embedded mode)")
-            .active(true)
+        // Scaling
+        let scaling_check = CheckButton::new();
+        scaling_check.set_active(true);
+        let scaling_row = adw::ActionRow::builder()
+            .title("Scale Display")
+            .subtitle("Fit remote desktop to window size")
+            .activatable_widget(&scaling_check)
             .build();
-        grid.attach(&scaling_check, 1, row, 2, 1);
-        row += 1;
+        scaling_row.add_suffix(&scaling_check);
+        features_group.add(&scaling_row);
 
         // Clipboard sharing
-        let clipboard_check = CheckButton::builder()
-            .label("Enable clipboard sharing")
-            .active(true)
+        let clipboard_check = CheckButton::new();
+        clipboard_check.set_active(true);
+        let clipboard_row = adw::ActionRow::builder()
+            .title("Clipboard Sharing")
+            .subtitle("Synchronize clipboard with remote")
+            .activatable_widget(&clipboard_check)
             .build();
-        grid.attach(&clipboard_check, 1, row, 2, 1);
-        row += 1;
+        clipboard_row.add_suffix(&clipboard_check);
+        features_group.add(&clipboard_row);
 
-        // Custom arguments (for external client)
-        let custom_args_label = Label::builder()
-            .label("Custom args:")
-            .halign(gtk4::Align::End)
+        content.append(&features_group);
+
+        // === Advanced Group ===
+        let advanced_group = adw::PreferencesGroup::builder()
+            .title("Advanced")
             .build();
+
         let custom_args_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("Additional arguments for external client")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&custom_args_label, 0, row, 1, 1);
-        grid.attach(&custom_args_entry, 1, row, 2, 1);
+
+        let args_row = adw::ActionRow::builder()
+            .title("Custom Arguments")
+            .subtitle("Extra command-line options for vncviewer")
+            .build();
+        args_row.add_suffix(&custom_args_entry);
+        advanced_group.add(&args_row);
+
+        content.append(&advanced_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -2358,6 +2509,7 @@ impl ConnectionDialog {
         )
     }
 
+    /// Creates the SPICE options panel using libadwaita components following GNOME HIG.
     #[allow(clippy::type_complexity, clippy::too_many_lines)]
     fn create_spice_options() -> (
         GtkBox,
@@ -2371,85 +2523,117 @@ impl ConnectionDialog {
         Rc<RefCell<Vec<SharedFolder>>>,
         gtk4::ListBox,
     ) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
 
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
 
-        let mut row = 0;
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Security Group ===
+        let security_group = adw::PreferencesGroup::builder()
+            .title("Security")
+            .build();
 
         // TLS enabled
-        let tls_check = CheckButton::builder()
-            .label("Enable TLS encryption")
+        let tls_check = CheckButton::new();
+        let tls_row = adw::ActionRow::builder()
+            .title("TLS Encryption")
+            .subtitle("Encrypt connection with TLS")
+            .activatable_widget(&tls_check)
             .build();
-        grid.attach(&tls_check, 1, row, 2, 1);
-        row += 1;
+        tls_row.add_suffix(&tls_check);
+        security_group.add(&tls_row);
 
         // CA certificate path
-        let ca_cert_label = Label::builder()
-            .label("CA Certificate:")
-            .halign(gtk4::Align::End)
-            .build();
-        let ca_cert_hbox = GtkBox::new(Orientation::Horizontal, 4);
+        let ca_cert_box = GtkBox::new(Orientation::Horizontal, 4);
+        ca_cert_box.set_valign(gtk4::Align::Center);
         let ca_cert_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("Path to CA certificate (optional)")
+            .placeholder_text("Path to CA certificate")
             .build();
-        let ca_cert_button = Button::builder().label("Browse...").build();
-        ca_cert_hbox.append(&ca_cert_entry);
-        ca_cert_hbox.append(&ca_cert_button);
-        grid.attach(&ca_cert_label, 0, row, 1, 1);
-        grid.attach(&ca_cert_hbox, 1, row, 2, 1);
-        row += 1;
+        let ca_cert_button = Button::builder()
+            .icon_name("folder-open-symbolic")
+            .tooltip_text("Browse for certificate")
+            .build();
+        ca_cert_box.append(&ca_cert_entry);
+        ca_cert_box.append(&ca_cert_button);
+
+        let ca_cert_row = adw::ActionRow::builder()
+            .title("CA Certificate")
+            .subtitle("Certificate authority for TLS verification")
+            .build();
+        ca_cert_row.add_suffix(&ca_cert_box);
+        security_group.add(&ca_cert_row);
 
         // Skip certificate verification
-        let skip_verify_check = CheckButton::builder()
-            .label("Skip certificate verification (insecure)")
+        let skip_verify_check = CheckButton::new();
+        let skip_verify_row = adw::ActionRow::builder()
+            .title("Skip Verification")
+            .subtitle("Disable certificate verification (insecure)")
+            .activatable_widget(&skip_verify_check)
             .build();
-        grid.attach(&skip_verify_check, 1, row, 2, 1);
-        row += 1;
+        skip_verify_row.add_suffix(&skip_verify_check);
+        security_group.add(&skip_verify_row);
+
+        content.append(&security_group);
+
+        // === Features Group ===
+        let features_group = adw::PreferencesGroup::builder()
+            .title("Features")
+            .build();
 
         // USB redirection
-        let usb_check = CheckButton::builder()
-            .label("Enable USB redirection")
+        let usb_check = CheckButton::new();
+        let usb_row = adw::ActionRow::builder()
+            .title("USB Redirection")
+            .subtitle("Forward USB devices to remote")
+            .activatable_widget(&usb_check)
             .build();
-        grid.attach(&usb_check, 1, row, 2, 1);
-        row += 1;
+        usb_row.add_suffix(&usb_check);
+        features_group.add(&usb_row);
 
         // Clipboard sharing
-        let clipboard_check = CheckButton::builder()
-            .label("Enable clipboard sharing")
-            .active(true)
+        let clipboard_check = CheckButton::new();
+        clipboard_check.set_active(true);
+        let clipboard_row = adw::ActionRow::builder()
+            .title("Clipboard Sharing")
+            .subtitle("Synchronize clipboard with remote")
+            .activatable_widget(&clipboard_check)
             .build();
-        grid.attach(&clipboard_check, 1, row, 2, 1);
-        row += 1;
+        clipboard_row.add_suffix(&clipboard_check);
+        features_group.add(&clipboard_row);
 
         // Image compression
-        let compression_label = Label::builder()
-            .label("Image Compression:")
-            .halign(gtk4::Align::End)
-            .build();
         let compression_list = StringList::new(&["Auto", "Off", "GLZ", "LZ", "QUIC"]);
         let compression_dropdown = DropDown::new(Some(compression_list), gtk4::Expression::NONE);
-        compression_dropdown.set_selected(0); // Auto by default
-        grid.attach(&compression_label, 0, row, 1, 1);
-        grid.attach(&compression_dropdown, 1, row, 2, 1);
-        row += 1;
+        compression_dropdown.set_selected(0);
+        compression_dropdown.set_valign(gtk4::Align::Center);
 
-        // Shared Folders section
-        let folders_label = Label::builder()
-            .label("Shared Folders:")
-            .halign(gtk4::Align::End)
-            .valign(gtk4::Align::Start)
+        let compression_row = adw::ActionRow::builder()
+            .title("Image Compression")
+            .subtitle("Algorithm for image data")
             .build();
-        grid.attach(&folders_label, 0, row, 1, 1);
+        compression_row.add_suffix(&compression_dropdown);
+        features_group.add(&compression_row);
 
-        let folders_vbox = GtkBox::new(Orientation::Vertical, 4);
-        folders_vbox.set_hexpand(true);
+        content.append(&features_group);
+
+        // === Shared Folders Group ===
+        let folders_group = adw::PreferencesGroup::builder()
+            .title("Shared Folders")
+            .description("Local folders accessible from remote session")
+            .build();
 
         let folders_list = gtk4::ListBox::builder()
             .selection_mode(gtk4::SelectionMode::Single)
@@ -2464,16 +2648,24 @@ impl ConnectionDialog {
             .max_content_height(120)
             .child(&folders_list)
             .build();
-        folders_vbox.append(&folders_scrolled);
+        folders_group.add(&folders_scrolled);
 
-        let folders_buttons = GtkBox::new(Orientation::Horizontal, 4);
-        let add_folder_btn = Button::builder().label("Add...").build();
-        let remove_folder_btn = Button::builder().label("Remove").sensitive(false).build();
+        let folders_buttons = GtkBox::new(Orientation::Horizontal, 8);
+        folders_buttons.set_halign(gtk4::Align::End);
+        folders_buttons.set_margin_top(8);
+        let add_folder_btn = Button::builder()
+            .label("Add")
+            .css_classes(["suggested-action"])
+            .build();
+        let remove_folder_btn = Button::builder()
+            .label("Remove")
+            .sensitive(false)
+            .build();
         folders_buttons.append(&add_folder_btn);
         folders_buttons.append(&remove_folder_btn);
-        folders_vbox.append(&folders_buttons);
+        folders_group.add(&folders_buttons);
 
-        grid.attach(&folders_vbox, 1, row, 2, 1);
+        content.append(&folders_group);
 
         let shared_folders: Rc<RefCell<Vec<SharedFolder>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -2489,6 +2681,12 @@ impl ConnectionDialog {
             remove_btn_for_selection.set_sensitive(row.is_some());
         });
 
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
+
         (
             vbox,
             tls_check,
@@ -2503,7 +2701,7 @@ impl ConnectionDialog {
         )
     }
 
-    /// Creates the Zero Trust options panel with provider-specific fields
+    /// Creates the Zero Trust options panel with provider-specific fields using libadwaita.
     #[allow(clippy::type_complexity, clippy::too_many_lines)]
     fn create_zerotrust_options() -> (
         GtkBox,
@@ -2532,18 +2730,28 @@ impl ConnectionDialog {
         Entry,
         Entry,
     ) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
-
-        // Provider dropdown
-        let provider_hbox = GtkBox::new(Orientation::Horizontal, 8);
-        let provider_label = Label::builder()
-            .label("Provider:")
-            .halign(gtk4::Align::End)
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
             .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Provider Selection Group ===
+        let provider_group = adw::PreferencesGroup::builder()
+            .title("Provider")
+            .build();
+
         let provider_list = StringList::new(&[
             "AWS Session Manager",
             "GCP IAP Tunnel",
@@ -2558,59 +2766,67 @@ impl ConnectionDialog {
         ]);
         let provider_dropdown = DropDown::new(Some(provider_list), gtk4::Expression::NONE);
         provider_dropdown.set_selected(0);
-        provider_hbox.append(&provider_label);
-        provider_hbox.append(&provider_dropdown);
-        vbox.append(&provider_hbox);
+        provider_dropdown.set_valign(gtk4::Align::Center);
+
+        let provider_row = adw::ActionRow::builder()
+            .title("Zero Trust Provider")
+            .subtitle("Select your identity-aware proxy service")
+            .build();
+        provider_row.add_suffix(&provider_dropdown);
+        provider_group.add(&provider_row);
+
+        content.append(&provider_group);
 
         // Provider-specific stack
         let provider_stack = Stack::new();
         provider_stack.set_vexpand(true);
-        vbox.append(&provider_stack);
 
         // AWS SSM options
-        let (aws_box, aws_target, aws_profile, aws_region) = Self::create_aws_ssm_fields();
+        let (aws_box, aws_target, aws_profile, aws_region) = Self::create_aws_ssm_fields_adw();
         provider_stack.add_named(&aws_box, Some("aws_ssm"));
 
         // GCP IAP options
-        let (gcp_box, gcp_instance, gcp_zone, gcp_project) = Self::create_gcp_iap_fields();
+        let (gcp_box, gcp_instance, gcp_zone, gcp_project) = Self::create_gcp_iap_fields_adw();
         provider_stack.add_named(&gcp_box, Some("gcp_iap"));
 
         // Azure Bastion options
         let (azure_bastion_box, azure_bastion_resource_id, azure_bastion_rg, azure_bastion_name) =
-            Self::create_azure_bastion_fields();
+            Self::create_azure_bastion_fields_adw();
         provider_stack.add_named(&azure_bastion_box, Some("azure_bastion"));
 
         // Azure SSH options
-        let (azure_ssh_box, azure_ssh_vm, azure_ssh_rg) = Self::create_azure_ssh_fields();
+        let (azure_ssh_box, azure_ssh_vm, azure_ssh_rg) = Self::create_azure_ssh_fields_adw();
         provider_stack.add_named(&azure_ssh_box, Some("azure_ssh"));
 
         // OCI Bastion options
         let (oci_box, oci_bastion_id, oci_target_id, oci_target_ip) =
-            Self::create_oci_bastion_fields();
+            Self::create_oci_bastion_fields_adw();
         provider_stack.add_named(&oci_box, Some("oci_bastion"));
 
         // Cloudflare Access options
-        let (cf_box, cf_hostname) = Self::create_cloudflare_fields();
+        let (cf_box, cf_hostname) = Self::create_cloudflare_fields_adw();
         provider_stack.add_named(&cf_box, Some("cloudflare"));
 
         // Teleport options
-        let (teleport_box, teleport_host, teleport_cluster) = Self::create_teleport_fields();
+        let (teleport_box, teleport_host, teleport_cluster) = Self::create_teleport_fields_adw();
         provider_stack.add_named(&teleport_box, Some("teleport"));
 
         // Tailscale SSH options
-        let (tailscale_box, tailscale_host) = Self::create_tailscale_fields();
+        let (tailscale_box, tailscale_host) = Self::create_tailscale_fields_adw();
         provider_stack.add_named(&tailscale_box, Some("tailscale"));
 
         // Boundary options
-        let (boundary_box, boundary_target, boundary_addr) = Self::create_boundary_fields();
+        let (boundary_box, boundary_target, boundary_addr) = Self::create_boundary_fields_adw();
         provider_stack.add_named(&boundary_box, Some("boundary"));
 
         // Generic command options
-        let (generic_box, generic_command) = Self::create_generic_zt_fields();
+        let (generic_box, generic_command) = Self::create_generic_zt_fields_adw();
         provider_stack.add_named(&generic_box, Some("generic"));
 
         // Set initial view
         provider_stack.set_visible_child_name("aws_ssm");
+
+        content.append(&provider_stack);
 
         // Connect provider dropdown to stack
         let stack_clone = provider_stack.clone();
@@ -2633,19 +2849,31 @@ impl ConnectionDialog {
             }
         });
 
-        // Custom args (common for all providers)
-        let custom_args_hbox = GtkBox::new(Orientation::Horizontal, 8);
-        let custom_args_label = Label::builder()
-            .label("Custom Args:")
-            .halign(gtk4::Align::End)
+        // === Advanced Group ===
+        let advanced_group = adw::PreferencesGroup::builder()
+            .title("Advanced")
             .build();
+
         let custom_args_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("Additional command-line arguments")
+            .valign(gtk4::Align::Center)
             .build();
-        custom_args_hbox.append(&custom_args_label);
-        custom_args_hbox.append(&custom_args_entry);
-        vbox.append(&custom_args_hbox);
+
+        let args_row = adw::ActionRow::builder()
+            .title("Custom Arguments")
+            .subtitle("Extra CLI options for the provider command")
+            .build();
+        args_row.add_suffix(&custom_args_entry);
+        advanced_group.add(&args_row);
+
+        content.append(&advanced_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
 
         (
             vbox,
@@ -2676,364 +2904,394 @@ impl ConnectionDialog {
         )
     }
 
-    /// Creates AWS SSM provider fields
-    fn create_aws_ssm_fields() -> (GtkBox, Entry, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let target_label = Label::builder()
-            .label("Instance ID:")
-            .halign(gtk4::Align::End)
+    /// Creates AWS SSM provider fields using libadwaita
+    fn create_aws_ssm_fields_adw() -> (GtkBox, Entry, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("AWS Session Manager")
+            .description("Connect via AWS Systems Manager")
             .build();
+
         let target_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("i-0123456789abcdef0")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&target_label, 0, row, 1, 1);
-        grid.attach(&target_entry, 1, row, 1, 1);
-        row += 1;
+        let target_row = adw::ActionRow::builder()
+            .title("Instance ID")
+            .subtitle("EC2 instance or managed instance ID")
+            .build();
+        target_row.add_suffix(&target_entry);
+        group.add(&target_row);
 
-        let profile_label = Label::builder()
-            .label("AWS Profile:")
-            .halign(gtk4::Align::End)
-            .build();
         let profile_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("default")
             .text("default")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&profile_label, 0, row, 1, 1);
-        grid.attach(&profile_entry, 1, row, 1, 1);
-        row += 1;
+        let profile_row = adw::ActionRow::builder()
+            .title("AWS Profile")
+            .subtitle("Named profile from ~/.aws/credentials")
+            .build();
+        profile_row.add_suffix(&profile_entry);
+        group.add(&profile_row);
 
-        let region_label = Label::builder()
-            .label("Region:")
-            .halign(gtk4::Align::End)
-            .build();
         let region_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("us-east-1 (optional)")
+            .placeholder_text("us-east-1")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&region_label, 0, row, 1, 1);
-        grid.attach(&region_entry, 1, row, 1, 1);
+        let region_row = adw::ActionRow::builder()
+            .title("Region")
+            .subtitle("AWS region (optional, uses profile default)")
+            .build();
+        region_row.add_suffix(&region_entry);
+        group.add(&region_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, target_entry, profile_entry, region_entry)
     }
 
-    /// Creates GCP IAP provider fields
-    fn create_gcp_iap_fields() -> (GtkBox, Entry, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let instance_label = Label::builder()
-            .label("Instance:")
-            .halign(gtk4::Align::End)
+    /// Creates GCP IAP provider fields using libadwaita
+    fn create_gcp_iap_fields_adw() -> (GtkBox, Entry, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("GCP IAP Tunnel")
+            .description("Connect via Identity-Aware Proxy")
             .build();
+
         let instance_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("my-instance")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&instance_label, 0, row, 1, 1);
-        grid.attach(&instance_entry, 1, row, 1, 1);
-        row += 1;
+        let instance_row = adw::ActionRow::builder()
+            .title("Instance Name")
+            .subtitle("Compute Engine instance name")
+            .build();
+        instance_row.add_suffix(&instance_entry);
+        group.add(&instance_row);
 
-        let zone_label = Label::builder()
-            .label("Zone:")
-            .halign(gtk4::Align::End)
-            .build();
         let zone_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("us-central1-a")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&zone_label, 0, row, 1, 1);
-        grid.attach(&zone_entry, 1, row, 1, 1);
-        row += 1;
+        let zone_row = adw::ActionRow::builder()
+            .title("Zone")
+            .subtitle("Compute Engine zone")
+            .build();
+        zone_row.add_suffix(&zone_entry);
+        group.add(&zone_row);
 
-        let project_label = Label::builder()
-            .label("Project:")
-            .halign(gtk4::Align::End)
-            .build();
         let project_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("my-project (optional)")
+            .placeholder_text("my-project")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&project_label, 0, row, 1, 1);
-        grid.attach(&project_entry, 1, row, 1, 1);
+        let project_row = adw::ActionRow::builder()
+            .title("Project")
+            .subtitle("GCP project ID")
+            .build();
+        project_row.add_suffix(&project_entry);
+        group.add(&project_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, instance_entry, zone_entry, project_entry)
     }
 
-    /// Creates Azure Bastion provider fields
-    fn create_azure_bastion_fields() -> (GtkBox, Entry, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let resource_id_label = Label::builder()
-            .label("Target Resource ID:")
-            .halign(gtk4::Align::End)
+    /// Creates Azure Bastion provider fields using libadwaita
+    fn create_azure_bastion_fields_adw() -> (GtkBox, Entry, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Azure Bastion")
+            .description("Connect via Azure Bastion service")
             .build();
+
         let resource_id_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("/subscriptions/.../resourceGroups/.../providers/...")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&resource_id_label, 0, row, 1, 1);
-        grid.attach(&resource_id_entry, 1, row, 1, 1);
-        row += 1;
+        let resource_id_row = adw::ActionRow::builder()
+            .title("Target Resource ID")
+            .subtitle("Full Azure resource ID of the target VM")
+            .build();
+        resource_id_row.add_suffix(&resource_id_entry);
+        group.add(&resource_id_row);
 
-        let rg_label = Label::builder()
-            .label("Resource Group:")
-            .halign(gtk4::Align::End)
-            .build();
         let rg_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("my-resource-group")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&rg_label, 0, row, 1, 1);
-        grid.attach(&rg_entry, 1, row, 1, 1);
-        row += 1;
+        let rg_row = adw::ActionRow::builder()
+            .title("Resource Group")
+            .subtitle("Bastion host resource group")
+            .build();
+        rg_row.add_suffix(&rg_entry);
+        group.add(&rg_row);
 
-        let bastion_label = Label::builder()
-            .label("Bastion Name:")
-            .halign(gtk4::Align::End)
-            .build();
-        let bastion_entry = Entry::builder()
+        let name_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("my-bastion")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&bastion_label, 0, row, 1, 1);
-        grid.attach(&bastion_entry, 1, row, 1, 1);
+        let name_row = adw::ActionRow::builder()
+            .title("Bastion Name")
+            .subtitle("Azure Bastion host name")
+            .build();
+        name_row.add_suffix(&name_entry);
+        group.add(&name_row);
 
-        (vbox, resource_id_entry, rg_entry, bastion_entry)
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
+
+        (vbox, resource_id_entry, rg_entry, name_entry)
     }
 
-    /// Creates Azure SSH (AAD) provider fields
-    fn create_azure_ssh_fields() -> (GtkBox, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let vm_label = Label::builder()
-            .label("VM Name:")
-            .halign(gtk4::Align::End)
+    /// Creates Azure SSH (AAD) provider fields using libadwaita
+    fn create_azure_ssh_fields_adw() -> (GtkBox, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Azure SSH (AAD)")
+            .description("Connect via Azure AD authentication")
             .build();
+
         let vm_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("my-vm")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&vm_label, 0, row, 1, 1);
-        grid.attach(&vm_entry, 1, row, 1, 1);
-        row += 1;
+        let vm_row = adw::ActionRow::builder()
+            .title("VM Name")
+            .subtitle("Azure virtual machine name")
+            .build();
+        vm_row.add_suffix(&vm_entry);
+        group.add(&vm_row);
 
-        let rg_label = Label::builder()
-            .label("Resource Group:")
-            .halign(gtk4::Align::End)
-            .build();
         let rg_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("my-resource-group")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&rg_label, 0, row, 1, 1);
-        grid.attach(&rg_entry, 1, row, 1, 1);
+        let rg_row = adw::ActionRow::builder()
+            .title("Resource Group")
+            .subtitle("VM resource group")
+            .build();
+        rg_row.add_suffix(&rg_entry);
+        group.add(&rg_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, vm_entry, rg_entry)
     }
 
-    /// Creates OCI Bastion provider fields
-    fn create_oci_bastion_fields() -> (GtkBox, Entry, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let bastion_id_label = Label::builder()
-            .label("Bastion OCID:")
-            .halign(gtk4::Align::End)
+    /// Creates OCI Bastion provider fields using libadwaita
+    fn create_oci_bastion_fields_adw() -> (GtkBox, Entry, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("OCI Bastion")
+            .description("Connect via Oracle Cloud Bastion")
             .build();
+
         let bastion_id_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("ocid1.bastion.oc1...")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&bastion_id_label, 0, row, 1, 1);
-        grid.attach(&bastion_id_entry, 1, row, 1, 1);
-        row += 1;
+        let bastion_id_row = adw::ActionRow::builder()
+            .title("Bastion OCID")
+            .subtitle("Oracle Cloud bastion identifier")
+            .build();
+        bastion_id_row.add_suffix(&bastion_id_entry);
+        group.add(&bastion_id_row);
 
-        let target_id_label = Label::builder()
-            .label("Target OCID:")
-            .halign(gtk4::Align::End)
-            .build();
         let target_id_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("ocid1.instance.oc1...")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&target_id_label, 0, row, 1, 1);
-        grid.attach(&target_id_entry, 1, row, 1, 1);
-        row += 1;
+        let target_id_row = adw::ActionRow::builder()
+            .title("Target OCID")
+            .subtitle("Target instance identifier")
+            .build();
+        target_id_row.add_suffix(&target_id_entry);
+        group.add(&target_id_row);
 
-        let target_ip_label = Label::builder()
-            .label("Target Private IP:")
-            .halign(gtk4::Align::End)
-            .build();
         let target_ip_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("10.0.0.1")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&target_ip_label, 0, row, 1, 1);
-        grid.attach(&target_ip_entry, 1, row, 1, 1);
+        let target_ip_row = adw::ActionRow::builder()
+            .title("Target IP")
+            .subtitle("Private IP address of target")
+            .build();
+        target_ip_row.add_suffix(&target_ip_entry);
+        group.add(&target_ip_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, bastion_id_entry, target_id_entry, target_ip_entry)
     }
 
-    /// Creates Cloudflare Access provider fields
-    fn create_cloudflare_fields() -> (GtkBox, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let hostname_label = Label::builder()
-            .label("Hostname:")
-            .halign(gtk4::Align::End)
+    /// Creates Cloudflare Access provider fields using libadwaita
+    fn create_cloudflare_fields_adw() -> (GtkBox, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Cloudflare Access")
+            .description("Connect via Cloudflare Zero Trust")
             .build();
+
         let hostname_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("ssh.example.com")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&hostname_label, 0, 0, 1, 1);
-        grid.attach(&hostname_entry, 1, 0, 1, 1);
+        let hostname_row = adw::ActionRow::builder()
+            .title("Hostname")
+            .subtitle("Cloudflare Access protected hostname")
+            .build();
+        hostname_row.add_suffix(&hostname_entry);
+        group.add(&hostname_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, hostname_entry)
     }
 
-    /// Creates Teleport provider fields
-    fn create_teleport_fields() -> (GtkBox, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let host_label = Label::builder()
-            .label("Host:")
-            .halign(gtk4::Align::End)
+    /// Creates Teleport provider fields using libadwaita
+    fn create_teleport_fields_adw() -> (GtkBox, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Teleport")
+            .description("Connect via Gravitational Teleport")
             .build();
+
         let host_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("node-name")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&host_label, 0, row, 1, 1);
-        grid.attach(&host_entry, 1, row, 1, 1);
-        row += 1;
+        let host_row = adw::ActionRow::builder()
+            .title("Node Name")
+            .subtitle("Teleport node hostname")
+            .build();
+        host_row.add_suffix(&host_entry);
+        group.add(&host_row);
 
-        let cluster_label = Label::builder()
-            .label("Cluster:")
-            .halign(gtk4::Align::End)
-            .build();
         let cluster_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("cluster-name (optional)")
+            .placeholder_text("teleport.example.com")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&cluster_label, 0, row, 1, 1);
-        grid.attach(&cluster_entry, 1, row, 1, 1);
+        let cluster_row = adw::ActionRow::builder()
+            .title("Cluster")
+            .subtitle("Teleport cluster address (optional)")
+            .build();
+        cluster_row.add_suffix(&cluster_entry);
+        group.add(&cluster_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, host_entry, cluster_entry)
     }
 
-    /// Creates Tailscale SSH provider fields
-    fn create_tailscale_fields() -> (GtkBox, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let host_label = Label::builder()
-            .label("Host:")
-            .halign(gtk4::Align::End)
+    /// Creates Tailscale SSH provider fields using libadwaita
+    fn create_tailscale_fields_adw() -> (GtkBox, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Tailscale SSH")
+            .description("Connect via Tailscale network")
             .build();
+
         let host_entry = Entry::builder()
             .hexpand(true)
             .placeholder_text("hostname or 100.x.x.x")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&host_label, 0, 0, 1, 1);
-        grid.attach(&host_entry, 1, 0, 1, 1);
+        let host_row = adw::ActionRow::builder()
+            .title("Tailscale Host")
+            .subtitle("Machine name or Tailscale IP")
+            .build();
+        host_row.add_suffix(&host_entry);
+        group.add(&host_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, host_entry)
     }
 
-    /// Creates `HashiCorp` Boundary provider fields
-    fn create_boundary_fields() -> (GtkBox, Entry, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let mut row = 0;
-
-        let target_label = Label::builder()
-            .label("Target:")
-            .halign(gtk4::Align::End)
+    /// Creates HashiCorp Boundary provider fields using libadwaita
+    fn create_boundary_fields_adw() -> (GtkBox, Entry, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("HashiCorp Boundary")
+            .description("Connect via Boundary proxy")
             .build();
+
         let target_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("target ID or name")
+            .placeholder_text("ttcp_1234567890")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&target_label, 0, row, 1, 1);
-        grid.attach(&target_entry, 1, row, 1, 1);
-        row += 1;
+        let target_row = adw::ActionRow::builder()
+            .title("Target ID")
+            .subtitle("Boundary target identifier")
+            .build();
+        target_row.add_suffix(&target_entry);
+        group.add(&target_row);
 
-        let addr_label = Label::builder()
-            .label("Boundary Address:")
-            .halign(gtk4::Align::End)
-            .build();
         let addr_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("https://boundary.example.com (optional)")
+            .placeholder_text("https://boundary.example.com")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&addr_label, 0, row, 1, 1);
-        grid.attach(&addr_entry, 1, row, 1, 1);
+        let addr_row = adw::ActionRow::builder()
+            .title("Controller Address")
+            .subtitle("Boundary controller URL (optional)")
+            .build();
+        addr_row.add_suffix(&addr_entry);
+        group.add(&addr_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, target_entry, addr_entry)
     }
 
-    /// Creates Generic Zero Trust command fields
-    fn create_generic_zt_fields() -> (GtkBox, Entry) {
-        let vbox = GtkBox::new(Orientation::Vertical, 8);
-        let grid = Grid::builder().row_spacing(8).column_spacing(12).build();
-        vbox.append(&grid);
-
-        let info_label = Label::builder()
-            .label("Enter a custom command template. Use {host}, {user}, {port} as placeholders.")
-            .halign(gtk4::Align::Start)
-            .wrap(true)
-            .css_classes(["dim-label"])
+    /// Creates Generic Zero Trust provider fields using libadwaita
+    fn create_generic_zt_fields_adw() -> (GtkBox, Entry) {
+        let group = adw::PreferencesGroup::builder()
+            .title("Generic Command")
+            .description("Custom command for unsupported providers")
             .build();
-        grid.attach(&info_label, 0, 0, 2, 1);
 
-        let command_label = Label::builder()
-            .label("Command:")
-            .halign(gtk4::Align::End)
-            .build();
         let command_entry = Entry::builder()
             .hexpand(true)
-            .placeholder_text("ssh -o ProxyCommand='...' {user}@{host}")
+            .placeholder_text("ssh -o ProxyCommand='...' %h")
+            .valign(gtk4::Align::Center)
             .build();
-        grid.attach(&command_label, 0, 1, 1, 1);
-        grid.attach(&command_entry, 1, 1, 1, 1);
+        let command_row = adw::ActionRow::builder()
+            .title("Command Template")
+            .subtitle("Use %h for host, %p for port, %u for user")
+            .build();
+        command_row.add_suffix(&command_entry);
+        group.add(&command_row);
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&group);
 
         (vbox, command_entry)
     }
 
-    /// Creates the Variables tab for local variable management
+    // Old helper functions removed - now using _adw versions
+    /// Creates the Variables tab for local variable management (legacy)
     ///
     /// Uses libadwaita components following GNOME HIG.
+    #[allow(dead_code)]
     fn create_variables_tab() -> (GtkBox, ListBox, Button) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -3097,6 +3355,105 @@ impl ConnectionDialog {
         vbox.append(&scrolled);
 
         (vbox, variables_list, add_button)
+    }
+
+    /// Creates the Data tab combining Variables and Custom Properties
+    ///
+    /// Uses libadwaita components following GNOME HIG.
+    #[allow(clippy::type_complexity)]
+    fn create_data_tab() -> (GtkBox, ListBox, Button, ListBox, Button) {
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Variables Section ===
+        let variables_group = adw::PreferencesGroup::builder()
+            .title("Local Variables")
+            .description("Use ${variable_name} syntax in connection fields")
+            .build();
+
+        let variables_scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .min_content_height(150)
+            .build();
+
+        let variables_list = ListBox::builder()
+            .selection_mode(gtk4::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .build();
+        variables_list.set_placeholder(Some(&Label::new(Some("No variables defined"))));
+        variables_scrolled.set_child(Some(&variables_list));
+
+        variables_group.add(&variables_scrolled);
+
+        let var_button_box = GtkBox::new(Orientation::Horizontal, 8);
+        var_button_box.set_halign(gtk4::Align::End);
+        var_button_box.set_margin_top(8);
+
+        let add_variable_button = Button::builder()
+            .label("Add Variable")
+            .css_classes(["suggested-action"])
+            .build();
+        var_button_box.append(&add_variable_button);
+
+        variables_group.add(&var_button_box);
+        content.append(&variables_group);
+
+        // === Custom Properties Section ===
+        let properties_group = adw::PreferencesGroup::builder()
+            .title("Custom Properties")
+            .description("Text, URL (clickable), or Protected (masked) metadata")
+            .build();
+
+        let properties_scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .min_content_height(150)
+            .build();
+
+        let properties_list = ListBox::builder()
+            .selection_mode(gtk4::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .build();
+        properties_list.set_placeholder(Some(&Label::new(Some("No custom properties"))));
+        properties_scrolled.set_child(Some(&properties_list));
+
+        properties_group.add(&properties_scrolled);
+
+        let prop_button_box = GtkBox::new(Orientation::Horizontal, 8);
+        prop_button_box.set_halign(gtk4::Align::End);
+        prop_button_box.set_margin_top(8);
+
+        let add_property_button = Button::builder()
+            .label("Add Property")
+            .css_classes(["suggested-action"])
+            .build();
+        prop_button_box.append(&add_property_button);
+
+        properties_group.add(&prop_button_box);
+        content.append(&properties_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
+
+        (vbox, variables_list, add_variable_button, properties_list, add_property_button)
     }
 
     /// Creates the Logging tab for session logging configuration
@@ -3247,8 +3604,151 @@ impl ConnectionDialog {
         )
     }
 
-    /// Creates the Automation tab for expect rules configuration
-    #[allow(clippy::type_complexity)]
+    /// Creates the combined Automation tab (Expect Rules + Tasks)
+    #[allow(clippy::type_complexity, clippy::too_many_lines)]
+    fn create_automation_combined_tab() -> (
+        GtkBox,
+        ListBox,
+        Button,
+        Entry,
+        Label,
+        CheckButton,
+        Entry,
+        SpinButton,
+        CheckButton,
+        CheckButton,
+        CheckButton,
+        Entry,
+        SpinButton,
+        CheckButton,
+    ) {
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Expect Rules Section ===
+        let rules_group = adw::PreferencesGroup::builder()
+            .title("Expect Rules")
+            .description("Auto-respond to terminal patterns (priority order)")
+            .build();
+
+        let rules_scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .min_content_height(120)
+            .build();
+
+        let expect_rules_list = ListBox::builder()
+            .selection_mode(gtk4::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .build();
+        expect_rules_list.set_placeholder(Some(&Label::new(Some("No expect rules"))));
+        rules_scrolled.set_child(Some(&expect_rules_list));
+
+        rules_group.add(&rules_scrolled);
+
+        let rules_button_box = GtkBox::new(Orientation::Horizontal, 8);
+        rules_button_box.set_halign(gtk4::Align::End);
+        rules_button_box.set_margin_top(8);
+
+        let add_rule_button = Button::builder()
+            .label("Add Rule")
+            .css_classes(["suggested-action"])
+            .build();
+        rules_button_box.append(&add_rule_button);
+
+        rules_group.add(&rules_button_box);
+        content.append(&rules_group);
+
+        // Pattern tester
+        let tester_group = adw::PreferencesGroup::builder()
+            .title("Pattern Tester")
+            .build();
+
+        let test_entry = Entry::builder()
+            .hexpand(true)
+            .valign(gtk4::Align::Center)
+            .placeholder_text("Test text against patterns")
+            .build();
+
+        let test_row = adw::ActionRow::builder().title("Test Input").build();
+        test_row.add_suffix(&test_entry);
+        tester_group.add(&test_row);
+
+        let result_label = Label::builder()
+            .label("Enter text to test")
+            .halign(gtk4::Align::Start)
+            .wrap(true)
+            .css_classes(["dim-label"])
+            .build();
+
+        let result_row = adw::ActionRow::builder().title("Result").build();
+        result_row.add_suffix(&result_label);
+        tester_group.add(&result_row);
+
+        content.append(&tester_group);
+
+        // === Pre-Connect Task Section ===
+        let (
+            pre_connect_group,
+            pre_connect_enabled_check,
+            pre_connect_command_entry,
+            pre_connect_timeout_spin,
+            pre_connect_abort_check,
+            pre_connect_first_only_check,
+        ) = Self::create_task_section("Pre-Connect Task", true);
+        content.append(&pre_connect_group);
+
+        // === Post-Disconnect Task Section ===
+        let (
+            post_disconnect_group,
+            post_disconnect_enabled_check,
+            post_disconnect_command_entry,
+            post_disconnect_timeout_spin,
+            _post_disconnect_abort_check,
+            post_disconnect_last_only_check,
+        ) = Self::create_task_section("Post-Disconnect Task", false);
+        content.append(&post_disconnect_group);
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
+
+        (
+            vbox,
+            expect_rules_list,
+            add_rule_button,
+            test_entry,
+            result_label,
+            pre_connect_enabled_check,
+            pre_connect_command_entry,
+            pre_connect_timeout_spin,
+            pre_connect_abort_check,
+            pre_connect_first_only_check,
+            post_disconnect_enabled_check,
+            post_disconnect_command_entry,
+            post_disconnect_timeout_spin,
+            post_disconnect_last_only_check,
+        )
+    }
+
+    /// Creates the Automation tab for expect rules configuration (legacy, kept for reference)
+    #[allow(dead_code, clippy::type_complexity)]
     fn create_automation_tab() -> (GtkBox, ListBox, Button, Entry, Label) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -3350,8 +3850,8 @@ impl ConnectionDialog {
         )
     }
 
-    /// Creates the Tasks tab for pre/post connection task configuration
-    #[allow(clippy::type_complexity)]
+    /// Creates the Tasks tab for pre/post connection task configuration (legacy)
+    #[allow(dead_code, clippy::type_complexity)]
     fn create_tasks_tab() -> (
         GtkBox,
         CheckButton,
@@ -3556,9 +4056,193 @@ impl ConnectionDialog {
         )
     }
 
-    /// Creates the Display tab for window mode configuration
+    /// Creates the Advanced tab combining Display and WOL settings
     ///
     /// Uses libadwaita components following GNOME HIG.
+    #[allow(clippy::type_complexity)]
+    fn create_advanced_tab() -> (
+        GtkBox,
+        DropDown,
+        CheckButton,
+        CheckButton,
+        Entry,
+        Entry,
+        SpinButton,
+        SpinButton,
+    ) {
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let clamp = adw::Clamp::builder()
+            .maximum_size(600)
+            .tightening_threshold(400)
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        // === Window Mode Section ===
+        let mode_group = adw::PreferencesGroup::builder()
+            .title("Window Mode")
+            .build();
+
+        let mode_list = StringList::new(&["Embedded", "External Window", "Fullscreen"]);
+        let mode_dropdown = DropDown::new(Some(mode_list), gtk4::Expression::NONE);
+        mode_dropdown.set_selected(0);
+        mode_dropdown.set_valign(gtk4::Align::Center);
+
+        let mode_row = adw::ActionRow::builder()
+            .title("Display Mode")
+            .subtitle("Embedded • External • Fullscreen")
+            .build();
+        mode_row.add_suffix(&mode_dropdown);
+        mode_group.add(&mode_row);
+
+        let remember_check = CheckButton::builder()
+            .valign(gtk4::Align::Center)
+            .sensitive(false)
+            .build();
+
+        let remember_row = adw::ActionRow::builder()
+            .title("Remember Position")
+            .subtitle("Save window geometry (External mode only)")
+            .activatable_widget(&remember_check)
+            .build();
+        remember_row.add_suffix(&remember_check);
+        mode_group.add(&remember_row);
+
+        let remember_check_clone = remember_check.clone();
+        let remember_row_clone = remember_row.clone();
+        mode_dropdown.connect_selected_notify(move |dropdown| {
+            let is_external = dropdown.selected() == 1;
+            remember_check_clone.set_sensitive(is_external);
+            remember_row_clone.set_sensitive(is_external);
+            if !is_external {
+                remember_check_clone.set_active(false);
+            }
+        });
+
+        content.append(&mode_group);
+
+        // === Wake On LAN Section ===
+        let wol_group = adw::PreferencesGroup::builder()
+            .title("Wake On LAN")
+            .build();
+
+        let wol_enabled_check = CheckButton::builder().valign(gtk4::Align::Center).build();
+
+        let wol_enable_row = adw::ActionRow::builder()
+            .title("Enable WOL")
+            .subtitle("Send magic packet before connecting")
+            .activatable_widget(&wol_enabled_check)
+            .build();
+        wol_enable_row.add_suffix(&wol_enabled_check);
+        wol_group.add(&wol_enable_row);
+
+        content.append(&wol_group);
+
+        // WOL Settings group
+        let wol_settings_group = adw::PreferencesGroup::builder()
+            .title("WOL Settings")
+            .sensitive(false)
+            .build();
+
+        let mac_entry = Entry::builder()
+            .hexpand(true)
+            .valign(gtk4::Align::Center)
+            .placeholder_text("AA:BB:CC:DD:EE:FF")
+            .build();
+
+        let mac_row = adw::ActionRow::builder()
+            .title("MAC Address")
+            .build();
+        mac_row.add_suffix(&mac_entry);
+        wol_settings_group.add(&mac_row);
+
+        let broadcast_entry = Entry::builder()
+            .hexpand(true)
+            .valign(gtk4::Align::Center)
+            .text(DEFAULT_BROADCAST_ADDRESS)
+            .build();
+
+        let broadcast_row = adw::ActionRow::builder()
+            .title("Broadcast Address")
+            .build();
+        broadcast_row.add_suffix(&broadcast_entry);
+        wol_settings_group.add(&broadcast_row);
+
+        let port_adjustment =
+            gtk4::Adjustment::new(f64::from(DEFAULT_WOL_PORT), 1.0, 65535.0, 1.0, 10.0, 0.0);
+        let port_spin = SpinButton::builder()
+            .adjustment(&port_adjustment)
+            .digits(0)
+            .valign(gtk4::Align::Center)
+            .build();
+
+        let port_row = adw::ActionRow::builder()
+            .title("UDP Port")
+            .subtitle("Default: 9")
+            .build();
+        port_row.add_suffix(&port_spin);
+        wol_settings_group.add(&port_row);
+
+        let wait_adjustment = gtk4::Adjustment::new(
+            f64::from(DEFAULT_WOL_WAIT_SECONDS),
+            0.0,
+            300.0,
+            1.0,
+            10.0,
+            0.0,
+        );
+        let wait_spin = SpinButton::builder()
+            .adjustment(&wait_adjustment)
+            .digits(0)
+            .valign(gtk4::Align::Center)
+            .build();
+
+        let wait_row = adw::ActionRow::builder()
+            .title("Wait Time (sec)")
+            .subtitle("Time to wait for boot")
+            .build();
+        wait_row.add_suffix(&wait_spin);
+        wol_settings_group.add(&wait_row);
+
+        content.append(&wol_settings_group);
+
+        // Connect WOL enabled checkbox
+        let wol_settings_group_clone = wol_settings_group.clone();
+        wol_enabled_check.connect_toggled(move |check| {
+            wol_settings_group_clone.set_sensitive(check.is_active());
+        });
+
+        clamp.set_child(Some(&content));
+        scrolled.set_child(Some(&clamp));
+
+        let vbox = GtkBox::new(Orientation::Vertical, 0);
+        vbox.append(&scrolled);
+
+        (
+            vbox,
+            mode_dropdown,
+            remember_check,
+            wol_enabled_check,
+            mac_entry,
+            broadcast_entry,
+            port_spin,
+            wait_spin,
+        )
+    }
+
+    /// Creates the Display tab for window mode configuration (legacy, kept for reference)
+    ///
+    /// Uses libadwaita components following GNOME HIG.
+    #[allow(dead_code)]
     fn create_display_tab() -> (GtkBox, DropDown, CheckButton) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -3636,9 +4320,10 @@ impl ConnectionDialog {
         (vbox, mode_dropdown, remember_check)
     }
 
-    /// Creates the Custom Properties tab for adding metadata to connections
+    /// Creates the Custom Properties tab for adding metadata to connections (legacy)
     ///
     /// Uses libadwaita components following GNOME HIG.
+    #[allow(dead_code)]
     fn create_custom_properties_tab() -> (GtkBox, ListBox, Button) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -3925,10 +4610,10 @@ impl ConnectionDialog {
         let _ = initial_index;
     }
 
-    /// Creates the WOL (Wake On LAN) tab for configuring wake-on-lan settings
+    /// Creates the WOL (Wake On LAN) tab for configuring wake-on-lan settings (legacy)
     ///
     /// Uses libadwaita components following GNOME HIG.
-    #[allow(clippy::type_complexity)]
+    #[allow(dead_code, clippy::type_complexity)]
     fn create_wol_tab() -> (GtkBox, CheckButton, Entry, Entry, SpinButton, SpinButton) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)

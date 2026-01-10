@@ -230,7 +230,9 @@ impl AsbruImporter {
         // First pass: create groups and map original UUIDs to new UUIDs
         let mut uuid_map: HashMap<String, Uuid> = HashMap::new();
 
-        // Process groups first
+        // Process groups first - collect them to set parent_id after all are created
+        let mut groups_to_add: Vec<(String, ConnectionGroup, Option<String>)> = Vec::new();
+
         for (key, entry) in &config {
             if entry.is_group == Some(1) {
                 let group_name = entry
@@ -242,8 +244,18 @@ impl AsbruImporter {
 
                 let group = ConnectionGroup::new(group_name);
                 uuid_map.insert(key.clone(), group.id);
-                result.add_group(group);
+                groups_to_add.push((key.clone(), group, entry.parent.clone()));
             }
+        }
+
+        // Second pass: set parent_id for groups and add them to result
+        for (_key, mut group, parent_key) in groups_to_add {
+            if let Some(parent_key) = parent_key {
+                if let Some(&parent_uuid) = uuid_map.get(&parent_key) {
+                    group.parent_id = Some(parent_uuid);
+                }
+            }
+            result.add_group(group);
         }
 
         // Second pass: process connections
@@ -288,11 +300,19 @@ impl AsbruImporter {
         };
 
         // Determine protocol and create config
+        // Asbru uses 'method' field primarily, 'type' as fallback
         let protocol_type = entry
-            .protocol_type
+            .method
             .as_ref()
-            .or(entry.method.as_ref())
+            .or(entry.protocol_type.as_ref())
             .map_or_else(|| "ssh".to_string(), |s| s.to_lowercase());
+
+        // Log protocol detection for debugging
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "Asbru import: {} - method={:?}, type={:?}, resolved={}",
+            name, entry.method, entry.protocol_type, protocol_type
+        );
 
         let (protocol_config, default_port) = match protocol_type.as_str() {
             "ssh" | "sftp" | "scp" => {
@@ -342,8 +362,12 @@ impl AsbruImporter {
                     22u16,
                 )
             }
-            "rdp" | "rdesktop" | "xfreerdp" => (ProtocolConfig::Rdp(RdpConfig::default()), 3389u16),
-            "vnc" | "vncviewer" => (ProtocolConfig::Vnc(VncConfig::default()), 5900u16),
+            "rdp" | "rdesktop" | "xfreerdp" | "freerdp" | "rdesktop3" => {
+                (ProtocolConfig::Rdp(RdpConfig::default()), 3389u16)
+            }
+            "vnc" | "vncviewer" | "tigervnc" | "realvnc" => {
+                (ProtocolConfig::Vnc(VncConfig::default()), 5900u16)
+            }
             _ => {
                 result.add_skipped(SkippedEntry::with_location(
                     &name,

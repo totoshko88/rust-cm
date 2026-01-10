@@ -16,10 +16,10 @@ RustConn is a well-structured GTK4/libadwaita connection manager with solid arch
 | Category | Status | Priority Items |
 |----------|--------|----------------|
 | Code Quality | 🟢 Good | ✅ Clippy suppressions reduced, ✅ `unwrap()` fixed in Cairo code |
-| GTK4/Adwaita Migration | 🟢 Complete | ✅ Dialogs migrated to `adw::Window` |
+| GTK4/Adwaita Migration | 🟢 Complete | ✅ All dialogs use `adw::AlertDialog`, `adw::Window` |
 | Crate Boundaries | 🟢 OK | No violations found |
-| Dependencies | 🟡 Moderate | Some outdated crates, pinned versions |
-| Technical Debt | 🟡 Moderate | Large files, dead code markers |
+| Dependencies | 🟡 Moderate | Some pinned versions (picky, ksni) |
+| Technical Debt | 🟡 Moderate | `block_on()` deferred to 0.6.0, large files |
 
 ---
 
@@ -53,14 +53,16 @@ Fixed `unwrap()` calls in Cairo drawing code with `if let Ok(extents)` pattern:
 
 ---
 
-### 🟡 HIGH: `block_on()` in GUI Code
+### 🟡 DEFERRED: `block_on()` in GUI Code
 
 **Location:** `rustconn/src/state.rs` (lines 824, 845, 866, 978)
 
-Blocking async operations in GUI thread can cause UI freezes:
+**Status:** Deferred to version 0.6.0 — high-risk refactoring of critical connection flow.
+
+Blocking async operations in GUI thread can cause brief UI freezes:
 
 ```rust
-// CURRENT — Blocks GUI thread
+// CURRENT — Blocks GUI thread (typically <100ms)
 with_runtime(|rt| {
     rt.block_on(async {
         secret_manager.store(&id_str, &creds).await
@@ -68,7 +70,12 @@ with_runtime(|rt| {
 })
 ```
 
-**Recommended:** Use `glib::spawn_future_local()` for async operations:
+**Mitigations in place:**
+- KeePass operations already run in background threads (`std::thread::spawn`)
+- Connection test runs in separate thread
+- Async API already exists for future migration
+
+**TODO for 0.6.0:** Rewrite `start_connection()` flow using:
 ```rust
 // RECOMMENDED — Non-blocking
 glib::spawn_future_local(async move {
@@ -262,13 +269,20 @@ Migrated Settings dialog from deprecated `PreferencesWindow` to `PreferencesDial
    - Updated close handler to use `connect_closed` signal
    - Updated toast notification handling
 
-### Phase 5: Medium Priority (Next Sprint)
+### Phase 5: Medium Priority (Deferred to 0.6.0)
 
-9. **Refactor `block_on()` calls in GUI**
-   - Implement async credential resolution with callbacks
-   - Use `glib::spawn_future_local()` pattern
+9. **Refactor `block_on()` calls in GUI** — DEFERRED
+   - **Status:** Deferred to version 0.6.0
+   - **Reason:** High-risk refactoring of critical connection flow
+   - **Impact:** Potential UI freezes during credential resolution (typically <100ms)
+   - **Mitigation:** KeePass operations already run in background threads
+   - **Scope:** 
+     - `state.rs`: `resolve_credentials()`, `has_secret_backend()` 
+     - `connection.rs`: `test_connection()` (already in separate thread)
+   - **Note:** Async API already exists (`resolve_credentials_with_callback`, `resolve_credentials_async`)
+   - **TODO for 0.6.0:** Rewrite `start_connection()` flow to use async credential resolution with loading indicator
 
-10. **Split large files**
+10. **Split large files** — DEFERRED
    - `dialogs/connection.rs` → multiple focused modules
    - `state.rs` → extract credential operations
 

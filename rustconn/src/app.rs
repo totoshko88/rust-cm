@@ -552,6 +552,16 @@ fn load_css_styles() {
             font-weight: 600;
             font-size: 0.95em;
         }
+
+        /* Context menu destructive button - ensure text is visible */
+        .context-menu-destructive {
+            color: @error_color;
+        }
+
+        .context-menu-destructive:hover {
+            background-color: alpha(@error_color, 0.1);
+            color: @error_color;
+        }
         ",
     );
 
@@ -654,21 +664,9 @@ fn setup_app_actions(
 
 /// Shows the about dialog
 fn show_about_dialog(parent: &adw::ApplicationWindow) {
-    let description = "\
-<b>RustConn</b> is a modern GTK4/libadwaita connection manager for Linux, \
+    let description = "Modern GTK4/libadwaita connection manager for Linux, \
 designed with Wayland-first approach.\n\n\
-<b>Supported Protocols:</b>\n\
-• SSH — embedded VTE terminal with tabs\n\
-• RDP — native IronRDP or FreeRDP backend\n\
-• VNC — TigerVNC integration\n\
-• SPICE — for virtual machines\n\n\
-<b>Key Features:</b>\n\
-• Connection organization with groups and tags\n\
-• Import/Export: Remmina, Asbru-CM, SSH config, Ansible, Royal TS\n\
-• Secure credential storage via libsecret or KeePassXC\n\
-• Session logging and command snippets\n\
-• Zero Trust integrations (AWS SSM, GCP IAP, Azure, Tailscale, etc.)\n\n\
-<b>Developed by Anton Isaiev, 2024-2026</b>";
+Developed by Anton Isaiev, 2024-2026";
 
     let about = adw::AboutDialog::builder()
         .application_name("RustConn")
@@ -713,7 +711,7 @@ designed with Wayland-first approach.\n\n\
 
     // Add legal sections for key dependencies
     about.add_legal_section(
-        "GTK4 & libadwaita",
+        "GTK4, libadwaita & VTE",
         Some("© The GNOME Project"),
         gtk4::License::Lgpl21,
         None,
@@ -722,12 +720,6 @@ designed with Wayland-first approach.\n\n\
         "IronRDP",
         Some("© Devolutions Inc."),
         gtk4::License::MitX11,
-        None,
-    );
-    about.add_legal_section(
-        "VTE Terminal",
-        Some("© The GNOME Project"),
-        gtk4::License::Lgpl21,
         None,
     );
 
