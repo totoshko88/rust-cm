@@ -54,9 +54,8 @@ pub fn create_application() -> adw::Application {
     // Create shared tray manager (will be initialized in build_ui)
     let tray_manager: SharedTrayManager = Rc::new(RefCell::new(None));
 
-    let tray_manager_clone = tray_manager.clone();
     app.connect_activate(move |app| {
-        build_ui(app, tray_manager_clone.clone());
+        build_ui(app, tray_manager.clone());
     });
 
     // Keep the application running even when all windows are closed (for tray icon)
@@ -97,7 +96,7 @@ fn build_ui(app: &adw::Application, tray_manager: SharedTrayManager) {
     }
 
     // Set up application actions
-    setup_app_actions(app, &window, state.clone(), tray_manager.clone());
+    setup_app_actions(app, &window, &state, tray_manager.clone());
 
     // Set up tray message polling
     setup_tray_polling(app, &window, state, tray_manager);
@@ -575,7 +574,7 @@ fn load_css_styles() {
 fn setup_app_actions(
     app: &adw::Application,
     window: &MainWindow,
-    state: SharedAppState,
+    state: &SharedAppState,
     _tray_manager: SharedTrayManager,
 ) {
     // Quit action - save expanded groups state before quitting

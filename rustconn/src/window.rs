@@ -1976,26 +1976,6 @@ impl MainWindow {
         );
     }
 
-    /// Starts VNC session with provided password
-    #[allow(dead_code)]
-    fn start_vnc_session_with_password(
-        state: &SharedAppState,
-        notebook: &SharedNotebook,
-        split_view: &SharedSplitView,
-        sidebar: &SharedSidebar,
-        connection_id: Uuid,
-        password: &str,
-    ) {
-        rdp_vnc::start_vnc_session_with_password(
-            state,
-            notebook,
-            split_view,
-            sidebar,
-            connection_id,
-            password,
-        );
-    }
-
     /// Starts a connection with split view integration
     pub fn start_connection_with_split(
         state: &SharedAppState,

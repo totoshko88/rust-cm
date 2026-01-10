@@ -353,7 +353,9 @@ pub fn show_context_menu_for_item(widget: &impl IsA<gtk4::Widget>, x: f64, y: f6
 }
 
 /// Shows the context menu for a connection item (non-group)
-#[allow(dead_code)]
+///
+/// Wrapper around `show_context_menu_for_item` for backward compatibility.
+/// Called from `ConnectionSidebar::show_context_menu`.
 pub fn show_context_menu(widget: &impl IsA<gtk4::Widget>, x: f64, y: f64) {
     show_context_menu_for_item(widget, x, y, false);
 }
@@ -455,30 +457,7 @@ pub fn create_bulk_actions_bar() -> GtkBox {
     bar
 }
 
-/// Creates the button box at the bottom of the sidebar with KeePass button reference
-/// DEPRECATED: Use create_sidebar_toolbar() instead
-#[must_use]
-#[allow(dead_code)]
-pub fn create_button_box_with_keepass() -> (GtkBox, Button) {
-    let button_box = GtkBox::new(Orientation::Horizontal, 6);
-    button_box.set_margin_start(12);
-    button_box.set_margin_end(12);
-    button_box.set_margin_top(6);
-    button_box.set_margin_bottom(6);
-    button_box.set_halign(gtk4::Align::Center);
 
-    // KeePass button - shows integration status
-    let keepass_button = Button::from_icon_name("dialog-password-symbolic");
-    keepass_button.set_tooltip_text(Some("Open KeePass Database"));
-    keepass_button.set_action_name(Some("win.open-keepass"));
-    keepass_button.add_css_class("keepass-button");
-    keepass_button.update_property(&[gtk4::accessible::Property::Label(
-        "Open KeePass database for credential management",
-    )]);
-    button_box.append(&keepass_button);
-
-    (button_box, keepass_button)
-}
 
 /// Creates the sidebar bottom toolbar with secondary actions
 ///

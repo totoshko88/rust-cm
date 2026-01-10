@@ -1375,14 +1375,6 @@ impl AppState {
         Ok(imported)
     }
 
-    /// Imports connections from an import result (legacy method)
-    ///
-    /// Note: Prefer `import_connections_with_source` for better organization.
-    #[allow(dead_code)]
-    pub fn import_connections(&mut self, result: &ImportResult) -> Result<usize, String> {
-        self.import_connections_with_source(result, "Unknown")
-    }
-
     // ========== Document Operations ==========
 
     /// Creates a new document
