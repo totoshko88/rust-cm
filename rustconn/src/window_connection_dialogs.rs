@@ -400,15 +400,10 @@ pub fn show_new_group_dialog_with_parent(
         .title("Group Details")
         .build();
 
-    // Group name using ActionRow with Entry
-    let entry = gtk4::Entry::builder()
-        .hexpand(true)
-        .valign(gtk4::Align::Center)
-        .placeholder_text("Enter group name")
+    // Group name using EntryRow
+    let name_row = adw::EntryRow::builder()
+        .title("Name")
         .build();
-    let name_row = adw::ActionRow::builder().title("Name").build();
-    name_row.add_suffix(&entry);
-    name_row.set_activatable_widget(Some(&entry));
     details_group.add(&name_row);
 
     // Parent group dropdown
@@ -467,10 +462,10 @@ pub fn show_new_group_dialog_with_parent(
     let state_clone = state.clone();
     let sidebar_clone = sidebar;
     let window_clone = group_window.clone();
-    let entry_clone = entry;
+    let name_row_clone = name_row;
     let dropdown_clone = parent_dropdown;
     create_btn.connect_clicked(move |_| {
-        let name = entry_clone.text().to_string();
+        let name = name_row_clone.text().to_string();
         if name.trim().is_empty() {
             let alert = gtk4::AlertDialog::builder()
                 .message("Validation Error")

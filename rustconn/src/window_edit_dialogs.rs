@@ -446,16 +446,12 @@ pub fn rename_selected_item(
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    // Name entry using PreferencesGroup
+    // Name entry using PreferencesGroup with EntryRow
     let name_group = adw::PreferencesGroup::new();
-    let entry = gtk4::Entry::builder()
+    let name_row = adw::EntryRow::builder()
+        .title("Name")
         .text(&current_name)
-        .valign(gtk4::Align::Center)
-        .hexpand(true)
         .build();
-    entry.select_region(0, -1);
-    let name_row = adw::ActionRow::builder().title("Name").build();
-    name_row.add_suffix(&entry);
     name_group.add(&name_row);
     content.append(&name_group);
 
@@ -475,9 +471,9 @@ pub fn rename_selected_item(
     let state_clone = state.clone();
     let sidebar_clone = sidebar.clone();
     let window_clone = rename_window.clone();
-    let entry_clone = entry.clone();
+    let name_row_clone = name_row.clone();
     save_btn.connect_clicked(move |_| {
-        let new_name = entry_clone.text().trim().to_string();
+        let new_name = name_row_clone.text().trim().to_string();
         if new_name.is_empty() {
             let alert = gtk4::AlertDialog::builder()
                 .message("Validation Error")
@@ -566,12 +562,12 @@ pub fn rename_selected_item(
 
     // Enter key triggers save
     let save_btn_clone = save_btn.clone();
-    entry.connect_activate(move |_| {
+    name_row.connect_entry_activated(move |_| {
         save_btn_clone.emit_clicked();
     });
 
     rename_window.present();
-    entry.grab_focus();
+    name_row.grab_focus();
 }
 
 /// Shows dialog to edit a group name
@@ -615,15 +611,12 @@ pub fn show_edit_group_dialog(
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    // Name entry using PreferencesGroup
+    // Name entry using PreferencesGroup with EntryRow
     let name_group = adw::PreferencesGroup::new();
-    let entry = gtk4::Entry::builder()
+    let name_row = adw::EntryRow::builder()
+        .title("Name")
         .text(&group.name)
-        .valign(gtk4::Align::Center)
-        .hexpand(true)
         .build();
-    let name_row = adw::ActionRow::builder().title("Name").build();
-    name_row.add_suffix(&entry);
     name_group.add(&name_row);
     content.append(&name_group);
 
@@ -641,10 +634,10 @@ pub fn show_edit_group_dialog(
     let state_clone = state.clone();
     let sidebar_clone = sidebar;
     let window_clone = group_window.clone();
-    let entry_clone = entry;
+    let name_row_clone = name_row;
     let old_name = group.name;
     save_btn.connect_clicked(move |_| {
-        let new_name = entry_clone.text().to_string();
+        let new_name = name_row_clone.text().to_string();
         if new_name.trim().is_empty() {
             let alert = gtk4::AlertDialog::builder()
                 .message("Validation Error")

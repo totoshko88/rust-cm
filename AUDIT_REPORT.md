@@ -293,9 +293,10 @@ Migrated Settings dialog from deprecated `PreferencesWindow` to `PreferencesDial
     - ✅ `ActionRow` + `Switch` → `adw::SwitchRow` in password_generator.rs (6 switches)
     - ✅ `ActionRow` + `Switch` → `adw::SwitchRow` in cluster.rs (1 switch)
     - ✅ `ActionRow` + `Switch` → `adw::SwitchRow` in export.rs (2 switches)
-    - `ActionRow` + `Entry` → `adw::EntryRow`
-    - `ActionRow` + `SpinButton` → `adw::SpinRow`
-    - `gtk4::AlertDialog` → `adw::AlertDialog`
+    - ✅ `ActionRow` + `Entry` → `adw::EntryRow` in window_connection_dialogs.rs (New Group)
+    - ✅ `ActionRow` + `Entry` → `adw::EntryRow` in window_edit_dialogs.rs (Edit Group, Rename)
+    - ✅ `ActionRow` + `SpinButton` → `adw::SpinRow` in ui_tab.rs (session max age)
+    - `gtk4::AlertDialog` → `adw::AlertDialog` (many usages - lower priority)
 
 ---
 

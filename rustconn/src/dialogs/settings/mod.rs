@@ -81,7 +81,7 @@ pub struct SettingsDialog {
     // Session restore settings
     session_restore_enabled: CheckButton,
     prompt_on_restore: CheckButton,
-    max_age_spin: SpinButton,
+    max_age_row: adw::SpinRow,
     // SSH Agent settings
     ssh_agent_status_label: Label,
     ssh_agent_socket_label: Label,
@@ -158,7 +158,7 @@ impl SettingsDialog {
             minimize_to_tray,
             session_restore_enabled,
             prompt_on_restore,
-            max_age_spin,
+            max_age_row,
         ) = create_ui_page();
 
         let (
@@ -228,7 +228,7 @@ impl SettingsDialog {
             minimize_to_tray,
             session_restore_enabled,
             prompt_on_restore,
-            max_age_spin,
+            max_age_row,
             ssh_agent_status_label,
             ssh_agent_socket_label,
             ssh_agent_start_button,
@@ -372,7 +372,7 @@ impl SettingsDialog {
             &self.minimize_to_tray,
             &self.session_restore_enabled,
             &self.prompt_on_restore,
-            &self.max_age_spin,
+            &self.max_age_row,
             &settings.ui,
         );
 
@@ -437,7 +437,7 @@ impl SettingsDialog {
         let minimize_to_tray_clone = self.minimize_to_tray.clone();
         let session_restore_enabled_clone = self.session_restore_enabled.clone();
         let prompt_on_restore_clone = self.prompt_on_restore.clone();
-        let max_age_spin_clone = self.max_age_spin.clone();
+        let max_age_row_clone = self.max_age_row.clone();
 
         // Store callback reference
         let on_save_callback = self.on_save.clone();
@@ -491,7 +491,7 @@ impl SettingsDialog {
                 &minimize_to_tray_clone,
                 &session_restore_enabled_clone,
                 &prompt_on_restore_clone,
-                &max_age_spin_clone,
+                &max_age_row_clone,
             );
 
             // Create new settings

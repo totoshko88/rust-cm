@@ -2,7 +2,7 @@
 
 use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, CheckButton, SpinButton, ToggleButton};
+use gtk4::{Box as GtkBox, CheckButton, ToggleButton};
 use libadwaita as adw;
 use rustconn_core::config::{ColorScheme, SessionRestoreSettings, UiSettings};
 
@@ -16,7 +16,7 @@ pub fn create_ui_page() -> (
     CheckButton,
     CheckButton,
     CheckButton,
-    SpinButton,
+    adw::SpinRow,
 ) {
     let page = adw::PreferencesPage::builder()
         .title("Interface")
@@ -144,27 +144,20 @@ pub fn create_ui_page() -> (
     prompt_on_restore_row.add_prefix(&prompt_on_restore);
     session_group.add(&prompt_on_restore_row);
 
-    let max_age_spin = SpinButton::new(
-        Some(&gtk4::Adjustment::new(24.0, 1.0, 168.0, 1.0, 24.0, 0.0)),
-        1.0,
-        0,
-    );
-    max_age_spin.set_valign(gtk4::Align::Center);
-    let max_age_row = adw::ActionRow::builder()
+    let max_age_row = adw::SpinRow::builder()
         .title("Max age")
         .subtitle("Hours before sessions expire")
+        .adjustment(&gtk4::Adjustment::new(24.0, 1.0, 168.0, 1.0, 24.0, 0.0))
         .build();
-    max_age_row.add_suffix(&max_age_spin);
-    max_age_row.set_activatable_widget(Some(&max_age_spin));
     session_group.add(&max_age_row);
 
     // Make session options sensitive based on session_restore_enabled
     let prompt_on_restore_clone = prompt_on_restore.clone();
-    let max_age_spin_clone = max_age_spin.clone();
+    let max_age_row_clone = max_age_row.clone();
     session_restore_enabled.connect_toggled(move |check| {
         let active = check.is_active();
         prompt_on_restore_clone.set_sensitive(active);
-        max_age_spin_clone.set_sensitive(active);
+        max_age_row_clone.set_sensitive(active);
     });
 
     page.add(&session_group);
@@ -177,7 +170,7 @@ pub fn create_ui_page() -> (
         minimize_to_tray,
         session_restore_enabled,
         prompt_on_restore,
-        max_age_spin,
+        max_age_row,
     )
 }
 
@@ -190,7 +183,7 @@ pub fn load_ui_settings(
     minimize_to_tray: &CheckButton,
     session_restore_enabled: &CheckButton,
     prompt_on_restore: &CheckButton,
-    max_age_spin: &SpinButton,
+    max_age_row: &adw::SpinRow,
     settings: &UiSettings,
 ) {
     let target_index = match settings.color_scheme {
@@ -220,10 +213,10 @@ pub fn load_ui_settings(
 
     session_restore_enabled.set_active(settings.session_restore.enabled);
     prompt_on_restore.set_active(settings.session_restore.prompt_on_restore);
-    max_age_spin.set_value(f64::from(settings.session_restore.max_age_hours));
+    max_age_row.set_value(f64::from(settings.session_restore.max_age_hours));
 
     prompt_on_restore.set_sensitive(settings.session_restore.enabled);
-    max_age_spin.set_sensitive(settings.session_restore.enabled);
+    max_age_row.set_sensitive(settings.session_restore.enabled);
 }
 
 /// Collects UI settings from UI controls
@@ -235,7 +228,7 @@ pub fn collect_ui_settings(
     minimize_to_tray: &CheckButton,
     session_restore_enabled: &CheckButton,
     prompt_on_restore: &CheckButton,
-    max_age_spin: &SpinButton,
+    max_age_row: &adw::SpinRow,
 ) -> UiSettings {
     let mut selected_scheme = ColorScheme::System;
     let mut child = color_scheme_box.first_child();
@@ -269,7 +262,7 @@ pub fn collect_ui_settings(
             enabled: session_restore_enabled.is_active(),
             prompt_on_restore: prompt_on_restore.is_active(),
             #[allow(clippy::cast_sign_loss)]
-            max_age_hours: max_age_spin.value().max(0.0) as u32,
+            max_age_hours: max_age_row.value().max(0.0) as u32,
             saved_sessions: Vec::new(),
         },
     }

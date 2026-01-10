@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added short description under logo
   - Added Releases, Details, and License links
   - Added "Made with ❤️ in Ukraine 🇺🇦" to Acknowledgments
+  - Added legal sections for key dependencies (GTK4, IronRDP, VTE)
+- Migrated group dialogs from `ActionRow` + `Entry` to `adw::EntryRow`:
+  - New Group dialog
+  - Edit Group dialog
+  - Rename dialog (connections and groups)
+- Migrated Settings UI tab from `SpinButton` to `adw::SpinRow` for session max age
+- Updated documentation (INSTALL.md, USER_GUIDE.md) for version 0.5.9
   - Connection dialog (`dialogs/connection.rs`)
   - SSH Agent passphrase dialog (`dialogs/settings/ssh_agent_tab.rs`)
 - Enabled libadwaita `v1_4` feature for `adw::ToolbarView` support
