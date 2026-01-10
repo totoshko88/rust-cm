@@ -758,6 +758,11 @@ impl KeePassStatus {
         // Build command arguments
         let mut args = vec!["ls".to_string()];
 
+        // If using key file without password, add --no-password flag
+        if password.is_none() && key_file.is_some() {
+            args.push("--no-password".to_string());
+        }
+
         if let Some(kf) = key_file {
             args.push("--key-file".to_string());
             args.push(kf.display().to_string());
@@ -773,16 +778,16 @@ impl KeePassStatus {
             .spawn()
             .map_err(|e| format!("Failed to run keepassxc-cli: {e}"))?;
 
-        // Write password to stdin
+        // Write password to stdin (only if we have one)
         if let Some(mut stdin) = child.stdin.take() {
             if let Some(pwd) = password {
                 stdin
                     .write_all(pwd.as_bytes())
                     .map_err(|e| format!("Failed to send password: {e}"))?;
+                stdin
+                    .write_all(b"\n")
+                    .map_err(|e| format!("Failed to send password: {e}"))?;
             }
-            stdin
-                .write_all(b"\n")
-                .map_err(|e| format!("Failed to send password: {e}"))?;
         }
 
         let output = child

@@ -19,12 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary `macos_kqueue` feature from `notify` crate
 - Note: `ksni` 0.3.3 and `sspi`/`picky-krb` kept at current versions due to `zvariant`/`rand_core` version conflicts
 - Migrated all dialogs to use `adw::ToolbarView` for proper libadwaita layout:
+- Migrated Template dialog to modern libadwaita patterns:
+  - Basic tab: `adw::PreferencesGroup` with `adw::ActionRow` for template info and default values
+  - SSH options: `adw::PreferencesGroup` with Authentication, Connection, and Session groups
+  - RDP options: Display, Features, and Advanced groups with dynamic visibility (resolution/color hidden in Embedded mode)
+  - VNC options: Display, Encoding, Features, and Advanced groups
+  - SPICE options: Security, Features, and Performance groups with dynamic visibility (TLS-related fields)
+  - Zero Trust options: Provider selection with `adw::ActionRow`, provider-specific groups for all 10 providers
 
 ### Fixed
 - Fixed missing icon for "Embedded SSH terminals" feature on Welcome page (`display-symbolic` → `utilities-terminal-symbolic`)
 - Fixed missing Quick Connect header bar icon (`network-transmit-symbolic` → `go-jump-symbolic`)
 - Fixed missing Split Horizontal header bar icon (`view-paged-symbolic` → `object-flip-horizontal-symbolic`)
 - Fixed missing Interface tab icon in Settings (`preferences-desktop-appearance-symbolic` → `applications-graphics-symbolic`)
+- Fixed KeePass Settings: Browse buttons for Database File and Key File now open file chooser dialogs
+- Fixed KeePass Settings: Dynamic visibility for Authentication fields (password/key file rows show/hide based on switches)
+- Fixed KeePass Settings: Added "Check" button to verify database connection
+- Fixed KeePass Settings: `verify_kdbx_credentials` now correctly handles key-file-only authentication with `--no-password` flag
+- Fixed SSH Agent Settings: "Start Agent" button now properly starts ssh-agent and updates UI
 
 ### Improved
 - Migrated About dialog from `gtk4::AboutDialog` to `adw::AboutDialog` for modern GNOME look

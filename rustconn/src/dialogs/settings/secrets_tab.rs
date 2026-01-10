@@ -4,32 +4,44 @@ use adw::prelude::*;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, Orientation, PasswordEntry,
-    StringList, Switch,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, FileDialog, FileFilter, Label,
+    Orientation, PasswordEntry, StringList, Switch,
 };
 use libadwaita as adw;
 use rustconn_core::config::{SecretBackendType, SecretSettings};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Return type for secrets page - contains all widgets needed for dynamic visibility
+#[allow(dead_code)] // Fields kept for GTK widget lifecycle
+pub struct SecretsPageWidgets {
+    pub page: adw::PreferencesPage,
+    pub secret_backend_dropdown: DropDown,
+    pub enable_fallback: CheckButton,
+    pub kdbx_path_entry: Entry,
+    pub kdbx_password_entry: PasswordEntry,
+    pub kdbx_enabled_switch: Switch,
+    pub kdbx_save_password_check: CheckButton,
+    pub kdbx_status_label: Label,
+    pub kdbx_browse_button: Button,
+    pub kdbx_check_button: Button,
+    pub keepassxc_status_container: GtkBox,
+    pub kdbx_key_file_entry: Entry,
+    pub kdbx_key_file_browse_button: Button,
+    pub kdbx_use_key_file_check: Switch,
+    pub kdbx_use_password_check: Switch,
+    // Additional rows for visibility control
+    pub kdbx_group: adw::PreferencesGroup,
+    pub auth_group: adw::PreferencesGroup,
+    pub status_group: adw::PreferencesGroup,
+    pub password_row: adw::ActionRow,
+    pub save_password_row: adw::ActionRow,
+    pub key_file_row: adw::ActionRow,
+}
+
 /// Creates the secrets settings page using AdwPreferencesPage
 #[allow(clippy::type_complexity)]
-pub fn create_secrets_page() -> (
-    adw::PreferencesPage,
-    DropDown,
-    CheckButton,
-    Entry,
-    PasswordEntry,
-    Switch,
-    CheckButton,
-    Label,
-    Button,
-    GtkBox,
-    Entry,
-    Button,
-    Switch, // kdbx_use_key_file_check changed to Switch
-    Switch, // kdbx_use_password_check changed to Switch
-) {
+pub fn create_secrets_page() -> SecretsPageWidgets {
     let page = adw::PreferencesPage::builder()
         .title("Secrets")
         .icon_name("dialog-password-symbolic")
@@ -182,14 +194,30 @@ pub fn create_secrets_page() -> (
     // === Status Group ===
     let status_group = adw::PreferencesGroup::builder().title("Status").build();
 
+    // Check connection button
+    let kdbx_check_button = Button::builder()
+        .label("Check")
+        .valign(gtk4::Align::Center)
+        .tooltip_text("Test database connection")
+        .build();
+
     let kdbx_status_label = Label::builder()
         .label("Not connected")
         .halign(gtk4::Align::End)
         .valign(gtk4::Align::Center)
         .css_classes(["dim-label"])
         .build();
+
+    let status_box = GtkBox::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(12)
+        .valign(gtk4::Align::Center)
+        .build();
+    status_box.append(&kdbx_status_label);
+    status_box.append(&kdbx_check_button);
+
     let status_row = adw::ActionRow::builder().title("Connection Status").build();
-    status_row.add_suffix(&kdbx_status_label);
+    status_row.add_suffix(&status_box);
     status_group.add(&status_row);
 
     // Check KeePassXC installation
@@ -223,35 +251,171 @@ pub fn create_secrets_page() -> (
 
     page.add(&status_group);
 
-    // Setup sensitivity connections
+    // Setup visibility connections for password fields
     let password_row_clone = password_row.clone();
-    let kdbx_password_entry_clone = kdbx_password_entry.clone();
-    let kdbx_save_password_check_clone = kdbx_save_password_check.clone();
+    let save_password_row_clone = save_password_row.clone();
     kdbx_use_password_check.connect_state_set(move |_, state| {
-        password_row_clone.set_sensitive(state);
-        kdbx_password_entry_clone.set_sensitive(state);
-        kdbx_save_password_check_clone.set_sensitive(state);
+        password_row_clone.set_visible(state);
+        save_password_row_clone.set_visible(state);
         glib::Propagation::Proceed
     });
 
+    // Setup visibility connections for key file fields
     let key_file_row_clone = key_file_row.clone();
-    let kdbx_key_file_entry_clone = kdbx_key_file_entry.clone();
-    let kdbx_key_file_browse_button_clone = kdbx_key_file_browse_button.clone();
     kdbx_use_key_file_check.connect_state_set(move |_, state| {
-        key_file_row_clone.set_sensitive(state);
-        kdbx_key_file_entry_clone.set_sensitive(state);
-        kdbx_key_file_browse_button_clone.set_sensitive(state);
+        key_file_row_clone.set_visible(state);
         glib::Propagation::Proceed
     });
 
-    // Initial sensitivity
-    key_file_row.set_sensitive(false);
-    kdbx_key_file_entry.set_sensitive(false);
-    kdbx_key_file_browse_button.set_sensitive(false);
+    // Setup visibility for KeePass sections when integration is enabled/disabled
+    let auth_group_clone = auth_group.clone();
+    let status_group_clone = status_group.clone();
+    kdbx_enabled_switch.connect_state_set(move |_, state| {
+        auth_group_clone.set_visible(state);
+        status_group_clone.set_visible(state);
+        glib::Propagation::Proceed
+    });
+
+    // Initial visibility based on default states
+    // Key file row hidden by default (use_key_file is false)
+    key_file_row.set_visible(false);
+    // Password row visible by default (use_password is true)
+    password_row.set_visible(true);
+    save_password_row.set_visible(true);
+    // Auth and Status groups hidden by default (kdbx_enabled is false)
+    auth_group.set_visible(false);
+    status_group.set_visible(false);
+
+    // Setup browse button for database file
+    let kdbx_path_entry_clone = kdbx_path_entry.clone();
+    kdbx_browse_button.connect_clicked(move |button| {
+        let entry = kdbx_path_entry_clone.clone();
+        let dialog = FileDialog::builder()
+            .title("Select KeePass Database")
+            .modal(true)
+            .build();
+
+        // Add filter for .kdbx files
+        let filter = FileFilter::new();
+        filter.add_pattern("*.kdbx");
+        filter.set_name(Some("KeePass Database (*.kdbx)"));
+
+        let filters = gtk4::gio::ListStore::new::<FileFilter>();
+        filters.append(&filter);
+        dialog.set_filters(Some(&filters));
+        dialog.set_default_filter(Some(&filter));
+
+        // Get the root window
+        let root = button.root();
+        let window = root.and_then(|r| r.downcast::<gtk4::Window>().ok());
+
+        dialog.open(window.as_ref(), gtk4::gio::Cancellable::NONE, move |result| {
+            if let Ok(file) = result {
+                if let Some(path) = file.path() {
+                    entry.set_text(&path.display().to_string());
+                }
+            }
+        });
+    });
+
+    // Setup browse button for key file
+    let kdbx_key_file_entry_clone = kdbx_key_file_entry.clone();
+    kdbx_key_file_browse_button.connect_clicked(move |button| {
+        let entry = kdbx_key_file_entry_clone.clone();
+        let dialog = FileDialog::builder()
+            .title("Select Key File")
+            .modal(true)
+            .build();
+
+        // Add filter for key files
+        let filter = FileFilter::new();
+        filter.add_pattern("*.keyx");
+        filter.add_pattern("*.key");
+        filter.set_name(Some("Key Files (*.keyx, *.key)"));
+
+        let all_filter = FileFilter::new();
+        all_filter.add_pattern("*");
+        all_filter.set_name(Some("All Files"));
+
+        let filters = gtk4::gio::ListStore::new::<FileFilter>();
+        filters.append(&filter);
+        filters.append(&all_filter);
+        dialog.set_filters(Some(&filters));
+        dialog.set_default_filter(Some(&filter));
+
+        // Get the root window
+        let root = button.root();
+        let window = root.and_then(|r| r.downcast::<gtk4::Window>().ok());
+
+        dialog.open(window.as_ref(), gtk4::gio::Cancellable::NONE, move |result| {
+            if let Ok(file) = result {
+                if let Some(path) = file.path() {
+                    entry.set_text(&path.display().to_string());
+                }
+            }
+        });
+    });
+
+    // Setup check connection button
+    let kdbx_path_entry_check = kdbx_path_entry.clone();
+    let kdbx_password_entry_check = kdbx_password_entry.clone();
+    let kdbx_key_file_entry_check = kdbx_key_file_entry.clone();
+    let kdbx_use_password_check_clone = kdbx_use_password_check.clone();
+    let kdbx_use_key_file_check_clone = kdbx_use_key_file_check.clone();
+    let kdbx_status_label_check = kdbx_status_label.clone();
+    kdbx_check_button.connect_clicked(move |_| {
+        let path_text = kdbx_path_entry_check.text();
+        if path_text.is_empty() {
+            update_status_label(&kdbx_status_label_check, "No database selected", "warning");
+            return;
+        }
+
+        let kdbx_path = std::path::Path::new(path_text.as_str());
+
+        // Get password if enabled
+        let password = if kdbx_use_password_check_clone.is_active() {
+            let pwd = kdbx_password_entry_check.text();
+            if pwd.is_empty() {
+                None
+            } else {
+                Some(pwd.to_string())
+            }
+        } else {
+            None
+        };
+
+        // Get key file if enabled
+        let key_file = if kdbx_use_key_file_check_clone.is_active() {
+            let kf = kdbx_key_file_entry_check.text();
+            if kf.is_empty() {
+                None
+            } else {
+                Some(std::path::PathBuf::from(kf.as_str()))
+            }
+        } else {
+            None
+        };
+
+        // Verify credentials
+        let result = rustconn_core::secret::KeePassStatus::verify_kdbx_credentials(
+            kdbx_path,
+            password.as_deref(),
+            key_file.as_deref(),
+        );
+
+        match result {
+            Ok(()) => {
+                update_status_label(&kdbx_status_label_check, "Connected", "success");
+            }
+            Err(e) => {
+                update_status_label(&kdbx_status_label_check, &e, "error");
+            }
+        }
+    });
 
     let keepassxc_status_container = GtkBox::new(Orientation::Vertical, 6);
 
-    (
+    SecretsPageWidgets {
         page,
         secret_backend_dropdown,
         enable_fallback,
@@ -261,28 +425,35 @@ pub fn create_secrets_page() -> (
         kdbx_save_password_check,
         kdbx_status_label,
         kdbx_browse_button,
+        kdbx_check_button,
         keepassxc_status_container,
         kdbx_key_file_entry,
         kdbx_key_file_browse_button,
         kdbx_use_key_file_check,
         kdbx_use_password_check,
-    )
+        kdbx_group,
+        auth_group,
+        status_group,
+        password_row,
+        save_password_row,
+        key_file_row,
+    }
+}
+
+/// Updates the status label with text and CSS class
+fn update_status_label(label: &Label, text: &str, css_class: &str) {
+    label.set_text(text);
+    label.remove_css_class("success");
+    label.remove_css_class("warning");
+    label.remove_css_class("error");
+    label.remove_css_class("dim-label");
+    label.add_css_class(css_class);
 }
 
 /// Loads secret settings into UI controls
 #[allow(clippy::too_many_arguments)]
 pub fn load_secret_settings(
-    secret_backend_dropdown: &DropDown,
-    enable_fallback: &CheckButton,
-    kdbx_path_entry: &Entry,
-    _kdbx_password_entry: &PasswordEntry,
-    kdbx_enabled_switch: &Switch,
-    kdbx_save_password_check: &CheckButton,
-    kdbx_status_label: &Label,
-    _keepassxc_status_container: &GtkBox,
-    kdbx_key_file_entry: &Entry,
-    kdbx_use_key_file_check: &Switch,
-    kdbx_use_password_check: &Switch,
+    widgets: &SecretsPageWidgets,
     settings: &SecretSettings,
 ) {
     let backend_index = match settings.preferred_backend {
@@ -290,21 +461,28 @@ pub fn load_secret_settings(
         SecretBackendType::LibSecret => 1,
         SecretBackendType::KdbxFile => 2,
     };
-    secret_backend_dropdown.set_selected(backend_index);
-    enable_fallback.set_active(settings.enable_fallback);
-    kdbx_enabled_switch.set_active(settings.kdbx_enabled);
+    widgets.secret_backend_dropdown.set_selected(backend_index);
+    widgets.enable_fallback.set_active(settings.enable_fallback);
+    widgets.kdbx_enabled_switch.set_active(settings.kdbx_enabled);
 
     if let Some(path) = &settings.kdbx_path {
-        kdbx_path_entry.set_text(&path.display().to_string());
+        widgets.kdbx_path_entry.set_text(&path.display().to_string());
     }
 
     if let Some(key_file) = &settings.kdbx_key_file {
-        kdbx_key_file_entry.set_text(&key_file.display().to_string());
+        widgets.kdbx_key_file_entry.set_text(&key_file.display().to_string());
     }
 
-    kdbx_use_password_check.set_active(settings.kdbx_use_password);
-    kdbx_use_key_file_check.set_active(settings.kdbx_use_key_file);
-    kdbx_save_password_check.set_active(settings.kdbx_password_encrypted.is_some());
+    widgets.kdbx_use_password_check.set_active(settings.kdbx_use_password);
+    widgets.kdbx_use_key_file_check.set_active(settings.kdbx_use_key_file);
+    widgets.kdbx_save_password_check.set_active(settings.kdbx_password_encrypted.is_some());
+
+    // Update visibility based on loaded settings
+    widgets.auth_group.set_visible(settings.kdbx_enabled);
+    widgets.status_group.set_visible(settings.kdbx_enabled);
+    widgets.password_row.set_visible(settings.kdbx_use_password);
+    widgets.save_password_row.set_visible(settings.kdbx_use_password);
+    widgets.key_file_row.set_visible(settings.kdbx_use_key_file);
 
     let status_text = if settings.kdbx_enabled {
         if settings.kdbx_path.is_some() {
@@ -316,12 +494,12 @@ pub fn load_secret_settings(
         "Disabled"
     };
 
-    kdbx_status_label.set_text(status_text);
+    widgets.kdbx_status_label.set_text(status_text);
 
-    kdbx_status_label.remove_css_class("success");
-    kdbx_status_label.remove_css_class("warning");
-    kdbx_status_label.remove_css_class("error");
-    kdbx_status_label.remove_css_class("dim-label");
+    widgets.kdbx_status_label.remove_css_class("success");
+    widgets.kdbx_status_label.remove_css_class("warning");
+    widgets.kdbx_status_label.remove_css_class("error");
+    widgets.kdbx_status_label.remove_css_class("dim-label");
 
     let status_css_class = if settings.kdbx_enabled {
         if settings.kdbx_path.is_some() {
@@ -332,24 +510,15 @@ pub fn load_secret_settings(
     } else {
         "dim-label"
     };
-    kdbx_status_label.add_css_class(status_css_class);
+    widgets.kdbx_status_label.add_css_class(status_css_class);
 }
 
 /// Collects secret settings from UI controls
-#[allow(clippy::too_many_arguments)]
 pub fn collect_secret_settings(
-    secret_backend_dropdown: &DropDown,
-    enable_fallback: &CheckButton,
-    kdbx_path_entry: &Entry,
-    kdbx_password_entry: &PasswordEntry,
-    kdbx_enabled_switch: &Switch,
-    kdbx_save_password_check: &CheckButton,
-    kdbx_key_file_entry: &Entry,
-    kdbx_use_key_file_check: &Switch,
-    kdbx_use_password_check: &Switch,
+    widgets: &SecretsPageWidgets,
     settings: &Rc<RefCell<rustconn_core::config::AppSettings>>,
 ) -> SecretSettings {
-    let preferred_backend = match secret_backend_dropdown.selected() {
+    let preferred_backend = match widgets.secret_backend_dropdown.selected() {
         0 => SecretBackendType::KeePassXc,
         1 => SecretBackendType::LibSecret,
         2 => SecretBackendType::KdbxFile,
@@ -357,7 +526,7 @@ pub fn collect_secret_settings(
     };
 
     let kdbx_path = {
-        let path_text = kdbx_path_entry.text();
+        let path_text = widgets.kdbx_path_entry.text();
         if path_text.is_empty() {
             None
         } else {
@@ -366,7 +535,7 @@ pub fn collect_secret_settings(
     };
 
     let kdbx_key_file = {
-        let key_file_text = kdbx_key_file_entry.text();
+        let key_file_text = widgets.kdbx_key_file_entry.text();
         if key_file_text.is_empty() {
             None
         } else {
@@ -374,33 +543,34 @@ pub fn collect_secret_settings(
         }
     };
 
-    let (kdbx_password, kdbx_password_encrypted) = if kdbx_save_password_check.is_active() {
-        let password_text = kdbx_password_entry.text();
-        if password_text.is_empty() {
-            (None, None)
+    let (kdbx_password, kdbx_password_encrypted) =
+        if widgets.kdbx_save_password_check.is_active() {
+            let password_text = widgets.kdbx_password_entry.text();
+            if password_text.is_empty() {
+                (None, None)
+            } else {
+                let password = secrecy::SecretString::new(password_text.to_string().into());
+                let encrypted = settings
+                    .borrow()
+                    .secrets
+                    .kdbx_password_encrypted
+                    .clone()
+                    .or_else(|| Some("encrypted_password_placeholder".to_string()));
+                (Some(password), encrypted)
+            }
         } else {
-            let password = secrecy::SecretString::new(password_text.to_string().into());
-            let encrypted = settings
-                .borrow()
-                .secrets
-                .kdbx_password_encrypted
-                .clone()
-                .or_else(|| Some("encrypted_password_placeholder".to_string()));
-            (Some(password), encrypted)
-        }
-    } else {
-        (None, None)
-    };
+            (None, None)
+        };
 
     SecretSettings {
         preferred_backend,
-        enable_fallback: enable_fallback.is_active(),
+        enable_fallback: widgets.enable_fallback.is_active(),
         kdbx_path,
-        kdbx_enabled: kdbx_enabled_switch.is_active(),
+        kdbx_enabled: widgets.kdbx_enabled_switch.is_active(),
         kdbx_password,
         kdbx_password_encrypted,
         kdbx_key_file,
-        kdbx_use_key_file: kdbx_use_key_file_check.is_active(),
-        kdbx_use_password: kdbx_use_password_check.is_active(),
+        kdbx_use_key_file: widgets.kdbx_use_key_file_check.is_active(),
+        kdbx_use_password: widgets.kdbx_use_password_check.is_active(),
     }
 }

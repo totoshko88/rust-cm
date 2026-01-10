@@ -21,10 +21,7 @@ pub use ui_tab::*;
 
 use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, PasswordEntry, SpinButton, Spinner,
-    Switch,
-};
+use gtk4::{Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, SpinButton, Spinner, Switch};
 use libadwaita as adw;
 use rustconn_core::config::AppSettings;
 use rustconn_core::ssh_agent::SshAgentManager;
@@ -57,22 +54,8 @@ pub struct SettingsDialog {
     log_activity_check: CheckButton,
     log_input_check: CheckButton,
     log_output_check: CheckButton,
-    // Secret settings
-    secret_backend_dropdown: DropDown,
-    enable_fallback: CheckButton,
-    // KeePass settings
-    kdbx_path_entry: Entry,
-    kdbx_password_entry: PasswordEntry,
-    kdbx_enabled_switch: Switch,
-    kdbx_save_password_check: CheckButton,
-    kdbx_status_label: Label,
-    kdbx_browse_button: Button,
-    keepassxc_status_container: GtkBox,
-    // KeePass key file settings
-    kdbx_key_file_entry: Entry,
-    kdbx_key_file_browse_button: Button,
-    kdbx_use_key_file_check: Switch,
-    kdbx_use_password_check: Switch,
+    // Secret settings - now using SecretsPageWidgets struct
+    secrets_widgets: SecretsPageWidgets,
     // UI settings
     color_scheme_box: GtkBox,
     remember_geometry: CheckButton,
@@ -133,22 +116,7 @@ impl SettingsDialog {
             log_output_check,
         ) = create_logging_page();
 
-        let (
-            secrets_page,
-            secret_backend_dropdown,
-            enable_fallback,
-            kdbx_path_entry,
-            kdbx_password_entry,
-            kdbx_enabled_switch,
-            kdbx_save_password_check,
-            kdbx_status_label,
-            kdbx_browse_button,
-            keepassxc_status_container,
-            kdbx_key_file_entry,
-            kdbx_key_file_browse_button,
-            kdbx_use_key_file_check,
-            kdbx_use_password_check,
-        ) = create_secrets_page();
+        let secrets_widgets = create_secrets_page();
 
         let (
             ui_page,
@@ -179,7 +147,7 @@ impl SettingsDialog {
         // Add pages to dialog
         dialog.add(&terminal_page);
         dialog.add(&logging_page);
-        dialog.add(&secrets_page);
+        dialog.add(&secrets_widgets.page);
         dialog.add(&ui_page);
         dialog.add(&ssh_agent_page);
         dialog.add(&clients_page);
@@ -209,19 +177,7 @@ impl SettingsDialog {
             log_activity_check,
             log_input_check,
             log_output_check,
-            secret_backend_dropdown,
-            enable_fallback,
-            kdbx_path_entry,
-            kdbx_password_entry,
-            kdbx_enabled_switch,
-            kdbx_save_password_check,
-            kdbx_status_label,
-            kdbx_browse_button,
-            keepassxc_status_container,
-            kdbx_key_file_entry,
-            kdbx_key_file_browse_button,
-            kdbx_use_key_file_check,
-            kdbx_use_password_check,
+            secrets_widgets,
             color_scheme_box,
             remember_geometry,
             enable_tray_icon,
@@ -289,6 +245,47 @@ impl SettingsDialog {
                 });
         }
 
+        // Connect SSH Agent Start button handler
+        {
+            let manager_clone = self.ssh_agent_manager.clone();
+            let keys_list_clone = self.ssh_agent_keys_list.clone();
+            let status_label_clone = self.ssh_agent_status_label.clone();
+            let socket_label_clone = self.ssh_agent_socket_label.clone();
+            let available_keys_list_clone = self.ssh_agent_available_keys_list.clone();
+
+            self.ssh_agent_start_button.connect_clicked(move |_| {
+                // Try to start the agent
+                match SshAgentManager::start_agent() {
+                    Ok(socket_path) => {
+                        tracing::info!("SSH agent started with socket: {socket_path}");
+                        // Update the manager with the new socket path
+                        manager_clone.borrow_mut().set_socket_path(Some(socket_path));
+                        // Refresh the UI
+                        load_ssh_agent_settings(
+                            &status_label_clone,
+                            &socket_label_clone,
+                            &keys_list_clone,
+                            &manager_clone,
+                        );
+                        populate_available_keys_list(
+                            &available_keys_list_clone,
+                            &manager_clone,
+                            &keys_list_clone,
+                            &status_label_clone,
+                            &socket_label_clone,
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to start SSH agent: {e}");
+                        status_label_clone.set_text("Failed to start");
+                        status_label_clone.remove_css_class("success");
+                        status_label_clone.remove_css_class("dim-label");
+                        status_label_clone.add_css_class("error");
+                    }
+                }
+            });
+        }
+
         // Connect SSH Agent Refresh button handler
         {
             let manager_clone = self.ssh_agent_manager.clone();
@@ -349,20 +346,7 @@ impl SettingsDialog {
         );
 
         // Load secret settings
-        load_secret_settings(
-            &self.secret_backend_dropdown,
-            &self.enable_fallback,
-            &self.kdbx_path_entry,
-            &self.kdbx_password_entry,
-            &self.kdbx_enabled_switch,
-            &self.kdbx_save_password_check,
-            &self.kdbx_status_label,
-            &self.keepassxc_status_container,
-            &self.kdbx_key_file_entry,
-            &self.kdbx_use_key_file_check,
-            &self.kdbx_use_password_check,
-            &settings.secrets,
-        );
+        load_secret_settings(&self.secrets_widgets, &settings.secrets);
 
         // Load UI settings
         load_ui_settings(
@@ -419,16 +403,16 @@ impl SettingsDialog {
         let log_input_check_clone = self.log_input_check.clone();
         let log_output_check_clone = self.log_output_check.clone();
 
-        // Secret controls
-        let secret_backend_dropdown_clone = self.secret_backend_dropdown.clone();
-        let enable_fallback_clone = self.enable_fallback.clone();
-        let kdbx_path_entry_clone = self.kdbx_path_entry.clone();
-        let kdbx_enabled_switch_clone = self.kdbx_enabled_switch.clone();
-        let kdbx_password_entry_clone = self.kdbx_password_entry.clone();
-        let kdbx_save_password_check_clone = self.kdbx_save_password_check.clone();
-        let kdbx_key_file_entry_clone = self.kdbx_key_file_entry.clone();
-        let kdbx_use_key_file_check_clone = self.kdbx_use_key_file_check.clone();
-        let kdbx_use_password_check_clone = self.kdbx_use_password_check.clone();
+        // Secret controls - clone individual widgets from secrets_widgets
+        let secret_backend_dropdown_clone = self.secrets_widgets.secret_backend_dropdown.clone();
+        let enable_fallback_clone = self.secrets_widgets.enable_fallback.clone();
+        let kdbx_path_entry_clone = self.secrets_widgets.kdbx_path_entry.clone();
+        let kdbx_enabled_switch_clone = self.secrets_widgets.kdbx_enabled_switch.clone();
+        let kdbx_password_entry_clone = self.secrets_widgets.kdbx_password_entry.clone();
+        let kdbx_save_password_check_clone = self.secrets_widgets.kdbx_save_password_check.clone();
+        let kdbx_key_file_entry_clone = self.secrets_widgets.kdbx_key_file_entry.clone();
+        let kdbx_use_key_file_check_clone = self.secrets_widgets.kdbx_use_key_file_check.clone();
+        let kdbx_use_password_check_clone = self.secrets_widgets.kdbx_use_password_check.clone();
 
         // UI controls
         let color_scheme_box_clone = self.color_scheme_box.clone();
@@ -469,19 +453,32 @@ impl SettingsDialog {
                 &log_output_check_clone,
             );
 
-            // Collect secret settings
-            let secrets = collect_secret_settings(
-                &secret_backend_dropdown_clone,
-                &enable_fallback_clone,
-                &kdbx_path_entry_clone,
-                &kdbx_password_entry_clone,
-                &kdbx_enabled_switch_clone,
-                &kdbx_save_password_check_clone,
-                &kdbx_key_file_entry_clone,
-                &kdbx_use_key_file_check_clone,
-                &kdbx_use_password_check_clone,
-                &settings_clone,
-            );
+            // Collect secret settings - build temporary struct for collect function
+            let secrets_widgets_for_collect = SecretsPageWidgets {
+                page: adw::PreferencesPage::new(), // dummy, not used in collect
+                secret_backend_dropdown: secret_backend_dropdown_clone.clone(),
+                enable_fallback: enable_fallback_clone.clone(),
+                kdbx_path_entry: kdbx_path_entry_clone.clone(),
+                kdbx_password_entry: kdbx_password_entry_clone.clone(),
+                kdbx_enabled_switch: kdbx_enabled_switch_clone.clone(),
+                kdbx_save_password_check: kdbx_save_password_check_clone.clone(),
+                kdbx_status_label: Label::new(None), // dummy, not used in collect
+                kdbx_browse_button: Button::new(),   // dummy, not used in collect
+                kdbx_check_button: Button::new(),    // dummy, not used in collect
+                keepassxc_status_container: GtkBox::new(gtk4::Orientation::Vertical, 0),
+                kdbx_key_file_entry: kdbx_key_file_entry_clone.clone(),
+                kdbx_key_file_browse_button: Button::new(), // dummy
+                kdbx_use_key_file_check: kdbx_use_key_file_check_clone.clone(),
+                kdbx_use_password_check: kdbx_use_password_check_clone.clone(),
+                kdbx_group: adw::PreferencesGroup::new(),   // dummy
+                auth_group: adw::PreferencesGroup::new(),   // dummy
+                status_group: adw::PreferencesGroup::new(), // dummy
+                password_row: adw::ActionRow::new(),        // dummy
+                save_password_row: adw::ActionRow::new(),   // dummy
+                key_file_row: adw::ActionRow::new(),        // dummy
+            };
+            let secrets =
+                collect_secret_settings(&secrets_widgets_for_collect, &settings_clone);
 
             // Collect UI settings
             let ui = collect_ui_settings(
