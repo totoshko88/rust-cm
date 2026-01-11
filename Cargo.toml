@@ -27,7 +27,7 @@ toml = "0.8"
 # GTK4 and VTE
 gtk4 = "0.10"
 vte4 = "0.9"
-libadwaita = { version = "0.8", features = ["v1_6"] }
+libadwaita = { version = "0.8", features = ["v1_5"] }
 
 # Utilities
 uuid = { version = "1.11", features = ["v4", "serde"] }

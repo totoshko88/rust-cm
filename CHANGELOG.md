@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Migrated Settings dialog from deprecated `PreferencesWindow` to `PreferencesDialog` (libadwaita 1.5+)
-- Updated libadwaita feature from `v1_4` to `v1_6` for full feature set
+- Updated libadwaita feature from `v1_4` to `v1_5` for PreferencesDialog support
 - Updated workspace dependencies:
   - `uuid` 1.6 → 1.11
   - `regex` 1.10 → 1.11
