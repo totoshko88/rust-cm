@@ -12,8 +12,8 @@
 use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, ListBox, ListBoxRow,
-    Orientation, ScrolledWindow, SpinButton, Stack, StringList,
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, ListBox, ListBoxRow, Orientation,
+    ScrolledWindow, SpinButton, Stack, StringList,
 };
 use libadwaita as adw;
 use rustconn_core::models::{
@@ -681,9 +681,7 @@ impl TemplateDialog {
         content.append(&auth_group);
 
         // === Connection Options Group ===
-        let connection_group = adw::PreferencesGroup::builder()
-            .title("Connection")
-            .build();
+        let connection_group = adw::PreferencesGroup::builder().title("Connection").build();
 
         // ProxyJump entry
         let proxy_entry = Entry::builder()
@@ -722,9 +720,7 @@ impl TemplateDialog {
         content.append(&connection_group);
 
         // === Session Group ===
-        let session_group = adw::PreferencesGroup::builder()
-            .title("Session")
-            .build();
+        let session_group = adw::PreferencesGroup::builder().title("Session").build();
 
         // Agent Forwarding switch
         let agent_forwarding = CheckButton::new();
@@ -815,9 +811,7 @@ impl TemplateDialog {
         content.set_margin_end(12);
 
         // === Display Group ===
-        let display_group = adw::PreferencesGroup::builder()
-            .title("Display")
-            .build();
+        let display_group = adw::PreferencesGroup::builder().title("Display").build();
 
         // Client mode dropdown
         let client_mode_list = StringList::new(&[
@@ -898,9 +892,7 @@ impl TemplateDialog {
         content.append(&display_group);
 
         // === Features Group ===
-        let features_group = adw::PreferencesGroup::builder()
-            .title("Features")
-            .build();
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
 
         // Audio redirect
         let audio_check = CheckButton::new();
@@ -929,9 +921,7 @@ impl TemplateDialog {
         content.append(&features_group);
 
         // === Advanced Group ===
-        let advanced_group = adw::PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = adw::PreferencesGroup::builder().title("Advanced").build();
 
         let custom_args_entry = Entry::builder()
             .hexpand(true)
@@ -996,9 +986,7 @@ impl TemplateDialog {
         content.set_margin_end(12);
 
         // === Display Group ===
-        let display_group = adw::PreferencesGroup::builder()
-            .title("Display")
-            .build();
+        let display_group = adw::PreferencesGroup::builder().title("Display").build();
 
         // Client mode dropdown
         let client_mode_list = StringList::new(&[
@@ -1030,9 +1018,7 @@ impl TemplateDialog {
         content.append(&display_group);
 
         // === Encoding Group ===
-        let encoding_group = adw::PreferencesGroup::builder()
-            .title("Encoding")
-            .build();
+        let encoding_group = adw::PreferencesGroup::builder().title("Encoding").build();
 
         // Encoding entry
         let encoding_entry = Entry::builder()
@@ -1083,9 +1069,7 @@ impl TemplateDialog {
         content.append(&encoding_group);
 
         // === Features Group ===
-        let features_group = adw::PreferencesGroup::builder()
-            .title("Features")
-            .build();
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
 
         // View only
         let view_only_check = CheckButton::new();
@@ -1110,9 +1094,7 @@ impl TemplateDialog {
         content.append(&features_group);
 
         // === Advanced Group ===
-        let advanced_group = adw::PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = adw::PreferencesGroup::builder().title("Advanced").build();
 
         let custom_args_entry = Entry::builder()
             .hexpand(true)
@@ -1176,9 +1158,7 @@ impl TemplateDialog {
         content.set_margin_end(12);
 
         // === Security Group ===
-        let security_group = adw::PreferencesGroup::builder()
-            .title("Security")
-            .build();
+        let security_group = adw::PreferencesGroup::builder().title("Security").build();
 
         // TLS encryption
         let tls_check = CheckButton::new();
@@ -1230,9 +1210,7 @@ impl TemplateDialog {
         content.append(&security_group);
 
         // === Features Group ===
-        let features_group = adw::PreferencesGroup::builder()
-            .title("Features")
-            .build();
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
 
         // USB redirection
         let usb_check = CheckButton::new();
@@ -1339,9 +1317,7 @@ impl TemplateDialog {
         content.set_margin_end(12);
 
         // === Provider Selection Group ===
-        let provider_group = adw::PreferencesGroup::builder()
-            .title("Provider")
-            .build();
+        let provider_group = adw::PreferencesGroup::builder().title("Provider").build();
 
         let provider_list = StringList::new(&[
             "AWS Session Manager",
@@ -1437,9 +1413,7 @@ impl TemplateDialog {
         });
 
         // === Advanced Group ===
-        let advanced_group = adw::PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = adw::PreferencesGroup::builder().title("Advanced").build();
 
         let custom_args_entry = Entry::builder()
             .hexpand(true)
@@ -1748,9 +1722,7 @@ impl TemplateDialog {
     fn create_teleport_fields() -> (GtkBox, Entry, Entry) {
         let content = GtkBox::new(Orientation::Vertical, 12);
 
-        let group = adw::PreferencesGroup::builder()
-            .title("Teleport")
-            .build();
+        let group = adw::PreferencesGroup::builder().title("Teleport").build();
 
         let host_entry = Entry::builder()
             .hexpand(true)

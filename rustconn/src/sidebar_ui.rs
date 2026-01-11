@@ -457,8 +457,6 @@ pub fn create_bulk_actions_bar() -> GtkBox {
     bar
 }
 
-
-
 /// Creates the sidebar bottom toolbar with secondary actions
 ///
 /// Layout: [Group Ops] [A-Z Sort] [Recent] [Import] [Export] [KeePass]

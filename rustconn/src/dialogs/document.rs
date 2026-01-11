@@ -479,28 +479,26 @@ impl CloseDocumentDialog {
             &format!(
                 "Document \"{doc_name}\" has unsaved changes. Do you want to save before closing?"
             ),
-            move |response| {
-                match response {
-                    SaveChangesResponse::DontSave => {
-                        if let Some(ref cb) = *on_complete.borrow() {
-                            cb(Some(DocumentDialogResult::Close {
-                                id: doc_id,
-                                save: false,
-                            }));
-                        }
+            move |response| match response {
+                SaveChangesResponse::DontSave => {
+                    if let Some(ref cb) = *on_complete.borrow() {
+                        cb(Some(DocumentDialogResult::Close {
+                            id: doc_id,
+                            save: false,
+                        }));
                     }
-                    SaveChangesResponse::Save => {
-                        if let Some(ref cb) = *on_complete.borrow() {
-                            cb(Some(DocumentDialogResult::Close {
-                                id: doc_id,
-                                save: true,
-                            }));
-                        }
+                }
+                SaveChangesResponse::Save => {
+                    if let Some(ref cb) = *on_complete.borrow() {
+                        cb(Some(DocumentDialogResult::Close {
+                            id: doc_id,
+                            save: true,
+                        }));
                     }
-                    SaveChangesResponse::Cancel => {
-                        if let Some(ref cb) = *on_complete.borrow() {
-                            cb(None);
-                        }
+                }
+                SaveChangesResponse::Cancel => {
+                    if let Some(ref cb) = *on_complete.borrow() {
+                        cb(None);
                     }
                 }
             },

@@ -2043,8 +2043,11 @@ impl MainWindow {
                         // For SSH: initial header is 2 lines, wait for more output
                         // For Zero Trust (AWS SSM etc.): any output indicates success
                         if let Some(row) = notebook_clone.get_terminal_cursor_row(session_id) {
-                            let threshold =
-                                if protocol_for_closure.starts_with("zerotrust") { 0 } else { 2 };
+                            let threshold = if protocol_for_closure.starts_with("zerotrust") {
+                                0
+                            } else {
+                                2
+                            };
                             if row > threshold {
                                 sidebar_clone.increment_session_count(&connection_id_str);
                                 session_connected_clone.set(true);

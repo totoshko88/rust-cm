@@ -419,8 +419,13 @@ impl ConnectionDialog {
         );
 
         // === Data Tab (Variables + Custom Properties) ===
-        let (data_tab, variables_list, add_variable_button, custom_properties_list, add_custom_property_button) = 
-            Self::create_data_tab();
+        let (
+            data_tab,
+            variables_list,
+            add_variable_button,
+            custom_properties_list,
+            add_custom_property_button,
+        ) = Self::create_data_tab();
         view_stack
             .add_titled(&data_tab, Some("data"), "Data")
             .set_icon_name(Some("accessories-text-editor-symbolic"));
@@ -1888,9 +1893,7 @@ impl ConnectionDialog {
         key_source_row.set_visible(false);
 
         // === Connection Options Group ===
-        let connection_group = adw::PreferencesGroup::builder()
-            .title("Connection")
-            .build();
+        let connection_group = adw::PreferencesGroup::builder().title("Connection").build();
 
         // ProxyJump entry
         let proxy_entry = Entry::builder()
@@ -1929,9 +1932,7 @@ impl ConnectionDialog {
         content.append(&connection_group);
 
         // === Session Group ===
-        let session_group = adw::PreferencesGroup::builder()
-            .title("Session")
-            .build();
+        let session_group = adw::PreferencesGroup::builder().title("Session").build();
 
         // Agent Forwarding switch
         let agent_forwarding = CheckButton::new();
@@ -2027,9 +2028,7 @@ impl ConnectionDialog {
         content.set_margin_end(12);
 
         // === Display Group ===
-        let display_group = adw::PreferencesGroup::builder()
-            .title("Display")
-            .build();
+        let display_group = adw::PreferencesGroup::builder().title("Display").build();
 
         // Client mode dropdown
         let client_mode_list = StringList::new(&[
@@ -2112,9 +2111,7 @@ impl ConnectionDialog {
         content.append(&display_group);
 
         // === Features Group ===
-        let features_group = adw::PreferencesGroup::builder()
-            .title("Features")
-            .build();
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
 
         // Audio redirect
         let audio_check = CheckButton::new();
@@ -2170,10 +2167,7 @@ impl ConnectionDialog {
             .label("Add")
             .css_classes(["suggested-action"])
             .build();
-        let remove_folder_btn = Button::builder()
-            .label("Remove")
-            .sensitive(false)
-            .build();
+        let remove_folder_btn = Button::builder().label("Remove").sensitive(false).build();
         folders_buttons.append(&add_folder_btn);
         folders_buttons.append(&remove_folder_btn);
         folders_group.add(&folders_buttons);
@@ -2195,9 +2189,7 @@ impl ConnectionDialog {
         });
 
         // === Advanced Group ===
-        let advanced_group = adw::PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = adw::PreferencesGroup::builder().title("Advanced").build();
 
         let args_entry = Entry::builder()
             .hexpand(true)
@@ -2356,9 +2348,7 @@ impl ConnectionDialog {
         content.set_margin_end(12);
 
         // === Display Group ===
-        let display_group = adw::PreferencesGroup::builder()
-            .title("Display")
-            .build();
+        let display_group = adw::PreferencesGroup::builder().title("Display").build();
 
         // Client mode dropdown
         let client_mode_list = StringList::new(&[
@@ -2394,9 +2384,7 @@ impl ConnectionDialog {
         content.append(&display_group);
 
         // === Quality Group ===
-        let quality_group = adw::PreferencesGroup::builder()
-            .title("Quality")
-            .build();
+        let quality_group = adw::PreferencesGroup::builder().title("Quality").build();
 
         // Compression
         let compression_adj = gtk4::Adjustment::new(6.0, 0.0, 9.0, 1.0, 1.0, 0.0);
@@ -2433,9 +2421,7 @@ impl ConnectionDialog {
         content.append(&quality_group);
 
         // === Features Group ===
-        let features_group = adw::PreferencesGroup::builder()
-            .title("Features")
-            .build();
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
 
         // View-only mode
         let view_only_check = CheckButton::new();
@@ -2472,9 +2458,7 @@ impl ConnectionDialog {
         content.append(&features_group);
 
         // === Advanced Group ===
-        let advanced_group = adw::PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = adw::PreferencesGroup::builder().title("Advanced").build();
 
         let custom_args_entry = Entry::builder()
             .hexpand(true)
@@ -2542,9 +2526,7 @@ impl ConnectionDialog {
         content.set_margin_end(12);
 
         // === Security Group ===
-        let security_group = adw::PreferencesGroup::builder()
-            .title("Security")
-            .build();
+        let security_group = adw::PreferencesGroup::builder().title("Security").build();
 
         // TLS enabled
         let tls_check = CheckButton::new();
@@ -2590,9 +2572,7 @@ impl ConnectionDialog {
         content.append(&security_group);
 
         // === Features Group ===
-        let features_group = adw::PreferencesGroup::builder()
-            .title("Features")
-            .build();
+        let features_group = adw::PreferencesGroup::builder().title("Features").build();
 
         // USB redirection
         let usb_check = CheckButton::new();
@@ -2658,10 +2638,7 @@ impl ConnectionDialog {
             .label("Add")
             .css_classes(["suggested-action"])
             .build();
-        let remove_folder_btn = Button::builder()
-            .label("Remove")
-            .sensitive(false)
-            .build();
+        let remove_folder_btn = Button::builder().label("Remove").sensitive(false).build();
         folders_buttons.append(&add_folder_btn);
         folders_buttons.append(&remove_folder_btn);
         folders_group.add(&folders_buttons);
@@ -2749,9 +2726,7 @@ impl ConnectionDialog {
         content.set_margin_end(12);
 
         // === Provider Selection Group ===
-        let provider_group = adw::PreferencesGroup::builder()
-            .title("Provider")
-            .build();
+        let provider_group = adw::PreferencesGroup::builder().title("Provider").build();
 
         let provider_list = StringList::new(&[
             "AWS Session Manager",
@@ -2851,9 +2826,7 @@ impl ConnectionDialog {
         });
 
         // === Advanced Group ===
-        let advanced_group = adw::PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = adw::PreferencesGroup::builder().title("Advanced").build();
 
         let custom_args_entry = Entry::builder()
             .hexpand(true)
@@ -3384,7 +3357,13 @@ impl ConnectionDialog {
         let vbox = GtkBox::new(Orientation::Vertical, 0);
         vbox.append(&scrolled);
 
-        (vbox, variables_list, add_variable_button, properties_list, add_property_button)
+        (
+            vbox,
+            variables_list,
+            add_variable_button,
+            properties_list,
+            add_property_button,
+        )
     }
 
     /// Creates the Logging tab for session logging configuration
@@ -4090,9 +4069,7 @@ impl ConnectionDialog {
             .placeholder_text("AA:BB:CC:DD:EE:FF")
             .build();
 
-        let mac_row = adw::ActionRow::builder()
-            .title("MAC Address")
-            .build();
+        let mac_row = adw::ActionRow::builder().title("MAC Address").build();
         mac_row.add_suffix(&mac_entry);
         wol_settings_group.add(&mac_row);
 
@@ -4102,9 +4079,7 @@ impl ConnectionDialog {
             .text(DEFAULT_BROADCAST_ADDRESS)
             .build();
 
-        let broadcast_row = adw::ActionRow::builder()
-            .title("Broadcast Address")
-            .build();
+        let broadcast_row = adw::ActionRow::builder().title("Broadcast Address").build();
         broadcast_row.add_suffix(&broadcast_entry);
         wol_settings_group.add(&broadcast_row);
 

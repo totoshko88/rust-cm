@@ -309,13 +309,17 @@ pub fn create_secrets_page() -> SecretsPageWidgets {
         let root = button.root();
         let window = root.and_then(|r| r.downcast::<gtk4::Window>().ok());
 
-        dialog.open(window.as_ref(), gtk4::gio::Cancellable::NONE, move |result| {
-            if let Ok(file) = result {
-                if let Some(path) = file.path() {
-                    entry.set_text(&path.display().to_string());
+        dialog.open(
+            window.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                if let Ok(file) = result {
+                    if let Some(path) = file.path() {
+                        entry.set_text(&path.display().to_string());
+                    }
                 }
-            }
-        });
+            },
+        );
     });
 
     // Setup browse button for key file
@@ -347,13 +351,17 @@ pub fn create_secrets_page() -> SecretsPageWidgets {
         let root = button.root();
         let window = root.and_then(|r| r.downcast::<gtk4::Window>().ok());
 
-        dialog.open(window.as_ref(), gtk4::gio::Cancellable::NONE, move |result| {
-            if let Ok(file) = result {
-                if let Some(path) = file.path() {
-                    entry.set_text(&path.display().to_string());
+        dialog.open(
+            window.as_ref(),
+            gtk4::gio::Cancellable::NONE,
+            move |result| {
+                if let Ok(file) = result {
+                    if let Some(path) = file.path() {
+                        entry.set_text(&path.display().to_string());
+                    }
                 }
-            }
-        });
+            },
+        );
     });
 
     // Setup check connection button
@@ -452,10 +460,7 @@ fn update_status_label(label: &Label, text: &str, css_class: &str) {
 
 /// Loads secret settings into UI controls
 #[allow(clippy::too_many_arguments)]
-pub fn load_secret_settings(
-    widgets: &SecretsPageWidgets,
-    settings: &SecretSettings,
-) {
+pub fn load_secret_settings(widgets: &SecretsPageWidgets, settings: &SecretSettings) {
     let backend_index = match settings.preferred_backend {
         SecretBackendType::KeePassXc => 0,
         SecretBackendType::LibSecret => 1,
@@ -463,25 +468,39 @@ pub fn load_secret_settings(
     };
     widgets.secret_backend_dropdown.set_selected(backend_index);
     widgets.enable_fallback.set_active(settings.enable_fallback);
-    widgets.kdbx_enabled_switch.set_active(settings.kdbx_enabled);
+    widgets
+        .kdbx_enabled_switch
+        .set_active(settings.kdbx_enabled);
 
     if let Some(path) = &settings.kdbx_path {
-        widgets.kdbx_path_entry.set_text(&path.display().to_string());
+        widgets
+            .kdbx_path_entry
+            .set_text(&path.display().to_string());
     }
 
     if let Some(key_file) = &settings.kdbx_key_file {
-        widgets.kdbx_key_file_entry.set_text(&key_file.display().to_string());
+        widgets
+            .kdbx_key_file_entry
+            .set_text(&key_file.display().to_string());
     }
 
-    widgets.kdbx_use_password_check.set_active(settings.kdbx_use_password);
-    widgets.kdbx_use_key_file_check.set_active(settings.kdbx_use_key_file);
-    widgets.kdbx_save_password_check.set_active(settings.kdbx_password_encrypted.is_some());
+    widgets
+        .kdbx_use_password_check
+        .set_active(settings.kdbx_use_password);
+    widgets
+        .kdbx_use_key_file_check
+        .set_active(settings.kdbx_use_key_file);
+    widgets
+        .kdbx_save_password_check
+        .set_active(settings.kdbx_password_encrypted.is_some());
 
     // Update visibility based on loaded settings
     widgets.auth_group.set_visible(settings.kdbx_enabled);
     widgets.status_group.set_visible(settings.kdbx_enabled);
     widgets.password_row.set_visible(settings.kdbx_use_password);
-    widgets.save_password_row.set_visible(settings.kdbx_use_password);
+    widgets
+        .save_password_row
+        .set_visible(settings.kdbx_use_password);
     widgets.key_file_row.set_visible(settings.kdbx_use_key_file);
 
     let status_text = if settings.kdbx_enabled {
@@ -543,24 +562,23 @@ pub fn collect_secret_settings(
         }
     };
 
-    let (kdbx_password, kdbx_password_encrypted) =
-        if widgets.kdbx_save_password_check.is_active() {
-            let password_text = widgets.kdbx_password_entry.text();
-            if password_text.is_empty() {
-                (None, None)
-            } else {
-                let password = secrecy::SecretString::new(password_text.to_string().into());
-                let encrypted = settings
-                    .borrow()
-                    .secrets
-                    .kdbx_password_encrypted
-                    .clone()
-                    .or_else(|| Some("encrypted_password_placeholder".to_string()));
-                (Some(password), encrypted)
-            }
-        } else {
+    let (kdbx_password, kdbx_password_encrypted) = if widgets.kdbx_save_password_check.is_active() {
+        let password_text = widgets.kdbx_password_entry.text();
+        if password_text.is_empty() {
             (None, None)
-        };
+        } else {
+            let password = secrecy::SecretString::new(password_text.to_string().into());
+            let encrypted = settings
+                .borrow()
+                .secrets
+                .kdbx_password_encrypted
+                .clone()
+                .or_else(|| Some("encrypted_password_placeholder".to_string()));
+            (Some(password), encrypted)
+        }
+    } else {
+        (None, None)
+    };
 
     SecretSettings {
         preferred_backend,

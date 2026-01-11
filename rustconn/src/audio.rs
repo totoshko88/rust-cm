@@ -15,6 +15,10 @@
 // are held only briefly. Poisoning would indicate a panic in the audio thread
 // which is unrecoverable anyway.
 #![allow(clippy::unwrap_used)]
+// Audio processing requires numeric casts that are intentional and safe for audio data
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::unused_self)]
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Stream, StreamConfig};

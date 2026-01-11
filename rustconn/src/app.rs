@@ -681,10 +681,22 @@ Developed by Anton Isaiev, 2024-2026";
         .build();
 
     // Add documentation links
-    about.add_link("📖 User Guide", "https://github.com/totoshko88/RustConn/blob/main/docs/USER_GUIDE.md");
-    about.add_link("📦 Installation", "https://github.com/totoshko88/RustConn/blob/main/docs/INSTALL.md");
-    about.add_link("🚀 Releases", "https://github.com/totoshko88/RustConn/releases");
-    about.add_link("📜 License (GPL v3.0)", "https://www.gnu.org/licenses/gpl-3.0.html");
+    about.add_link(
+        "📖 User Guide",
+        "https://github.com/totoshko88/RustConn/blob/main/docs/USER_GUIDE.md",
+    );
+    about.add_link(
+        "📦 Installation",
+        "https://github.com/totoshko88/RustConn/blob/main/docs/INSTALL.md",
+    );
+    about.add_link(
+        "🚀 Releases",
+        "https://github.com/totoshko88/RustConn/releases",
+    );
+    about.add_link(
+        "📜 License (GPL v3.0)",
+        "https://www.gnu.org/licenses/gpl-3.0.html",
+    );
 
     // Add support/sponsorship information
     about.add_credit_section(

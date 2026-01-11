@@ -163,7 +163,11 @@ pub fn show_new_connection_dialog_internal(
                         );
                     }
                     Ok(Err(e)) => {
-                        alert::show_error(&window, "Failed to Save Password", &format!("Error: {e}"));
+                        alert::show_error(
+                            &window,
+                            "Failed to Save Password",
+                            &format!("Error: {e}"),
+                        );
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => {
                         // Not ready yet, schedule another check
@@ -387,9 +391,7 @@ pub fn show_new_group_dialog_with_parent(
         .build();
 
     // Group name using EntryRow
-    let name_row = adw::EntryRow::builder()
-        .title("Name")
-        .build();
+    let name_row = adw::EntryRow::builder().title("Name").build();
     details_group.add(&name_row);
 
     // Parent group dropdown

@@ -277,11 +277,7 @@ fn edit_cluster(
                     }
                 }
             } else {
-                alert::show_error(
-                    &parent_clone,
-                    "Error",
-                    "Could not access application state",
-                );
+                alert::show_error(&parent_clone, "Error", "Could not access application state");
             }
         }
     });

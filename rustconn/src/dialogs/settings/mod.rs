@@ -21,7 +21,9 @@ pub use ui_tab::*;
 
 use adw::prelude::*;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, SpinButton, Spinner, Switch};
+use gtk4::{
+    Box as GtkBox, Button, CheckButton, DropDown, Entry, Label, SpinButton, Spinner, Switch,
+};
 use libadwaita as adw;
 use rustconn_core::config::AppSettings;
 use rustconn_core::ssh_agent::SshAgentManager;
@@ -262,7 +264,9 @@ impl SettingsDialog {
                         // SAFETY: This is safe in single-threaded GTK context
                         std::env::set_var("SSH_AUTH_SOCK", &socket_path);
                         // Update the manager with the new socket path
-                        manager_clone.borrow_mut().set_socket_path(Some(socket_path));
+                        manager_clone
+                            .borrow_mut()
+                            .set_socket_path(Some(socket_path));
                         // Refresh the UI
                         load_ssh_agent_settings(
                             &status_label_clone,
@@ -317,7 +321,6 @@ impl SettingsDialog {
         // Present the dialog - PreferencesDialog uses present() with parent widget
         self.dialog.present(parent);
     }
-
 
     /// Loads settings into the UI controls
     fn load_settings(&self, settings: &AppSettings) {
@@ -473,15 +476,14 @@ impl SettingsDialog {
                 kdbx_key_file_browse_button: Button::new(), // dummy
                 kdbx_use_key_file_check: kdbx_use_key_file_check_clone.clone(),
                 kdbx_use_password_check: kdbx_use_password_check_clone.clone(),
-                kdbx_group: adw::PreferencesGroup::new(),   // dummy
-                auth_group: adw::PreferencesGroup::new(),   // dummy
+                kdbx_group: adw::PreferencesGroup::new(), // dummy
+                auth_group: adw::PreferencesGroup::new(), // dummy
                 status_group: adw::PreferencesGroup::new(), // dummy
-                password_row: adw::ActionRow::new(),        // dummy
-                save_password_row: adw::ActionRow::new(),   // dummy
-                key_file_row: adw::ActionRow::new(),        // dummy
+                password_row: adw::ActionRow::new(),      // dummy
+                save_password_row: adw::ActionRow::new(), // dummy
+                key_file_row: adw::ActionRow::new(),      // dummy
             };
-            let secrets =
-                collect_secret_settings(&secrets_widgets_for_collect, &settings_clone);
+            let secrets = collect_secret_settings(&secrets_widgets_for_collect, &settings_clone);
 
             // Collect UI settings
             let ui = collect_ui_settings(

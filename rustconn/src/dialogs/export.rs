@@ -154,7 +154,14 @@ impl ExportDialog {
 
     /// Creates the options page with format selection and output path
     #[allow(clippy::type_complexity)]
-    fn create_options_page() -> (ScrolledWindow, DropDown, Entry, Button, adw::SwitchRow, adw::SwitchRow) {
+    fn create_options_page() -> (
+        ScrolledWindow,
+        DropDown,
+        Entry,
+        Button,
+        adw::SwitchRow,
+        adw::SwitchRow,
+    ) {
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk4::PolicyType::Never)
             .vscrollbar_policy(gtk4::PolicyType::Automatic)

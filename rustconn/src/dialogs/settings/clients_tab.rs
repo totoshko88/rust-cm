@@ -495,7 +495,7 @@ fn parse_version_output(command: &str, output: &str) -> Option<String> {
                     Some(trimmed.to_string())
                 }
             })
-        },
+        }
 
         _ => output
             .lines()

@@ -191,12 +191,11 @@ impl SshConfig {
                         };
 
                         // Check if the key file or its .pub version exists
-                        let pub_path = expanded_path.with_extension(
-                            expanded_path.extension().map_or_else(
+                        let pub_path =
+                            expanded_path.with_extension(expanded_path.extension().map_or_else(
                                 || "pub".to_string(),
                                 |e| format!("{}.pub", e.to_string_lossy()),
-                            ),
-                        );
+                            ));
 
                         if expanded_path.exists() || pub_path.exists() {
                             args.push("-i".to_string());

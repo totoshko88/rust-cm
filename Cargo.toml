@@ -56,5 +56,46 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 # These lints suggest const fn but Vec/HashMap methods aren't const in stable Rust
 missing_const_for_fn = "allow"
+# Documentation backticks are too noisy for GTK widget names
+doc_markdown = "allow"
+# GTK callbacks often need owned values for closures
+needless_pass_by_value = "allow"
+# GTK widget methods often don't use self but need it for API consistency
+unused_self = "allow"
+# Numeric casts are common in GUI code for coordinates/sizes
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+# Option::map_or patterns are often clearer with if let in GTK code
+option_if_let_else = "allow"
+# must_use on every getter is too verbose
+must_use_candidate = "allow"
+# Redundant clones are often needed for GTK reference counting
+redundant_clone = "allow"
+# Match arms with identical bodies are sometimes clearer than alternatives
+match_same_arms = "allow"
+# Format string inlining is a style preference
+uninlined_format_args = "allow"
+# Borrow patterns in GTK are often required for trait bounds
+needless_borrow = "allow"
+# let...else is newer syntax, if let is still valid
+manual_let_else = "allow"
+# Prefixed bindings are sometimes needed for clarity
+no_effect_underscore_binding = "allow"
+# cloned vs copied is minor optimization
+cloned_instead_of_copied = "allow"
+# Closure style is often clearer in GTK callbacks
+redundant_closure_for_method_calls = "allow"
+# Option/Result wrapping is sometimes needed for API consistency
+unnecessary_wraps = "allow"
+# If block deduplication can reduce readability
+branches_sharing_code = "allow"
+# map().unwrap_or() patterns are common and readable
+map_unwrap_or = "allow"
+# Manual Option::map is sometimes clearer
+manual_map = "allow"
+# Wildcard imports are used for GTK prelude
+wildcard_imports = "allow"
 
 
