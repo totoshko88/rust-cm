@@ -87,6 +87,7 @@ no_effect_underscore_binding = "allow"
 cloned_instead_of_copied = "allow"
 # Closure style is often clearer in GTK callbacks
 redundant_closure_for_method_calls = "allow"
+redundant_closure = "allow"
 # Option/Result wrapping is sometimes needed for API consistency
 unnecessary_wraps = "allow"
 # If block deduplication can reduce readability
@@ -97,5 +98,9 @@ map_unwrap_or = "allow"
 manual_map = "allow"
 # Wildcard imports are used for GTK prelude
 wildcard_imports = "allow"
+# GTK often requires borrowing for trait bounds
+needless_borrows_for_generic_args = "allow"
+# Clone assignment is sometimes clearer than clone_from
+assigning_clones = "allow"
 
 
