@@ -35,7 +35,7 @@ Three-crate Cargo workspace. Strict GUI/logic separation is enforced.
 | `app.rs` | GTK Application, global actions, keyboard shortcuts |
 | `window.rs` | Main window layout, header bar |
 | `window_*.rs` | Window functionality split by domain |
-| `sidebar.rs`, `sidebar_ui.rs`, `sidebar_types.rs` | Connection tree (logic/widgets/types) |
+| `sidebar.rs`, `sidebar_ui.rs`, `sidebar_types.rs` | Connection tree (logic/widgets/types) - Uses `gtk::ListView` |
 | `state.rs` | `SharedAppState` = `Rc<RefCell<AppState>>` |
 | `dialogs/` | Modal dialogs |
 | `embedded_*.rs` | Embedded protocol viewers (RDP, VNC, SPICE) |

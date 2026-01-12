@@ -2249,7 +2249,9 @@ impl TemplateDialog {
             auth_method,
             key_source,
             key_path: None,
+
             agent_key_fingerprint: None,
+            jump_host_id: None,
             proxy_jump: if proxy_jump.is_empty() {
                 None
             } else {

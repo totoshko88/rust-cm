@@ -1,9 +1,10 @@
 //! Empty state widgets for showing helpful messages when content is empty
 //!
-//! Provides consistent empty state UI following GNOME HIG patterns.
+//! Provides consistent empty state UI following GNOME HIG patterns using adw::StatusPage.
 
 use gtk4::prelude::*;
-use gtk4::{Align, Box as GtkBox, Button, Image, Label, Orientation};
+use gtk4::{Button, Widget};
+use libadwaita as adw;
 
 /// Creates an empty state widget with icon, title, description, and optional action
 ///
@@ -17,7 +18,7 @@ use gtk4::{Align, Box as GtkBox, Button, Image, Label, Orientation};
 ///
 /// # Returns
 ///
-/// A `GtkBox` containing the empty state UI
+/// A `Widget` containing the empty state UI (adw::StatusPage)
 #[must_use]
 pub fn create_empty_state(
     icon_name: &str,
@@ -25,41 +26,14 @@ pub fn create_empty_state(
     description: &str,
     action_label: Option<&str>,
     action_name: Option<&str>,
-) -> GtkBox {
-    let container = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(12)
-        .halign(Align::Center)
-        .valign(Align::Center)
-        .hexpand(true)
-        .vexpand(true)
-        .css_classes(["empty-state"])
-        .build();
-
-    // Icon
-    let icon = Image::builder()
+) -> Widget {
+    let page = adw::StatusPage::builder()
         .icon_name(icon_name)
-        .pixel_size(96)
-        .css_classes(["empty-state-icon"])
+        .title(title)
+        .description(description)
+        .vexpand(true)
+        .hexpand(true)
         .build();
-    container.append(&icon);
-
-    // Title
-    let title_label = Label::builder()
-        .label(title)
-        .css_classes(["empty-state-title"])
-        .build();
-    container.append(&title_label);
-
-    // Description
-    let desc_label = Label::builder()
-        .label(description)
-        .wrap(true)
-        .max_width_chars(40)
-        .justify(gtk4::Justification::Center)
-        .css_classes(["empty-state-description"])
-        .build();
-    container.append(&desc_label);
 
     // Optional action button
     if let (Some(label), Some(action)) = (action_label, action_name) {
@@ -67,17 +41,17 @@ pub fn create_empty_state(
             .label(label)
             .action_name(action)
             .css_classes(["suggested-action", "pill"])
-            .margin_top(12)
+            .halign(gtk4::Align::Center)
             .build();
-        container.append(&button);
+        page.set_child(Some(&button));
     }
 
-    container
+    page.upcast()
 }
 
 /// Creates an empty state for no connections
 #[must_use]
-pub fn no_connections() -> GtkBox {
+pub fn no_connections() -> Widget {
     create_empty_state(
         "network-server-symbolic",
         "No Connections",
@@ -89,7 +63,7 @@ pub fn no_connections() -> GtkBox {
 
 /// Creates an empty state for no search results
 #[must_use]
-pub fn no_search_results(query: &str) -> GtkBox {
+pub fn no_search_results(query: &str) -> Widget {
     create_empty_state(
         "edit-find-symbolic",
         "No Results Found",
@@ -101,7 +75,7 @@ pub fn no_search_results(query: &str) -> GtkBox {
 
 /// Creates an empty state for no sessions
 #[must_use]
-pub fn no_sessions() -> GtkBox {
+pub fn no_sessions() -> Widget {
     create_empty_state(
         "utilities-terminal-symbolic",
         "No Active Sessions",
@@ -113,7 +87,7 @@ pub fn no_sessions() -> GtkBox {
 
 /// Creates an empty state for no groups
 #[must_use]
-pub fn no_groups() -> GtkBox {
+pub fn no_groups() -> Widget {
     create_empty_state(
         "folder-symbolic",
         "No Groups",
@@ -125,7 +99,7 @@ pub fn no_groups() -> GtkBox {
 
 /// Creates an empty state for no snippets
 #[must_use]
-pub fn no_snippets() -> GtkBox {
+pub fn no_snippets() -> Widget {
     create_empty_state(
         "edit-paste-symbolic",
         "No Snippets",
@@ -137,7 +111,7 @@ pub fn no_snippets() -> GtkBox {
 
 /// Creates an empty state for no templates
 #[must_use]
-pub fn no_templates() -> GtkBox {
+pub fn no_templates() -> Widget {
     create_empty_state(
         "document-new-symbolic",
         "No Templates",
@@ -149,7 +123,7 @@ pub fn no_templates() -> GtkBox {
 
 /// Creates an empty state for no history
 #[must_use]
-pub fn no_history() -> GtkBox {
+pub fn no_history() -> Widget {
     create_empty_state(
         "document-open-recent-symbolic",
         "No Connection History",
@@ -161,28 +135,29 @@ pub fn no_history() -> GtkBox {
 
 /// Creates a loading state widget
 #[must_use]
-pub fn loading_state(message: &str) -> GtkBox {
-    let container = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(12)
-        .halign(Align::Center)
-        .valign(Align::Center)
-        .hexpand(true)
+pub fn loading_state(message: &str) -> Widget {
+    let page = adw::StatusPage::builder()
+        .title("Loading...")
+        .description(message)
         .vexpand(true)
+        .hexpand(true)
         .build();
 
     let spinner = gtk4::Spinner::builder()
         .spinning(true)
-        .css_classes(["loading-spinner"])
+        .halign(gtk4::Align::Center)
         .build();
     spinner.set_size_request(48, 48);
-    container.append(&spinner);
 
-    let label = Label::builder()
-        .label(message)
-        .css_classes(["dim-label"])
-        .build();
-    container.append(&label);
+    // StatusPage icon property expects an icon name or paintable, not a widget.
+    // So we use set_child for the spinner.
+    // Wait, StatusPage with spinner is not standard. Usually Spinner is child.
+    // But StatusPage takes one child.
+    // If we want Title + Description + Spinner, we need a Box as child containing Spinner?
+    // Actually StatusPage has `child` property.
+    // Let's put spinner in child.
 
-    container
+    page.set_child(Some(&spinner));
+
+    page.upcast()
 }

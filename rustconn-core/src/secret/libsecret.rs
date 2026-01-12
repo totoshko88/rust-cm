@@ -187,6 +187,12 @@ impl SecretBackend for LibSecretBackend {
                 .await?;
         }
 
+        // Store domain if present
+        if let Some(domain) = &credentials.domain {
+            self.store_value(connection_id, "domain", domain, &label)
+                .await?;
+        }
+
         Ok(())
     }
 
@@ -194,9 +200,11 @@ impl SecretBackend for LibSecretBackend {
         let username = self.retrieve_value(connection_id, "username").await?;
         let password = self.retrieve_value(connection_id, "password").await?;
         let key_passphrase = self.retrieve_value(connection_id, "key_passphrase").await?;
+        let domain = self.retrieve_value(connection_id, "domain").await?;
 
         // If nothing was found, return None
-        if username.is_none() && password.is_none() && key_passphrase.is_none() {
+        if username.is_none() && password.is_none() && key_passphrase.is_none() && domain.is_none()
+        {
             return Ok(None);
         }
 
@@ -204,6 +212,7 @@ impl SecretBackend for LibSecretBackend {
             username,
             password: password.map(SecretString::from),
             key_passphrase: key_passphrase.map(SecretString::from),
+            domain,
         }))
     }
 
@@ -213,6 +222,7 @@ impl SecretBackend for LibSecretBackend {
         let _ = self.delete_value(connection_id, "username").await;
         let _ = self.delete_value(connection_id, "password").await;
         let _ = self.delete_value(connection_id, "key_passphrase").await;
+        let _ = self.delete_value(connection_id, "domain").await;
 
         Ok(())
     }

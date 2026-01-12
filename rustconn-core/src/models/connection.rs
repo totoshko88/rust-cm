@@ -39,6 +39,8 @@ pub enum PasswordSource {
     Keyring,
     /// Prompt user for password on each connection
     Prompt,
+    /// Inherit credentials from parent group
+    Inherit,
 }
 
 /// Window mode for connection display

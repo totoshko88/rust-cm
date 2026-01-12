@@ -283,6 +283,7 @@ impl SecretBackend for KeePassXcBackend {
                     username: entry.login,
                     password: entry.password.map(SecretString::from),
                     key_passphrase: None,
+                    domain: None,
                 };
                 return Ok(Some(credentials));
             }

@@ -74,6 +74,7 @@ pub struct ConnectionDialog {
     ssh_key_button: Button,
     ssh_agent_key_dropdown: DropDown,
     ssh_agent_keys: Rc<RefCell<Vec<rustconn_core::ssh_agent::AgentKey>>>,
+    ssh_jump_host_dropdown: DropDown,
     ssh_proxy_entry: Entry,
     ssh_identities_only: CheckButton,
     ssh_control_master: CheckButton,
@@ -194,6 +195,7 @@ pub struct ConnectionDialog {
     editing_id: Rc<RefCell<Option<Uuid>>>,
     // Callback
     on_save: super::ConnectionCallback,
+    connections_data: Rc<RefCell<Vec<(Option<Uuid>, String)>>>,
 }
 
 /// Represents a local variable row in the connection dialog
@@ -308,6 +310,7 @@ impl ConnectionDialog {
             ssh_key_entry,
             ssh_key_button,
             ssh_agent_key_dropdown,
+            ssh_jump_host_dropdown, // New field
             ssh_proxy_entry,
             ssh_identities_only,
             ssh_control_master,
@@ -513,6 +516,8 @@ impl ConnectionDialog {
         let editing_id: Rc<RefCell<Option<Uuid>>> = Rc::new(RefCell::new(None));
         let groups_data: Rc<RefCell<Vec<(Option<Uuid>, String)>>> =
             Rc::new(RefCell::new(vec![(None, "(Root)".to_string())]));
+        let connections_data: Rc<RefCell<Vec<(Option<Uuid>, String)>>> =
+            Rc::new(RefCell::new(vec![(None, "(None)".to_string())]));
 
         // Connect save button handler
         Self::connect_save_button(
@@ -535,6 +540,7 @@ impl ConnectionDialog {
             &ssh_key_entry,
             &ssh_agent_key_dropdown,
             &ssh_agent_keys,
+            &ssh_jump_host_dropdown,
             &ssh_proxy_entry,
             &ssh_identities_only,
             &ssh_control_master,
@@ -611,6 +617,7 @@ impl ConnectionDialog {
             &wol_broadcast_entry,
             &wol_port_spin,
             &wol_wait_spin,
+            &connections_data,
         );
 
         let result = Self {
@@ -637,6 +644,7 @@ impl ConnectionDialog {
             ssh_key_button,
             ssh_agent_key_dropdown,
             ssh_agent_keys,
+            ssh_jump_host_dropdown,
             ssh_proxy_entry,
             ssh_identities_only,
             ssh_control_master,
@@ -728,6 +736,7 @@ impl ConnectionDialog {
             wol_wait_spin,
             editing_id,
             on_save,
+            connections_data,
         };
 
         // Wire up inline validation for required fields
@@ -1135,6 +1144,7 @@ impl ConnectionDialog {
         ssh_key_entry: &Entry,
         ssh_agent_key_dropdown: &DropDown,
         ssh_agent_keys: &Rc<RefCell<Vec<rustconn_core::ssh_agent::AgentKey>>>,
+        ssh_jump_host_dropdown: &DropDown,
         ssh_proxy_entry: &Entry,
         ssh_identities_only: &CheckButton,
         ssh_control_master: &CheckButton,
@@ -1211,6 +1221,7 @@ impl ConnectionDialog {
         wol_broadcast_entry: &Entry,
         wol_port_spin: &SpinButton,
         wol_wait_spin: &SpinButton,
+        connections_data: &Rc<RefCell<Vec<(Option<Uuid>, String)>>>,
     ) {
         let window = window.clone();
         let on_save = on_save.clone();
@@ -1229,6 +1240,7 @@ impl ConnectionDialog {
         let ssh_key_entry = ssh_key_entry.clone();
         let ssh_agent_key_dropdown = ssh_agent_key_dropdown.clone();
         let ssh_agent_keys = ssh_agent_keys.clone();
+        let ssh_jump_host_dropdown = ssh_jump_host_dropdown.clone();
         let ssh_proxy_entry = ssh_proxy_entry.clone();
         let ssh_identities_only = ssh_identities_only.clone();
         let ssh_control_master = ssh_control_master.clone();
@@ -1306,6 +1318,7 @@ impl ConnectionDialog {
         let wol_port_spin = wol_port_spin.clone();
         let wol_wait_spin = wol_wait_spin.clone();
         let editing_id = editing_id.clone();
+        let connections_data = connections_data.clone();
 
         save_btn.connect_clicked(move |_| {
             let local_variables = Self::collect_local_variables(&variables_rows);
@@ -1322,11 +1335,13 @@ impl ConnectionDialog {
                 password_source_dropdown: &password_source_dropdown,
                 group_dropdown: &group_dropdown,
                 groups_data: &groups_data,
+                connections_data: &connections_data,
                 ssh_auth_dropdown: &ssh_auth_dropdown,
                 ssh_key_source_dropdown: &ssh_key_source_dropdown,
                 ssh_key_entry: &ssh_key_entry,
                 ssh_agent_key_dropdown: &ssh_agent_key_dropdown,
                 ssh_agent_keys: &ssh_agent_keys,
+                ssh_jump_host_dropdown: &ssh_jump_host_dropdown,
                 ssh_proxy_entry: &ssh_proxy_entry,
                 ssh_identities_only: &ssh_identities_only,
                 ssh_control_master: &ssh_control_master,
@@ -1542,7 +1557,7 @@ impl ConnectionDialog {
             .halign(gtk4::Align::End)
             .build();
         let password_source_list =
-            StringList::new(&["Prompt", "Stored", "KeePass", "Keyring", "None"]);
+            StringList::new(&["Prompt", "Stored", "KeePass", "Keyring", "Inherit", "None"]);
         let password_source_dropdown = DropDown::builder().model(&password_source_list).build();
         password_source_dropdown.set_selected(0);
         grid.attach(&password_source_label, 0, row, 1, 1);
@@ -1707,6 +1722,7 @@ impl ConnectionDialog {
         Entry,
         Button,
         DropDown,
+        DropDown, // Jump Host DropDown
         Entry,
         CheckButton,
         CheckButton,
@@ -1884,6 +1900,18 @@ impl ConnectionDialog {
         // === Connection Options Group ===
         let connection_group = adw::PreferencesGroup::builder().title("Connection").build();
 
+        // Jump Host dropdown
+        let jump_host_list = StringList::new(&["(None)"]);
+        let jump_host_dropdown = DropDown::new(Some(jump_host_list), gtk4::Expression::NONE);
+        jump_host_dropdown.set_selected(0);
+
+        let jump_host_row = adw::ActionRow::builder()
+            .title("Jump Host")
+            .subtitle("Connect via another SSH connection")
+            .build();
+        jump_host_row.add_suffix(&jump_host_dropdown);
+        connection_group.add(&jump_host_row);
+
         // ProxyJump entry
         let proxy_entry = Entry::builder()
             .hexpand(true)
@@ -1976,6 +2004,7 @@ impl ConnectionDialog {
             key_entry,
             key_button,
             agent_key_dropdown,
+            jump_host_dropdown,
             proxy_entry,
             identities_only,
             control_master,
@@ -5217,13 +5246,14 @@ impl ConnectionDialog {
         }
 
         // Password source - map enum to dropdown index
-        // Dropdown order: Prompt(0), Stored(1), KeePass(2), Keyring(3), None(4)
+        // Dropdown order: Prompt(0), Stored(1), KeePass(2), Keyring(3), Inherit(4), None(5)
         let password_source_idx = match conn.password_source {
             PasswordSource::Prompt => 0,
             PasswordSource::Stored => 1,
             PasswordSource::KeePass => 2,
             PasswordSource::Keyring => 3,
-            PasswordSource::None => 4,
+            PasswordSource::Inherit => 4,
+            PasswordSource::None => 5,
         };
         self.password_source_dropdown
             .set_selected(password_source_idx);
@@ -5323,13 +5353,43 @@ impl ConnectionDialog {
             add_group_recursive(group, groups, &mut groups_data, 0);
         }
 
+        self.set_groups_list(&groups_data);
+    }
+
+    /// Sets the available connections for the jump host dropdown
+    pub fn set_connections(&self, connections: &[Connection]) {
+        use rustconn_core::models::ProtocolType;
+
+        let mut connections_data: Vec<(Option<Uuid>, String)> = vec![(None, "(None)".to_string())];
+
+        let mut sorted_conns: Vec<&Connection> = connections
+            .iter()
+            .filter(|c| c.protocol == ProtocolType::Ssh)
+            .collect();
+        sorted_conns.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+        for conn in sorted_conns {
+            connections_data.push((Some(conn.id), conn.name.clone()));
+        }
+
+        *self.connections_data.borrow_mut() = connections_data.clone();
+
+        let display_strings: Vec<&str> = connections_data
+            .iter()
+            .map(|(_, name)| name.as_str())
+            .collect();
+        let model = StringList::new(&display_strings);
+        self.ssh_jump_host_dropdown.set_model(Some(&model));
+    }
+
+    fn set_groups_list(&self, groups_data: &[(Option<Uuid>, String)]) {
         // Update dropdown model
         let names: Vec<&str> = groups_data.iter().map(|(_, name)| name.as_str()).collect();
         let string_list = StringList::new(&names);
         self.group_dropdown.set_model(Some(&string_list));
 
         // Store groups data for later lookup
-        *self.groups_data.borrow_mut() = groups_data;
+        *self.groups_data.borrow_mut() = groups_data.to_vec();
     }
 
     /// Sets the WOL configuration fields
@@ -5656,9 +5716,30 @@ impl ConnectionDialog {
             }
         }
 
-        if let Some(ref proxy) = ssh.proxy_jump {
-            self.ssh_proxy_entry.set_text(proxy);
+        if let Some(agent_fingerprint) = &ssh.agent_key_fingerprint {
+            let keys = self.ssh_agent_keys.borrow();
+            if let Some(pos) = keys
+                .iter()
+                .position(|k| k.fingerprint == *agent_fingerprint)
+            {
+                self.ssh_agent_key_dropdown.set_selected(pos as u32);
+            }
         }
+
+        // Set jump host dropdown
+        if let Some(jump_id) = ssh.jump_host_id {
+            let connections = self.connections_data.borrow();
+            if let Some(pos) = connections.iter().position(|(id, _)| *id == Some(jump_id)) {
+                self.ssh_jump_host_dropdown.set_selected(pos as u32);
+            } else {
+                self.ssh_jump_host_dropdown.set_selected(0);
+            }
+        } else {
+            self.ssh_jump_host_dropdown.set_selected(0);
+        }
+
+        self.ssh_proxy_entry
+            .set_text(ssh.proxy_jump.as_deref().unwrap_or(""));
         self.ssh_identities_only.set_active(ssh.identities_only);
         self.ssh_control_master.set_active(ssh.use_control_master);
         self.ssh_agent_forwarding.set_active(ssh.agent_forwarding);
@@ -5758,9 +5839,9 @@ impl ConnectionDialog {
         self.vnc_client_mode_dropdown
             .set_selected(vnc.client_mode.index());
 
-        if let Some(ref enc) = vnc.encoding {
-            self.vnc_encoding_entry.set_text(enc);
-        }
+        let encoding_text = vnc.encoding.as_deref().unwrap_or("");
+        self.vnc_encoding_entry.set_text(encoding_text);
+
         if let Some(comp) = vnc.compression {
             self.vnc_compression_spin.set_value(f64::from(comp));
         }
@@ -6226,6 +6307,9 @@ struct ConnectionDialogData<'a> {
     wol_port_spin: &'a SpinButton,
     wol_wait_spin: &'a SpinButton,
     editing_id: &'a Rc<RefCell<Option<Uuid>>>,
+    // Jump Host fields
+    ssh_jump_host_dropdown: &'a DropDown,
+    connections_data: &'a Rc<RefCell<Vec<(Option<Uuid>, String)>>>,
 }
 
 impl ConnectionDialogData<'_> {
@@ -6326,12 +6410,13 @@ impl ConnectionDialogData<'_> {
         }
 
         // Password source - map dropdown index to enum
-        // Dropdown order: Prompt(0), Stored(1), KeePass(2), Keyring(3), None(4)
+        // Dropdown order: Prompt(0), Stored(1), KeePass(2), Keyring(3), Inherit(4), None(5)
         conn.password_source = match self.password_source_dropdown.selected() {
             1 => PasswordSource::Stored,
             2 => PasswordSource::KeePass,
             3 => PasswordSource::Keyring,
-            4 => PasswordSource::None,
+            4 => PasswordSource::Inherit,
+            5 => PasswordSource::None,
             _ => PasswordSource::Prompt, // 0 and any other value default to Prompt
         };
 
@@ -6716,15 +6801,6 @@ impl ConnectionDialogData<'_> {
                 }
             };
 
-        let proxy_jump = {
-            let text = self.ssh_proxy_entry.text();
-            if text.trim().is_empty() {
-                None
-            } else {
-                Some(text.trim().to_string())
-            }
-        };
-
         let startup_command = {
             let text = self.ssh_startup_entry.text();
             if text.trim().is_empty() {
@@ -6732,6 +6808,23 @@ impl ConnectionDialogData<'_> {
             } else {
                 Some(text.trim().to_string())
             }
+        };
+
+        // Jump Host
+        let jump_idx = self.ssh_jump_host_dropdown.selected() as usize;
+        let connections = self.connections_data.borrow();
+        let jump_host_id = if jump_idx < connections.len() {
+            connections[jump_idx].0
+        } else {
+            None
+        };
+
+        // ProxyJump text entry
+        let proxy_jump = self.ssh_proxy_entry.text();
+        let proxy_jump_opt = if proxy_jump.trim().is_empty() {
+            None
+        } else {
+            Some(proxy_jump.trim().to_string())
         };
 
         let custom_options = Self::parse_custom_options(&self.ssh_options_entry.text());
@@ -6742,7 +6835,8 @@ impl ConnectionDialogData<'_> {
             key_source,
             agent_key_fingerprint,
             identities_only: self.ssh_identities_only.is_active(),
-            proxy_jump,
+            proxy_jump: proxy_jump_opt,
+            jump_host_id, // Add this field
             use_control_master: self.ssh_control_master.is_active(),
             agent_forwarding: self.ssh_agent_forwarding.is_active(),
             custom_options,

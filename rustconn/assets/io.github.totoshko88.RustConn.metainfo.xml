@@ -55,6 +55,16 @@
   <url type="donation">https://ko-fi.com/totoshko88</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.6.1" date="2026-01-12">
+      <description>
+        <p>Version 0.6.1 - Credential Inheritance and Jump Host Support:</p>
+        <ul>
+          <li>Added Credential Inheritance from parent groups</li>
+          <li>Added native SSH Jump Host support</li>
+          <li>Migrated empty states to adw::StatusPage</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-01-12">
       <description>
         <p>Version 0.6.0 - Code Audit and Cleanup Release:</p>

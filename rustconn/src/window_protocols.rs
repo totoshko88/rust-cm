@@ -77,9 +77,70 @@ pub fn start_ssh_connection(
                 .map(|p| p.to_string_lossy().to_string());
             let mut args = Vec::new();
 
+            let mut jump_hosts = Vec::new();
+
+            // Handle string-based proxy jump (legacy/manual)
             if let Some(proxy) = &ssh_config.proxy_jump {
+                jump_hosts.push(proxy.clone());
+            }
+
+            // Handle reference-based jump host (recursive resolution)
+            if let Some(jump_id) = ssh_config.jump_host_id {
+                if let Ok(state_ref) = state.try_borrow() {
+                    let mut current_id = Some(jump_id);
+                    let mut visited = std::collections::HashSet::new();
+                    visited.insert(connection_id); // Avoid self-reference loop
+
+                    // Limit recursion depth to avoid infinite loops
+                    for _ in 0..10 {
+                        if let Some(jid) = current_id {
+                            if visited.contains(&jid) {
+                                break;
+                            }
+                            visited.insert(jid);
+
+                            if let Some(jump_conn) = state_ref.get_connection(jid) {
+                                // Format: [user@]host[:port]
+                                let mut host_str = jump_conn.host.clone();
+                                if let Some(user) = &jump_conn.username {
+                                    host_str = format!("{}@{}", user, host_str);
+                                }
+                                if jump_conn.port != 22 {
+                                    host_str = format!("{}:{}", host_str, jump_conn.port);
+                                }
+                                jump_hosts.push(host_str);
+
+                                // Check if this jump host has its own jumper
+                                if let rustconn_core::ProtocolConfig::Ssh(jump_config) =
+                                    &jump_conn.protocol_config
+                                {
+                                    // Prepend manual proxy if exists on jump host (unlikely but possible)
+                                    if let Some(p) = &jump_config.proxy_jump {
+                                        jump_hosts.insert(jump_hosts.len() - 1, p.clone());
+                                    }
+                                    current_id = jump_config.jump_host_id;
+                                } else {
+                                    current_id = None;
+                                }
+                            } else {
+                                current_id = None;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if !jump_hosts.is_empty() {
                 args.push("-J".to_string());
-                args.push(proxy.clone());
+                // SSH expects comma-separated list: jump1,jump2,dest
+                // But -J option takes jumps to reach dest.
+                // If we chain: A -> B -> C -> Dest.
+                // We need `ssh -J B,C Dest` (from A).
+                // My recursion pushed B then C. So `jump_hosts` is [B, C].
+                // Join with comma.
+                args.push(jump_hosts.join(","));
             }
 
             if ssh_config.use_control_master {

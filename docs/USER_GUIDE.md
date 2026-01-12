@@ -1,6 +1,6 @@
 # RustConn User Guide
 
-**Version 0.6.0** | GTK4/libadwaita Connection Manager for Linux
+**Version 0.6.1** | GTK4/libadwaita Connection Manager for Linux
 
 RustConn is a modern connection manager designed for Linux with Wayland-first approach. It supports SSH, RDP, VNC, SPICE protocols and Zero Trust integrations through a native GTK4/libadwaita interface.
 
@@ -110,7 +110,7 @@ Shows integration status in sidebar toolbar:
 
 | Protocol | Options |
 |----------|---------|
-| SSH | Auth method, proxy jump, agent forwarding, startup command |
+| SSH | Auth method, proxy jump (Jump Host), agent forwarding, startup command |
 | RDP | Resolution, color depth, audio, gateway, shared folders |
 | VNC | Encoding, compression, quality, view-only, scaling |
 | SPICE | TLS, USB redirection, clipboard, image compression |
@@ -172,9 +172,20 @@ For RDP, VNC, and SPICE connections, RustConn performs a fast TCP port check bef
 - **Move** — Drag-drop or right-click → Move to Group
 - **Delete** — Delete key (moves children to root)
 
+### Group Credentials (New in 0.6.1)
+Groups can now store default credentials (Username, Password, Domain) that are inherited by their children.
+
+1. **Configure**:
+   - In "New Group" or "Edit Group" dialog, fill in the **Default Credentials** section.
+   - Passwords are stored securely in the system keyring.
+
+2. **Inherit**:
+   - Create a connection inside the group.
+   - In **Authentication** tab, set **Password Source** to **Inherit from Group**.
+
 ### Sorting
 
-- Alphabetical by default
+- Alphabetical by default (case-insensitive, by full path)
 - Drag-drop for manual reordering
 - Click Sort button in toolbar to reset
 

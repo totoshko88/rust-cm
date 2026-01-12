@@ -16,6 +16,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Button, Label, Orientation};
 use libadwaita as adw;
+use rustconn_core::models::{Credentials, PasswordSource};
 use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
@@ -62,8 +63,21 @@ pub fn edit_selected_connection(
         // Set available groups
         {
             let state_ref = state.borrow();
-            let groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+            let mut groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+            groups.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
             dialog.set_groups(&groups);
+        }
+
+        // Set available connections for Jump Host (excluding self)
+        {
+            let state_ref = state.borrow();
+            let connections: Vec<_> = state_ref
+                .list_connections()
+                .into_iter()
+                .filter(|c| c.id != id)
+                .cloned()
+                .collect();
+            dialog.set_connections(&connections);
         }
 
         dialog.set_connection(&conn);
@@ -511,7 +525,7 @@ pub fn show_edit_group_dialog(
     let group_window = adw::Window::builder()
         .title("Edit Group")
         .modal(true)
-        .default_width(400)
+        .default_width(500)
         .resizable(false)
         .build();
     group_window.set_transient_for(Some(window));
@@ -527,27 +541,142 @@ pub fn show_edit_group_dialog(
     header.pack_start(&cancel_btn);
     header.pack_end(&save_btn);
 
+    // Scrollable content with clamp
+    let clamp = adw::Clamp::builder()
+        .maximum_size(600)
+        .tightening_threshold(400)
+        .build();
+
     let content = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
 
-    // Name entry using PreferencesGroup with EntryRow
-    let name_group = adw::PreferencesGroup::new();
-    let name_row = adw::EntryRow::builder()
-        .title("Name")
-        .text(&group.name)
-        .build();
-    name_group.add(&name_row);
-    content.append(&name_group);
+    clamp.set_child(Some(&content));
 
     // Use ToolbarView for proper adw::Window layout
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&content));
+    toolbar_view.set_content(Some(&clamp));
     group_window.set_content(Some(&toolbar_view));
 
+    // === Group Details ===
+    let details_group = adw::PreferencesGroup::builder()
+        .title("Group Details")
+        .build();
+
+    // Name entry using PreferencesGroup with EntryRow
+    let name_row = adw::EntryRow::builder()
+        .title("Name")
+        .text(&group.name)
+        .build();
+    details_group.add(&name_row);
+
+    // Parent group dropdown
+    let state_ref = state.borrow();
+
+    // Get all groups and filter out self and descendants to avoid cycles
+    let mut available_groups: Vec<(Uuid, String)> = Vec::new();
+    let all_groups = state_ref.list_groups();
+
+    // Helper to check if a group is a descendant of the current group
+    let is_descendant = |possible_descendant: Uuid| -> bool {
+        let mut current = possible_descendant;
+        let mut visited = std::collections::HashSet::new();
+
+        while let Some(g) = state_ref.get_group(current) {
+            if !visited.insert(current) {
+                break;
+            }
+            if current == group_id {
+                return true;
+            }
+            match g.parent_id {
+                Some(p) => current = p,
+                None => break,
+            }
+        }
+        false
+    };
+
+    for g in all_groups {
+        if g.id == group_id {
+            continue;
+        }
+        if is_descendant(g.id) {
+            continue;
+        }
+
+        // Use full path for display and sorting
+        let path = state_ref
+            .get_group_path(g.id)
+            .unwrap_or_else(|| g.name.clone());
+        available_groups.push((g.id, path));
+    }
+    drop(state_ref);
+
+    // Sort by the displayed path string
+    available_groups.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+
+    let mut group_ids: Vec<Option<Uuid>> = vec![None];
+    let mut strings: Vec<String> = vec!["(None - Root Level)".to_string()];
+    let mut preselected_index = 0u32;
+
+    for (id, path) in available_groups {
+        strings.push(path);
+        group_ids.push(Some(id));
+
+        if group.parent_id == Some(id) {
+            preselected_index = (group_ids.len() - 1) as u32;
+        }
+    }
+
+    let string_list = gtk4::StringList::new(
+        &strings
+            .iter()
+            .map(std::string::String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    let parent_dropdown = gtk4::DropDown::builder()
+        .model(&string_list)
+        .selected(preselected_index)
+        .valign(gtk4::Align::Center)
+        .build();
+
+    let parent_row = adw::ActionRow::builder()
+        .title("Parent")
+        .subtitle("Moving a group moves all its content")
+        .build();
+    parent_row.add_suffix(&parent_dropdown);
+    details_group.add(&parent_row);
+
+    content.append(&details_group);
+
+    // === Inheritable Credentials ===
+    let credentials_group = adw::PreferencesGroup::builder()
+        .title("Default Credentials")
+        .description("Credentials inherited by connections in this group")
+        .build();
+
+    let username_row = adw::EntryRow::builder()
+        .title("Username")
+        .text(group.username.as_deref().unwrap_or_default())
+        .build();
+    credentials_group.add(&username_row);
+
+    let password_row = adw::PasswordEntryRow::builder().title("Password").build();
+    credentials_group.add(&password_row);
+
+    let domain_row = adw::EntryRow::builder()
+        .title("Domain")
+        .text(group.domain.as_deref().unwrap_or_default())
+        .build();
+    credentials_group.add(&domain_row);
+
+    content.append(&credentials_group);
+
+    // Connect handlers
     let window_clone = group_window.clone();
     cancel_btn.connect_clicked(move |_| {
         window_clone.close();
@@ -557,13 +686,31 @@ pub fn show_edit_group_dialog(
     let sidebar_clone = sidebar;
     let window_clone = group_window.clone();
     let name_row_clone = name_row;
+    let username_row_clone = username_row;
+    let password_row_clone = password_row;
+    let domain_row_clone = domain_row;
+    let dropdown_clone = parent_dropdown;
     let old_name = group.name;
+
     save_btn.connect_clicked(move |_| {
         let new_name = name_row_clone.text().to_string();
         if new_name.trim().is_empty() {
             alert::show_validation_error(&window_clone, "Group name cannot be empty");
             return;
         }
+
+        let selected_idx = dropdown_clone.selected() as usize;
+        let new_parent_id = if selected_idx < group_ids.len() {
+            group_ids[selected_idx]
+        } else {
+            None
+        };
+
+        let username = username_row_clone.text().to_string();
+        let password = password_row_clone.text().to_string();
+        let domain = domain_row_clone.text().to_string();
+
+        let has_new_password = !password.is_empty();
 
         // Check for duplicate name (but allow keeping same name)
         if new_name != old_name {
@@ -583,12 +730,67 @@ pub fn show_edit_group_dialog(
             if let Some(existing) = state_mut.get_group(group_id).cloned() {
                 let mut updated = existing;
                 updated.name = new_name;
+                updated.parent_id = new_parent_id;
+
+                updated.username = if username.trim().is_empty() {
+                    None
+                } else {
+                    Some(username.clone())
+                };
+
+                updated.username = if username.trim().is_empty() {
+                    None
+                } else {
+                    Some(username.clone())
+                };
+
+                updated.domain = if domain.trim().is_empty() {
+                    None
+                } else {
+                    Some(domain)
+                };
+
+                if has_new_password {
+                    updated.password_source = Some(PasswordSource::Keyring);
+                }
+
                 if let Err(e) = state_mut
                     .connection_manager()
                     .update_group(group_id, updated)
                 {
                     alert::show_error(&window_clone, "Error", &format!("{e}"));
                     return;
+                }
+
+                // Save password if provided
+                if has_new_password {
+                    let secret_manager = state_mut.secret_manager().clone();
+                    let creds = Credentials::with_password(
+                        if username.trim().is_empty() {
+                            ""
+                        } else {
+                            &username
+                        },
+                        password,
+                    );
+                    let gid_str = group_id.to_string();
+
+                    crate::utils::spawn_blocking_with_callback(
+                        move || {
+                            let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+                            rt.block_on(async {
+                                secret_manager
+                                    .store(&gid_str, &creds)
+                                    .await
+                                    .map_err(|e| e.to_string())
+                            })
+                        },
+                        move |result| {
+                            if let Err(e) = result {
+                                tracing::error!("Failed to save group password: {}", e);
+                            }
+                        },
+                    );
                 }
             }
             drop(state_mut);

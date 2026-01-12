@@ -28,10 +28,7 @@ use gtk4::{
     ScrolledWindow, SearchEntry, SignalListItemFactory, SingleSelection, TreeExpander,
     TreeListModel, TreeListRow, Widget,
 };
-use rustconn_core::{
-    Debouncer, LazyGroupLoader, SelectionState as CoreSelectionState, VirtualScrollConfig,
-    VirtualScroller,
-};
+use rustconn_core::{Debouncer, LazyGroupLoader, SelectionState as CoreSelectionState};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -71,11 +68,6 @@ pub struct ConnectionSidebar {
     connection_statuses: Rc<RefCell<std::collections::HashMap<String, SessionStatusInfo>>>,
     /// Lazy group loader for on-demand loading of connection groups
     lazy_loader: Rc<RefCell<LazyGroupLoader>>,
-    /// Virtual scroller for efficient rendering of large lists
-    virtual_scroller: Rc<RefCell<Option<VirtualScroller>>>,
-    /// Virtual scroll configuration
-    virtual_scroll_config: VirtualScrollConfig,
-    /// Selection state for preserving selections across virtual scrolling
     selection_state: Rc<RefCell<CoreSelectionState>>,
     /// Debouncer for rate-limiting search operations (100ms delay)
     search_debouncer: Rc<Debouncer>,
@@ -652,8 +644,6 @@ impl ConnectionSidebar {
             scrolled_window,
             connection_statuses: Rc::new(RefCell::new(std::collections::HashMap::new())),
             lazy_loader: Rc::new(RefCell::new(LazyGroupLoader::new())),
-            virtual_scroller: Rc::new(RefCell::new(None)),
-            virtual_scroll_config: VirtualScrollConfig::default(),
             selection_state: Rc::new(RefCell::new(CoreSelectionState::new())),
             search_debouncer,
             search_spinner,
@@ -1097,66 +1087,6 @@ impl ConnectionSidebar {
     /// Call this after populating the sidebar to enable virtual scrolling
     /// for large connection lists.
     ///
-    /// Note: Part of virtual scrolling API for performance optimization.
-    #[allow(clippy::cast_lossless)]
-    #[allow(dead_code)]
-    pub fn setup_virtual_scrolling(&self, item_count: usize) {
-        if self.virtual_scroll_config.should_enable(item_count) {
-            let viewport_height = f64::from(self.scrolled_window.height());
-            let scroller = VirtualScroller::new(
-                item_count,
-                self.virtual_scroll_config.item_height,
-                viewport_height,
-            )
-            .with_overscan(self.virtual_scroll_config.overscan);
-
-            *self.virtual_scroller.borrow_mut() = Some(scroller);
-        } else {
-            *self.virtual_scroller.borrow_mut() = None;
-        }
-    }
-
-    /// Updates the virtual scroller when the viewport is resized
-    ///
-    /// Note: Part of virtual scrolling API for performance optimization.
-    #[allow(dead_code)]
-    pub fn update_viewport_height(&self, height: f64) {
-        if let Some(ref mut scroller) = *self.virtual_scroller.borrow_mut() {
-            scroller.set_viewport_height(height);
-        }
-    }
-
-    /// Updates the virtual scroller when scrolling occurs
-    ///
-    /// Note: Part of virtual scrolling API for performance optimization.
-    #[allow(dead_code)]
-    pub fn update_scroll_offset(&self, offset: f64) {
-        if let Some(ref mut scroller) = *self.virtual_scroller.borrow_mut() {
-            scroller.set_scroll_offset(offset);
-        }
-    }
-
-    /// Returns the visible range of items for virtual scrolling
-    ///
-    /// Note: Part of virtual scrolling API for performance optimization.
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn visible_range(&self) -> Option<(usize, usize)> {
-        self.virtual_scroller
-            .borrow()
-            .as_ref()
-            .map(VirtualScroller::visible_range)
-    }
-
-    /// Returns whether virtual scrolling is currently enabled
-    ///
-    /// Note: Part of virtual scrolling API for performance optimization.
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn is_virtual_scrolling_enabled(&self) -> bool {
-        self.virtual_scroller.borrow().is_some()
-    }
-
     /// Returns a reference to the selection state for virtual scrolling
     ///
     /// Note: Part of selection state API for virtual scrolling.

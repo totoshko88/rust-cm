@@ -12,6 +12,7 @@ use adw::prelude::*;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use rustconn_core::models::{Credentials, PasswordSource};
 use std::rc::Rc;
 use uuid::Uuid;
 
@@ -42,8 +43,11 @@ pub fn show_new_connection_dialog_internal(
     // Set available groups
     {
         let state_ref = state.borrow();
-        let groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+        let mut groups: Vec<_> = state_ref.list_groups().into_iter().cloned().collect();
+        groups.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         dialog.set_groups(&groups);
+        let connections: Vec<_> = state_ref.list_connections().into_iter().cloned().collect();
+        dialog.set_connections(&connections);
     }
 
     // Set KeePass enabled state from settings
@@ -341,32 +345,31 @@ pub fn show_new_group_dialog_with_parent(
 
     // Parent group dropdown
     let state_ref = state.borrow();
-    let groups: Vec<_> = state_ref
+
+    // Sort by full path (displayed string)
+    let mut groups: Vec<(Uuid, String)> = state_ref
         .list_groups()
         .iter()
-        .map(|g| (*g).clone())
+        .map(|g| {
+            let path = state_ref
+                .get_group_path(g.id)
+                .unwrap_or_else(|| g.name.clone());
+            (g.id, path)
+        })
         .collect();
+    groups.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
     drop(state_ref);
 
     let mut group_ids: Vec<Option<Uuid>> = vec![None];
     let mut strings: Vec<String> = vec!["(None - Root Level)".to_string()];
     let mut preselected_index = 0u32;
 
-    for group in &groups {
-        let state_ref = state.borrow();
-        let path = state_ref
-            .get_group_path(group.id)
-            .unwrap_or_else(|| group.name.clone());
-        drop(state_ref);
-
+    for (id, path) in groups {
         strings.push(path);
-        group_ids.push(Some(group.id));
+        group_ids.push(Some(id));
 
-        if preselected_parent == Some(group.id) {
-            #[allow(clippy::cast_possible_truncation)]
-            {
-                preselected_index = (group_ids.len() - 1) as u32;
-            }
+        if preselected_parent == Some(id) {
+            preselected_index = (group_ids.len() - 1) as u32;
         }
     }
 
@@ -391,12 +394,33 @@ pub fn show_new_group_dialog_with_parent(
 
     content.append(&details_group);
 
+    // === Inheritable Credentials ===
+    let credentials_group = adw::PreferencesGroup::builder()
+        .title("Default Credentials")
+        .description("Credentials inherited by connections in this group")
+        .build();
+
+    let username_row = adw::EntryRow::builder().title("Username").build();
+    credentials_group.add(&username_row);
+
+    let password_row = adw::PasswordEntryRow::builder().title("Password").build();
+    credentials_group.add(&password_row);
+
+    let domain_row = adw::EntryRow::builder().title("Domain").build();
+    credentials_group.add(&domain_row);
+
+    content.append(&credentials_group);
+
     // Connect create button
     let state_clone = state.clone();
     let sidebar_clone = sidebar;
     let window_clone = group_window.clone();
     let name_row_clone = name_row;
     let dropdown_clone = parent_dropdown;
+    let username_row_clone = username_row;
+    let password_row_clone = password_row;
+    let domain_row_clone = domain_row;
+
     create_btn.connect_clicked(move |_| {
         let name = name_row_clone.text().to_string();
         if name.trim().is_empty() {
@@ -411,6 +435,15 @@ pub fn show_new_group_dialog_with_parent(
             None
         };
 
+        // Capture credential values
+        let username = username_row_clone.text().to_string();
+        let password = password_row_clone.text().to_string();
+        let domain = domain_row_clone.text().to_string();
+
+        let has_username = !username.trim().is_empty();
+        let has_password = !password.is_empty();
+        let has_domain = !domain.trim().is_empty();
+
         if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
             let result = if let Some(pid) = parent_id {
                 state_mut.create_group_with_parent(name, pid)
@@ -419,7 +452,64 @@ pub fn show_new_group_dialog_with_parent(
             };
 
             match result {
-                Ok(_) => {
+                Ok(group_id) => {
+                    // Update group with credentials if provided
+                    if has_username || has_domain || has_password {
+                        if let Some(existing) = state_mut.get_group(group_id).cloned() {
+                            let mut updated = existing;
+                            if has_username {
+                                updated.username = Some(username.clone());
+                            }
+                            if has_domain {
+                                updated.domain = Some(domain.clone());
+                            }
+                            if has_password {
+                                // We store password separately, but set source to Keyring
+                                updated.password_source = Some(PasswordSource::Keyring);
+                            }
+
+                            if let Err(e) = state_mut
+                                .connection_manager()
+                                .update_group(group_id, updated)
+                            {
+                                alert::show_error(
+                                    &window_clone,
+                                    "Error Updating Group",
+                                    &e.to_string(),
+                                );
+                                // Don't return, allow closing window since group was created
+                            }
+                        }
+                    }
+
+                    // Save password if provided
+                    if has_password {
+                        let secret_manager = state_mut.secret_manager().clone();
+                        let creds = Credentials::with_password(
+                            if has_username { &username } else { "" },
+                            password,
+                        );
+                        let gid_str = group_id.to_string();
+
+                        crate::utils::spawn_blocking_with_callback(
+                            move || {
+                                let rt =
+                                    tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+                                rt.block_on(async {
+                                    secret_manager
+                                        .store(&gid_str, &creds)
+                                        .await
+                                        .map_err(|e| e.to_string())
+                                })
+                            },
+                            move |result| {
+                                if let Err(e) = result {
+                                    tracing::error!("Failed to save group password: {}", e);
+                                }
+                            },
+                        );
+                    }
+
                     drop(state_mut);
                     // Defer sidebar reload to prevent UI freeze
                     let state = state_clone.clone();

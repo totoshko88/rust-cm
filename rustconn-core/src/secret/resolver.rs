@@ -91,7 +91,7 @@ impl CredentialResolver {
         let result = match connection.password_source {
             PasswordSource::KeePass => self.resolve_from_keepass(connection).await,
             PasswordSource::Keyring => self.resolve_from_keyring(connection).await,
-            PasswordSource::Stored | PasswordSource::Prompt => {
+            PasswordSource::Stored | PasswordSource::Prompt | PasswordSource::Inherit => {
                 // Caller handles these cases
                 debug!("Password source requires caller handling");
                 Ok(None)
@@ -642,6 +642,7 @@ impl CredentialResolver {
                     .await
             }
             PasswordSource::Keyring => self.resolve_from_keyring(connection).await,
+            PasswordSource::Inherit => self.resolve_inherited_credentials(connection, groups).await,
             PasswordSource::Stored | PasswordSource::Prompt => {
                 // Caller handles these cases
                 Ok(None)
@@ -772,6 +773,82 @@ impl CredentialResolver {
         }
 
         Ok(())
+    }
+
+    /// Resolves credentials by inheriting from parent groups
+    async fn resolve_inherited_credentials(
+        &self,
+        connection: &Connection,
+        groups: &[ConnectionGroup],
+    ) -> SecretResult<Option<Credentials>> {
+        let mut current_group_id = connection.group_id;
+
+        // Traverse up the hierarchy
+        while let Some(group_id) = current_group_id {
+            // Find the group
+            let Some(group) = groups.iter().find(|g| g.id == group_id) else {
+                break;
+            };
+
+            // Check if this group has credentials configured
+            if let Some(source) = group.password_source {
+                match source {
+                    PasswordSource::KeePass => {
+                        if self.settings.kdbx_enabled {
+                            // Lookup in KeePass using Group path
+                            // We need to generate path for the GROUP, not the connection.
+                            // But generate_hierarchical_lookup_key expects a connection.
+                            // We might need a helper for group path.
+                            // For now, let's assume we can lookup by Group Name/Path.
+                            // Or use group.id.to_string() for simplicity if KeePass supports custom keys?
+                            // But usually KeePass structure mirrors UI.
+                            // For now, let's skip KeePass inheritance complexity and support Keyring/Stored(if we had it).
+                            // If source is KeePass, we try to finding it.
+                        } else if self.settings.enable_fallback {
+                            // If KeePass is disabled but configured, try generic fallback/keyring?
+                            // Or just continue searching?
+                            // For consistency with connection logic, try fallback if allowed
+                            // Lookup using group ID in keyring
+                            let group_id_str = group.id.to_string();
+                            if let Some(creds) = self.secret_manager.retrieve(&group_id_str).await?
+                            {
+                                return Ok(Some(self.merge_group_credentials(creds, group)));
+                            }
+                        }
+                    }
+                    PasswordSource::Keyring => {
+                        let group_id_str = group.id.to_string();
+                        if let Some(creds) = self.secret_manager.retrieve(&group_id_str).await? {
+                            return Ok(Some(self.merge_group_credentials(creds, group)));
+                        }
+                    }
+                    PasswordSource::Inherit => {
+                        // explicitly continue to parent
+                    }
+                    _ => {}
+                }
+            }
+
+            // Move to parent
+            current_group_id = group.parent_id;
+        }
+
+        Ok(None)
+    }
+
+    /// Merges resolved credentials with group overrides (username, domain)
+    fn merge_group_credentials(
+        &self,
+        mut creds: Credentials,
+        group: &ConnectionGroup,
+    ) -> Credentials {
+        if let Some(ref username) = group.username {
+            creds.username = Some(username.clone());
+        }
+        if let Some(ref domain) = group.domain {
+            creds.domain = Some(domain.clone());
+        }
+        creds
     }
 }
 

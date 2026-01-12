@@ -998,6 +998,7 @@ impl AppState {
                                 username: None,
                                 password: Some(SecretString::from(password)),
                                 key_passphrase: None,
+                                domain: None,
                             }
                         };
                         // Preserve key_passphrase if needed
@@ -1071,6 +1072,7 @@ impl AppState {
                 // Prompt if no backend available
                 !self.has_secret_backend()
             }
+            PasswordSource::Inherit => false, // Resolution will handle inheritance
         }
     }
 
@@ -1335,6 +1337,7 @@ impl AppState {
                                 username: None,
                                 password: Some(SecretString::from(password)),
                                 key_passphrase: None,
+                                domain: None,
                             }
                         };
                         return Ok(Some(creds));

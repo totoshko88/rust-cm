@@ -5,6 +5,30 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-01-12
+
+### Added
+- **Credential Inheritance** - Simplify connection management by inheriting credentials from parent groups:
+  - New "Inherit" option in password source dropdown
+  - Recursively resolves credentials up the group hierarchy
+  - Reduces duplication for environments sharing same credentials
+- **Jump Host Support** - Native SSH Jump Host configuration:
+  - New "Jump Host" dropdown in SSH connection settings
+  - Select any existing SSH connection as a jump host
+  - Supports chained jump hosts (Jump Host -> Jump Host -> Target)
+  - Automatically configures `-J` argument for SSH connections
+- **Adwaita Empty States** - Migrated empty state views to `adw::StatusPage`:
+  - Modern, consistent look for empty connection lists, terminals, and search results
+  - Proper theming support
+- **Group Improvements**:
+  - **Sorting**: Group lists in sidebar and dropdowns are now sorted alphabetically by full path
+  - **Credentials UI**: New fields in Group Dialogs to set default Username/Password/Domain
+  - **Move Group**: Added "Parent" dropdown to Edit Group dialog to move groups (with cycle prevention)
+
+### Dependencies
+- Updated `libadwaita` to `0.7`
+- Updated `gtk4` to `0.9`
+- Updated `vte4` to `0.8`
 ## [0.6.0] - 2026-01-12
 
 ### Added

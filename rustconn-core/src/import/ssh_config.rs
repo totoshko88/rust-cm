@@ -182,6 +182,7 @@ impl SshConfigImporter {
             key_source: SshKeySource::Default,
             agent_key_fingerprint: None,
             identities_only,
+            jump_host_id: None,
             proxy_jump: options.get("proxyjump").cloned(),
             use_control_master: options
                 .get("controlmaster")

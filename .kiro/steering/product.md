@@ -70,7 +70,7 @@ Optional features (KeePassXC, tray icon) must not break core functionality. Chec
 | Widgets | Prefer `adw::` over `gtk::` equivalents |
 | Toasts | `adw::ToastOverlay` |
 | Dialogs | `adw::Dialog` or `gtk::Window` with `set_modal(true)` |
-| Layout | Sidebar `gtk::TreeView` + `gtk::Notebook` tabs |
+| Layout | Sidebar `gtk::ListView` + `gtk::Notebook` tabs |
 | Spacing | 12px margins, 6px between related elements (GNOME HIG) |
 
 ## Error Handling

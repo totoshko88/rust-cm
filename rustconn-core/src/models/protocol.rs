@@ -139,6 +139,9 @@ pub struct SshConfig {
     /// Command to execute on connection
     #[serde(skip_serializing_if = "Option::is_none")]
     pub startup_command: Option<String>,
+    /// ID of another connection to use as a Jump Host
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jump_host_id: Option<uuid::Uuid>,
 }
 
 impl SshConfig {

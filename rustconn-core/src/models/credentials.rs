@@ -16,6 +16,8 @@ pub struct Credentials {
     pub password: Option<SecretString>,
     /// SSH key passphrase (stored securely, not serialized to config files)
     pub key_passphrase: Option<SecretString>,
+    /// Domain for Windows/RDP authentication
+    pub domain: Option<String>,
 }
 
 /// Serializable representation of credentials (without secrets)
@@ -23,6 +25,8 @@ pub struct Credentials {
 struct CredentialsSerde {
     #[serde(skip_serializing_if = "Option::is_none")]
     username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    domain: Option<String>,
     // Passwords are intentionally not serialized for security
     // They should be stored in a secure backend
 }
@@ -34,6 +38,7 @@ impl Serialize for Credentials {
     {
         CredentialsSerde {
             username: self.username.clone(),
+            domain: self.domain.clone(),
         }
         .serialize(serializer)
     }
@@ -47,6 +52,7 @@ impl<'de> Deserialize<'de> for Credentials {
         let serde = CredentialsSerde::deserialize(deserializer)?;
         Ok(Self {
             username: serde.username,
+            domain: serde.domain,
             password: None,
             key_passphrase: None,
         })
@@ -59,6 +65,7 @@ impl Credentials {
     pub const fn empty() -> Self {
         Self {
             username: None,
+            domain: None,
             password: None,
             key_passphrase: None,
         }
@@ -69,6 +76,7 @@ impl Credentials {
     pub fn with_username(username: impl Into<String>) -> Self {
         Self {
             username: Some(username.into()),
+            domain: None,
             password: None,
             key_passphrase: None,
         }
@@ -79,6 +87,7 @@ impl Credentials {
     pub fn with_password(username: impl Into<String>, password: impl Into<String>) -> Self {
         Self {
             username: Some(username.into()),
+            domain: None,
             password: Some(SecretString::from(password.into())),
             key_passphrase: None,
         }
@@ -139,5 +148,6 @@ impl PartialEq for Credentials {
                 (None, None) => true,
                 _ => false,
             }
+            && self.domain == other.domain
     }
 }

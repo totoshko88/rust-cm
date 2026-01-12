@@ -201,6 +201,9 @@ impl RdmImporter {
             expanded: true,
             created_at: chrono::Utc::now(),
             sort_order: 0,
+            username: None,
+            domain: None,
+            password_source: None,
         }
     }
 
