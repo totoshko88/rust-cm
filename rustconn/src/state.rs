@@ -809,10 +809,31 @@ impl AppState {
 
     /// Stores credentials for a connection (blocking wrapper for async operation)
     ///
+    /// # Deprecation Warning
+    ///
+    /// This method blocks the calling thread and should NOT be used from GTK UI callbacks
+    /// as it will freeze the interface. Use the async pattern with `spawn_blocking_with_callback`
+    /// instead for GUI code.
+    ///
+    /// # Example (preferred async pattern)
+    ///
+    /// ```ignore
+    /// crate::utils::spawn_blocking_with_callback(
+    ///     move || {
+    ///         // blocking credential operation here
+    ///     },
+    ///     move |result| {
+    ///         // handle result on GTK main thread
+    ///     },
+    /// );
+    /// ```
+    ///
     /// Note: This uses a cached tokio runtime to avoid creating a new one each time.
     /// For better performance in async contexts, use `secret_manager()` directly.
-    ///
-    /// Note: Part of secret management API.
+    #[deprecated(
+        since = "0.5.0",
+        note = "Blocks UI thread. Use spawn_blocking_with_callback pattern for GUI code."
+    )]
     #[allow(dead_code)]
     pub fn store_credentials(
         &self,
@@ -835,10 +856,18 @@ impl AppState {
 
     /// Retrieves credentials for a connection (blocking wrapper for async operation)
     ///
+    /// # Deprecation Warning
+    ///
+    /// This method blocks the calling thread and should NOT be used from GTK UI callbacks
+    /// as it will freeze the interface. Use the async pattern with `spawn_blocking_with_callback`
+    /// instead for GUI code.
+    ///
     /// Note: This uses a cached tokio runtime to avoid creating a new one each time.
     /// For better performance in async contexts, use `secret_manager()` directly.
-    ///
-    /// Note: Part of secret management API.
+    #[deprecated(
+        since = "0.5.0",
+        note = "Blocks UI thread. Use spawn_blocking_with_callback pattern for GUI code."
+    )]
     #[allow(dead_code)]
     pub fn retrieve_credentials(&self, connection_id: Uuid) -> Result<Option<Credentials>, String> {
         let secret_manager = self.secret_manager.clone();
@@ -856,10 +885,18 @@ impl AppState {
 
     /// Deletes credentials for a connection (blocking wrapper for async operation)
     ///
+    /// # Deprecation Warning
+    ///
+    /// This method blocks the calling thread and should NOT be used from GTK UI callbacks
+    /// as it will freeze the interface. Use the async pattern with `spawn_blocking_with_callback`
+    /// instead for GUI code.
+    ///
     /// Note: This uses a cached tokio runtime to avoid creating a new one each time.
     /// For better performance in async contexts, use `secret_manager()` directly.
-    ///
-    /// Note: Part of secret management API.
+    #[deprecated(
+        since = "0.5.0",
+        note = "Blocks UI thread. Use spawn_blocking_with_callback pattern for GUI code."
+    )]
     #[allow(dead_code)]
     pub fn delete_credentials(&self, connection_id: Uuid) -> Result<(), String> {
         let secret_manager = self.secret_manager.clone();

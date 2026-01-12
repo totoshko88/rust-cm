@@ -138,13 +138,13 @@ impl MainWindow {
         let toast_overlay = Rc::new(ToastOverlay::new());
         toast_overlay.set_child(Some(&paned));
 
-        // Create main layout with header bar for adw::ApplicationWindow
-        let main_box = gtk4::Box::new(Orientation::Vertical, 0);
-        main_box.append(&header_bar);
-        main_box.append(toast_overlay.widget());
-        toast_overlay.widget().set_vexpand(true);
+        // Create main layout using adw::ToolbarView for proper libadwaita integration
+        // This provides better responsive behavior and follows GNOME HIG
+        let toolbar_view = adw::ToolbarView::new();
+        toolbar_view.add_top_bar(&header_bar);
+        toolbar_view.set_content(Some(toast_overlay.widget()));
 
-        window.set_content(Some(&main_box));
+        window.set_content(Some(&toolbar_view));
 
         // Create external window manager
         let external_window_manager = Rc::new(ExternalWindowManager::new());
@@ -2157,6 +2157,9 @@ impl MainWindow {
     }
 
     /// Sets up session logging for a terminal session
+    ///
+    /// Directory creation and file opening are performed asynchronously
+    /// to avoid blocking the GTK main thread on slow storage.
     pub fn setup_session_logging(
         state: &SharedAppState,
         notebook: &SharedNotebook,
@@ -2186,16 +2189,6 @@ impl MainWindow {
                 return;
             };
 
-        // Ensure log directory exists
-        if let Err(e) = std::fs::create_dir_all(&log_dir) {
-            eprintln!(
-                "Failed to create log directory '{}': {}",
-                log_dir.display(),
-                e
-            );
-            return;
-        }
-
         // Create log file path with timestamp
         let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
         let sanitized_name: String = connection_name
@@ -2212,49 +2205,82 @@ impl MainWindow {
         let log_filename = format!("{}_{}.log", sanitized_name, timestamp);
         let log_path = log_dir.join(&log_filename);
 
-        // Create the log file and write header
-        match std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
-        {
-            Ok(mut file) => {
-                use std::io::Write;
-                let header = format!(
-                    "=== Session Log ===\nConnection: {}\nConnection ID: {}\nSession ID: {}\nStarted: {}\n\n",
-                    connection_name,
-                    connection_id,
-                    session_id,
-                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-                );
-                if let Err(e) = file.write_all(header.as_bytes()) {
-                    eprintln!("Failed to write log header: {}", e);
-                    return;
+        // Clone data for the background thread (must be owned/static)
+        let connection_name_for_header = connection_name.to_string();
+        let connection_name_for_callback = connection_name.to_string();
+        let log_dir_clone = log_dir.clone();
+        let log_path_clone = log_path.clone();
+
+        // Clone notebook for the callback
+        let notebook_clone = notebook.clone();
+
+        // Perform directory creation and file opening in background thread
+        crate::utils::spawn_blocking_with_callback(
+            move || {
+                // Ensure log directory exists
+                if let Err(e) = std::fs::create_dir_all(&log_dir_clone) {
+                    return Err(format!(
+                        "Failed to create log directory '{}': {}",
+                        log_dir_clone.display(),
+                        e
+                    ));
                 }
 
-                eprintln!(
-                    "Session logging enabled for '{}': {}",
-                    connection_name,
-                    log_path.display()
-                );
+                // Create the log file and write header
+                match std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path_clone)
+                {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        let header = format!(
+                            "=== Session Log ===\nConnection: {}\nConnection ID: {}\nSession ID: {}\nStarted: {}\n\n",
+                            connection_name_for_header,
+                            connection_id,
+                            session_id,
+                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+                        );
+                        if let Err(e) = file.write_all(header.as_bytes()) {
+                            return Err(format!("Failed to write log header: {}", e));
+                        }
+                        Ok(log_path_clone)
+                    }
+                    Err(e) => Err(format!(
+                        "Failed to create log file '{}': {}",
+                        log_path_clone.display(),
+                        e
+                    )),
+                }
+            },
+            move |result: Result<std::path::PathBuf, String>| {
+                match result {
+                    Ok(log_path) => {
+                        eprintln!(
+                            "Session logging enabled for '{}': {}",
+                            connection_name_for_callback,
+                            log_path.display()
+                        );
 
-                // Store log file path in session info
-                notebook.set_log_file(session_id, log_path.clone());
+                        // Store log file path in session info
+                        notebook_clone.set_log_file(session_id, log_path.clone());
 
-                // Set up logging handlers based on settings
-                Self::setup_logging_handlers(
-                    notebook,
-                    session_id,
-                    &log_path,
-                    log_activity,
-                    log_input,
-                    log_output,
-                );
-            }
-            Err(e) => {
-                eprintln!("Failed to create log file '{}': {}", log_path.display(), e);
-            }
-        }
+                        // Set up logging handlers based on settings
+                        Self::setup_logging_handlers(
+                            &notebook_clone,
+                            session_id,
+                            &log_path,
+                            log_activity,
+                            log_input,
+                            log_output,
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("{}", e);
+                    }
+                }
+            },
+        );
     }
 
     /// Sets up the child exited handler for session cleanup

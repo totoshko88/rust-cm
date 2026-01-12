@@ -302,18 +302,32 @@ impl LogViewerDialog {
         }
     }
 
-    /// Loads log content into the text view
+    /// Loads log content into the text view asynchronously
+    ///
+    /// Uses `spawn_blocking_with_callback` to avoid blocking the GTK main thread
+    /// when reading large log files.
     fn load_log_content(text_view: &TextView, path: &Path) {
         let buffer = text_view.buffer();
 
-        match fs::read_to_string(path) {
-            Ok(content) => {
-                buffer.set_text(&content);
-            }
-            Err(e) => {
-                buffer.set_text(&format!("Error loading log file: {e}"));
-            }
-        }
+        // Show loading indicator
+        buffer.set_text("Loading...");
+
+        // Clone path for the background thread
+        let path_clone = path.to_path_buf();
+        let buffer_clone = buffer.clone();
+
+        // Read file in background thread to avoid blocking UI
+        crate::utils::spawn_blocking_with_callback(
+            move || fs::read_to_string(&path_clone),
+            move |result: Result<String, std::io::Error>| match result {
+                Ok(content) => {
+                    buffer_clone.set_text(&content);
+                }
+                Err(e) => {
+                    buffer_clone.set_text(&format!("Error loading log file: {e}"));
+                }
+            },
+        );
     }
 
     /// Formats a file size in human-readable format
