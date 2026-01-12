@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-01-12
 
+### Added
+- **CLI Feature Parity** - CLI now supports all major GUI features:
+  - `template list/show/create/delete/apply` - Connection template management
+  - `cluster list/show/create/delete/add-connection/remove-connection` - Cluster management
+  - `var list/show/set/delete` - Global variables management
+  - `duplicate` - Duplicate existing connections
+  - `stats` - Show connection statistics (counts by protocol, groups, templates, clusters, snippets, variables, usage)
+- Added `load_variables()` and `save_variables()` methods to `ConfigManager` for global variables persistence
+- Added `<developer_name>` tag to metainfo.xml for backward compatibility with older AppStream parsers
+- Added `author` and `license` fields to AppImage packaging (AppImageBuilder.yml)
+- Added `debian.copyright` file to OBS debian packaging
+
 ### Changed
 - **Code Audit & Cleanup Release** - comprehensive codebase audit and modernization
 - Removed `check_structs.rs` development artifact containing unsafe code (violated `unsafe_code = "forbid"` policy)
@@ -19,16 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `Cargo.toml` authors to "Anton Isaiev <totoshko88@gmail.com>"
 
 ### Fixed
+- Fixed `remote-viewer` version detection for localized output (e.g., Ukrainian "версія" instead of "version")
 - VNC keyboard/mouse input no longer blocks GTK main thread on channel send
 - Sidebar protocol filter no longer panics on empty filter set
 - Regex validation errors now return `Result` instead of panicking
 - FreeRDP thread mutex operations now have documented safety invariants
 - Package metadata now correctly shows author and license in all package formats
-
-### Added
-- Added `<developer_name>` tag to metainfo.xml for backward compatibility with older AppStream parsers
-- Added `author` and `license` fields to AppImage packaging (AppImageBuilder.yml)
-- Added `debian.copyright` file to OBS debian packaging
 
 ### Dependencies
 - Updated `base64ct` 1.8.2 → 1.8.3
