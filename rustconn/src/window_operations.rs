@@ -321,54 +321,37 @@ pub fn add_group_children_static(
     }
 }
 
-/// Deletes all selected connections (bulk delete for group operations mode)
-#[allow(clippy::too_many_lines)]
-pub fn delete_selected_connections(
-    window: &gtk4::Window,
+/// Builds a list of items to delete with their display names
+fn build_delete_item_list(
     state: &SharedAppState,
-    sidebar: &SharedSidebar,
-) {
+    selected_ids: &[Uuid],
+) -> Option<(Vec<String>, usize, usize)> {
+    let state_ref = state.try_borrow().ok()?;
+    let mut names: Vec<String> = Vec::new();
+    let mut conn_count = 0;
+    let mut grp_count = 0;
+
+    for id in selected_ids {
+        if let Some(conn) = state_ref.get_connection(*id) {
+            names.push(format!("• {} (connection)", conn.name));
+            conn_count += 1;
+        } else if let Some(group) = state_ref.get_group(*id) {
+            names.push(format!("• {} (group)", group.name));
+            grp_count += 1;
+        }
+    }
+    Some((names, conn_count, grp_count))
+}
+
+/// Creates the bulk delete confirmation dialog UI
+fn create_bulk_delete_dialog(
+    window: &gtk4::Window,
+    item_names: &[String],
+    summary: &str,
+) -> (adw::Window, gtk4::Button, gtk4::Button) {
     use gtk4::prelude::*;
     use gtk4::Label;
 
-    let selected_ids = sidebar.get_selected_ids();
-
-    if selected_ids.is_empty() {
-        alert::show_alert(
-            window,
-            "No Selection",
-            "Please select one or more items to delete.",
-        );
-        return;
-    }
-
-    // Build list of items to delete for confirmation
-    let (item_names, connection_count, group_count) = if let Ok(state_ref) = state.try_borrow() {
-        let mut names: Vec<String> = Vec::new();
-        let mut conn_count = 0;
-        let mut grp_count = 0;
-
-        for id in &selected_ids {
-            if let Some(conn) = state_ref.get_connection(*id) {
-                names.push(format!("• {} (connection)", conn.name));
-                conn_count += 1;
-            } else if let Some(group) = state_ref.get_group(*id) {
-                names.push(format!("• {} (group)", group.name));
-                grp_count += 1;
-            }
-        }
-        (names, conn_count, grp_count)
-    } else {
-        return;
-    };
-
-    let summary = match (connection_count, group_count) {
-        (c, 0) => format!("{c} connection(s)"),
-        (0, g) => format!("{g} group(s)"),
-        (c, g) => format!("{c} connection(s) and {g} group(s)"),
-    };
-
-    // Create custom dialog with scrolling for large lists
     let dialog = adw::Window::builder()
         .title("Delete Selected Items?")
         .transient_for(window)
@@ -434,6 +417,97 @@ pub fn delete_selected_connections(
     toolbar_view.set_content(Some(&content));
     dialog.set_content(Some(&toolbar_view));
 
+    (dialog, cancel_btn, delete_btn)
+}
+
+/// Performs bulk deletion and shows results
+fn perform_bulk_delete(
+    state: &SharedAppState,
+    sidebar: &SharedSidebar,
+    window: &gtk4::Window,
+    selected_ids: Vec<Uuid>,
+) {
+    let mut success_count = 0;
+    let mut failures: Vec<String> = Vec::new();
+
+    if let Ok(mut state_mut) = state.try_borrow_mut() {
+        for id in &selected_ids {
+            // Try to delete as connection first, then as group
+            let delete_result = state_mut
+                .delete_connection(*id)
+                .or_else(|_| state_mut.delete_group(*id));
+
+            match delete_result {
+                Ok(()) => success_count += 1,
+                Err(e) => failures.push(format!("{id}: {e}")),
+            }
+        }
+    }
+
+    // Defer sidebar reload to prevent UI freeze
+    let state = state.clone();
+    let sidebar = sidebar.clone();
+    let window = window.clone();
+    glib::idle_add_local_once(move || {
+        MainWindow::reload_sidebar_preserving_state(&state, &sidebar);
+
+        // Show results
+        if failures.is_empty() {
+            alert::show_success(
+                &window,
+                "Deletion Complete",
+                &format!("Successfully deleted {success_count} item(s)."),
+            );
+        } else {
+            alert::show_error(
+                &window,
+                "Deletion Partially Complete",
+                &format!(
+                    "Deleted {} item(s).\n\nFailed to delete {} item(s):\n{}",
+                    success_count,
+                    failures.len(),
+                    failures.join("\n")
+                ),
+            );
+        }
+    });
+}
+
+/// Deletes all selected connections (bulk delete for group operations mode)
+pub fn delete_selected_connections(
+    window: &gtk4::Window,
+    state: &SharedAppState,
+    sidebar: &SharedSidebar,
+) {
+    use gtk4::prelude::*;
+
+    let selected_ids = sidebar.get_selected_ids();
+
+    if selected_ids.is_empty() {
+        alert::show_alert(
+            window,
+            "No Selection",
+            "Please select one or more items to delete.",
+        );
+        return;
+    }
+
+    // Build list of items to delete for confirmation
+    let Some((item_names, connection_count, group_count)) =
+        build_delete_item_list(state, &selected_ids)
+    else {
+        return;
+    };
+
+    let summary = match (connection_count, group_count) {
+        (c, 0) => format!("{c} connection(s)"),
+        (0, g) => format!("{g} group(s)"),
+        (c, g) => format!("{c} connection(s) and {g} group(s)"),
+    };
+
+    // Create dialog
+    let (dialog, cancel_btn, delete_btn) = create_bulk_delete_dialog(window, &item_names, &summary);
+
     // Connect cancel button
     let dialog_weak = dialog.downgrade();
     cancel_btn.connect_clicked(move |_| {
@@ -451,52 +525,7 @@ pub fn delete_selected_connections(
         if let Some(d) = dialog_weak.upgrade() {
             d.close();
         }
-
-        let mut success_count = 0;
-        let mut failures: Vec<String> = Vec::new();
-
-        if let Ok(mut state_mut) = state_clone.try_borrow_mut() {
-            for id in &selected_ids {
-                // Try to delete as connection first, then as group
-                let delete_result = state_mut
-                    .delete_connection(*id)
-                    .or_else(|_| state_mut.delete_group(*id));
-
-                match delete_result {
-                    Ok(()) => success_count += 1,
-                    Err(e) => failures.push(format!("{id}: {e}")),
-                }
-            }
-        }
-
-        // Defer sidebar reload to prevent UI freeze
-        let state = state_clone.clone();
-        let sidebar = sidebar_clone.clone();
-        let window = window_clone.clone();
-        let failures_clone = failures.clone();
-        glib::idle_add_local_once(move || {
-            MainWindow::reload_sidebar_preserving_state(&state, &sidebar);
-
-            // Show results
-            if failures_clone.is_empty() {
-                alert::show_success(
-                    &window,
-                    "Deletion Complete",
-                    &format!("Successfully deleted {success_count} item(s)."),
-                );
-            } else {
-                alert::show_error(
-                    &window,
-                    "Deletion Partially Complete",
-                    &format!(
-                        "Deleted {} item(s).\n\nFailed to delete {} item(s):\n{}",
-                        success_count,
-                        failures_clone.len(),
-                        failures_clone.join("\n")
-                    ),
-                );
-            }
-        });
+        perform_bulk_delete(&state_clone, &sidebar_clone, &window_clone, selected_ids.clone());
     });
 
     dialog.present();
