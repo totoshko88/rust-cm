@@ -14,7 +14,7 @@
 flatpak install flathub io.github.totoshko88.RustConn
 
 # Or install from bundle
-flatpak install RustConn-0.5.9.flatpak
+flatpak install RustConn-0.6.0.flatpak
 
 # Run
 flatpak run io.github.totoshko88.RustConn
@@ -23,15 +23,21 @@ flatpak run io.github.totoshko88.RustConn
 ## AppImage
 
 ```bash
-chmod +x RustConn-0.5.9-x86_64.AppImage
-./RustConn-0.5.9-x86_64.AppImage
+chmod +x RustConn-0.6.0-x86_64.AppImage
+./RustConn-0.6.0-x86_64.AppImage
 ```
 
 ## Debian/Ubuntu
 
 ```bash
-sudo dpkg -i rustconn_0.5.9-1_amd64.deb
+sudo dpkg -i rustconn_0.6.0_amd64.deb
 sudo apt-get install -f  # Install dependencies if needed
+```
+
+## Fedora
+
+```bash
+sudo dnf install rustconn-0.6.0-1.fc41.x86_64.rpm
 ```
 
 ## openSUSE (OBS)
@@ -153,7 +159,7 @@ After installation, verify RustConn works:
 
 ```bash
 rustconn --version
-# RustConn 0.5.9
+# RustConn 0.6.0
 
 rustconn-cli --help
 # Shows CLI commands

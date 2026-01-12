@@ -1,6 +1,6 @@
 # RustConn User Guide
 
-**Version 0.5.9** | GTK4/libadwaita Connection Manager for Linux
+**Version 0.6.0** | GTK4/libadwaita Connection Manager for Linux
 
 RustConn is a modern connection manager designed for Linux with Wayland-first approach. It supports SSH, RDP, VNC, SPICE protocols and Zero Trust integrations through a native GTK4/libadwaita interface.
 
@@ -148,6 +148,13 @@ Temporary connection without saving:
 ### Test Connection
 
 In connection dialog, click **Test** to verify connectivity before saving.
+
+### Pre-connect Port Check
+
+For RDP, VNC, and SPICE connections, RustConn performs a fast TCP port check before connecting:
+- Provides faster feedback (2-3s vs 30-60s timeout) when hosts are unreachable
+- Configurable globally in Settings → Connection
+- Per-connection "Skip port check" option for special cases (firewalls, port knocking, VPN)
 
 ---
 
@@ -410,6 +417,11 @@ Searches PATH and user directories (`~/bin/`, `~/.local/bin/`, `~/.cargo/bin/`).
 - **Minimize to Tray**
 - **Start Minimized**
 
+### Connection
+
+- **Pre-connect Port Check** — Enable/disable TCP port check before RDP/VNC/SPICE
+- **Port Check Timeout** — Timeout in seconds (default: 3)
+
 ---
 
 ## Keyboard Shortcuts
@@ -475,6 +487,9 @@ rustconn-cli list --group "Production" --tag "web"
 # Connect
 rustconn-cli connect "My Server"
 
+# Duplicate connection
+rustconn-cli duplicate "My Server" --name "My Server Copy"
+
 # Import/Export
 rustconn-cli import ssh-config ~/.ssh/config
 rustconn-cli export native backup.rcn
@@ -486,6 +501,32 @@ rustconn-cli snippet run "Deploy" --execute
 # Groups
 rustconn-cli group list
 rustconn-cli group create "New Group"
+rustconn-cli group add-connection "Group Name" "Connection Name"
+rustconn-cli group remove-connection "Group Name" "Connection Name"
+
+# Templates
+rustconn-cli template list
+rustconn-cli template show "SSH Template"
+rustconn-cli template create --name "New Template" --protocol ssh
+rustconn-cli template delete "Old Template"
+rustconn-cli template apply "SSH Template" --name "New Connection" --host "server.example.com"
+
+# Clusters
+rustconn-cli cluster list
+rustconn-cli cluster show "Web Servers"
+rustconn-cli cluster create --name "DB Cluster"
+rustconn-cli cluster add-connection "DB Cluster" "DB-01"
+rustconn-cli cluster remove-connection "DB Cluster" "DB-01"
+rustconn-cli cluster delete "Old Cluster"
+
+# Global Variables
+rustconn-cli var list
+rustconn-cli var show "my_var"
+rustconn-cli var set "my_var" "my_value"
+rustconn-cli var delete "my_var"
+
+# Statistics
+rustconn-cli stats
 
 # Wake-on-LAN
 rustconn-cli wol AA:BB:CC:DD:EE:FF
