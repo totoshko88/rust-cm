@@ -762,8 +762,8 @@ impl EmbeddedVncWidget {
                             // (ClipboardText only syncs clipboard, doesn't paste)
                             if let Some(ref sender) = *tx.borrow() {
                                 // Use try_send to avoid blocking GTK main thread
-                                let _ = sender
-                                    .try_send(VncClientCommand::TypeText(text.to_string()));
+                                let _ =
+                                    sender.try_send(VncClientCommand::TypeText(text.to_string()));
                                 // Show brief feedback
                                 status.set_text(&format!("Pasted {char_count} chars"));
                                 status.set_visible(true);

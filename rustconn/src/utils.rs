@@ -292,11 +292,8 @@ where
 /// * `operation` - A closure that performs the blocking work
 /// * `timeout` - Maximum time to wait for the operation
 /// * `callback` - A closure that handles the result (None if timed out)
-pub fn spawn_blocking_with_timeout<T, F, C>(
-    operation: F,
-    timeout: std::time::Duration,
-    callback: C,
-) where
+pub fn spawn_blocking_with_timeout<T, F, C>(operation: F, timeout: std::time::Duration, callback: C)
+where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
     C: FnOnce(Option<T>) + 'static,
@@ -397,7 +394,9 @@ pub fn coord_to_u16(value: f64) -> u16 {
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
 pub fn coord_to_i32(value: f64) -> i32 {
-    value.clamp(f64::from(i32::MIN), f64::from(i32::MAX)).round() as i32
+    value
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX))
+        .round() as i32
 }
 
 /// Converts a u32 dimension to u16 with clamping

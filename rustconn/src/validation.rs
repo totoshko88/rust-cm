@@ -145,7 +145,7 @@ pub fn port_number() -> ValidatorFn {
 pub fn pattern(field_name: &str, regex: &str, error_message: &str) -> ValidatorFn {
     let name = field_name.to_string();
     let msg = error_message.to_string();
-    
+
     // Compile regex at validator creation time, handle invalid patterns gracefully
     match regex::Regex::new(regex) {
         Ok(re) => Box::new(move |value: &str| {

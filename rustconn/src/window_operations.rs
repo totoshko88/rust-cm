@@ -525,7 +525,12 @@ pub fn delete_selected_connections(
         if let Some(d) = dialog_weak.upgrade() {
             d.close();
         }
-        perform_bulk_delete(&state_clone, &sidebar_clone, &window_clone, selected_ids.clone());
+        perform_bulk_delete(
+            &state_clone,
+            &sidebar_clone,
+            &window_clone,
+            selected_ids.clone(),
+        );
     });
 
     dialog.present();

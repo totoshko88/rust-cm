@@ -1303,7 +1303,9 @@ impl AppState {
                         return Ok(Some(creds));
                     }
                     Ok(None) => {
-                        tracing::debug!("[resolve_credentials_blocking] No password found in KeePass");
+                        tracing::debug!(
+                            "[resolve_credentials_blocking] No password found in KeePass"
+                        );
                     }
                     Err(e) => {
                         tracing::error!("[resolve_credentials_blocking] KeePass error: {}", e);
@@ -1313,13 +1315,12 @@ impl AppState {
         }
 
         // Fall back to the standard resolver for other password sources
-        let resolver =
-            CredentialResolver::new(Arc::new(secret_manager), secret_settings);
+        let resolver = CredentialResolver::new(Arc::new(secret_manager), secret_settings);
         let connection = connection.clone();
 
         // Create a new runtime for this thread (background thread doesn't have one)
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create runtime: {e}"))?;
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {e}"))?;
 
         rt.block_on(async {
             resolver

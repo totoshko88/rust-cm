@@ -1719,7 +1719,9 @@ impl MainWindow {
                 sidebar,
                 connection_id,
                 protocol_type,
-                Some(rustconn_core::Credentials::with_password(&username, &password)),
+                Some(rustconn_core::Credentials::with_password(
+                    &username, &password,
+                )),
                 Some((username, password, domain)),
             );
             return;

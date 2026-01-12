@@ -15,12 +15,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced `expect()` with proper error handling in `validation.rs` regex compilation
 - Replaced module-level `#![allow(clippy::unwrap_used)]` with targeted function-level annotations in `embedded_rdp_thread.rs`
 - Improved `app.rs` initialization to return proper error instead of panicking
+- Updated `Cargo.toml` license from MIT to GPL-3.0-or-later (matches actual LICENSE file)
+- Updated `Cargo.toml` authors to "Anton Isaiev <totoshko88@gmail.com>"
 
 ### Fixed
 - VNC keyboard/mouse input no longer blocks GTK main thread on channel send
 - Sidebar protocol filter no longer panics on empty filter set
 - Regex validation errors now return `Result` instead of panicking
 - FreeRDP thread mutex operations now have documented safety invariants
+- Package metadata now correctly shows author and license in all package formats
+
+### Added
+- Added `<developer_name>` tag to metainfo.xml for backward compatibility with older AppStream parsers
+- Added `author` and `license` fields to AppImage packaging (AppImageBuilder.yml)
+- Added `debian.copyright` file to OBS debian packaging
+
+### Dependencies
+- Updated `base64ct` 1.8.2 → 1.8.3
+- Updated `cc` 1.2.51 → 1.2.52
+- Updated `data-encoding` 2.9.0 → 2.10.0
+- Updated `find-msvc-tools` 0.1.6 → 0.1.7
+- Updated `flate2` 1.1.5 → 1.1.8
+- Updated `getrandom` 0.2.16 → 0.2.17
+- Updated `libc` 0.2.179 → 0.2.180
+- Updated `toml` 0.9.10 → 0.9.11
+- Updated `zbus` 5.12.0 → 5.13.1
+- Updated `zbus_macros` 5.12.0 → 5.13.1
+- Updated `zbus_names` 4.2.0 → 4.3.1
+- Updated `zmij` 1.0.12 → 1.0.13
+- Updated `zvariant` 5.8.0 → 5.9.1
+- Updated `zvariant_derive` 5.8.0 → 5.9.1
+- Updated `zvariant_utils` 3.2.1 → 3.3.0
+- Removed unused `cfg_aliases`, `nix`, `static_assertions` dependencies
+- Note: `sspi` and `picky-krb` kept at 0.16.0/0.11.0 due to `rand_core` version conflict
 
 ### Removed
 - `rustconn-core/src/check_structs.rs` - development artifact with unsafe code
