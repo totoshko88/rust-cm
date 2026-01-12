@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fixed `remote-viewer` version detection for localized output (e.g., Ukrainian "версія" instead of "version")
+- Fixed Asbru-CM import skipping RDP/VNC connections with client info (e.g., "rdp (rdesktop)", "rdp (xfreerdp)", "vnc (vncviewer)")
 - VNC keyboard/mouse input no longer blocks GTK main thread on channel send
 - Sidebar protocol filter no longer panics on empty filter set
 - Regex validation errors now return `Result` instead of panicking
