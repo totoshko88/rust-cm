@@ -347,9 +347,9 @@ fn to_vnc_coord(value: f64, max: u16) -> u16 {
 ### Short-Term (Next 2 Sprints)
 
 - [x] **P2:** Consolidate thread spawning patterns into utility functions
-- [ ] **P2:** Audit all `#[allow(dead_code)]` - remove unused code
-- [ ] **P2:** Decompose functions over 100 lines
-- [ ] **P2:** Add `try_borrow()` guards in high-traffic state access paths
+- [x] **P2:** Add `try_borrow()` guards in high-traffic state access paths
+- [ ] **P2:** Audit all `#[allow(dead_code)]` - remove unused code (analysis complete - most are legitimate)
+- [ ] **P2:** Decompose functions over 100 lines (17 functions identified)
 
 ### Medium-Term (Next Quarter)
 
@@ -378,6 +378,34 @@ Added `spawn_blocking_with_callback` and `spawn_blocking_with_timeout` utility f
 
 ---
 
+## 7. State Borrow Safety (Completed)
+
+Replaced all `state.borrow()` calls with `state.try_borrow()` in high-traffic GUI code paths to prevent runtime panics from borrow conflicts:
+
+**Files refactored:**
+- `rustconn/src/window_protocols.rs` - VNC credential retrieval
+- `rustconn/src/window_clusters.rs` - Cluster dialog population, connect, edit, delete operations
+- `rustconn/src/window_operations.rs` - Delete confirmation, duplicate, paste, reload sidebar, bulk operations, move dialog
+
+**Pattern applied:**
+```rust
+// Before (could panic)
+let state_ref = state.borrow();
+
+// After (graceful handling)
+let Ok(state_ref) = state.try_borrow() else {
+    tracing::warn!("Could not borrow state");
+    return;
+};
+```
+
+**Benefits:**
+- Eliminates potential runtime panics from RefCell borrow conflicts
+- Graceful degradation when state is temporarily unavailable
+- Better logging for debugging borrow issues
+
+---
+
 ---
 
 ## Appendix: Files Requiring Attention
@@ -396,6 +424,9 @@ Added `spawn_blocking_with_callback` and `spawn_blocking_with_timeout` utility f
 | Medium | `rustconn/src/window_edit_dialogs.rs` | Thread spawning | Done |
 | Medium | `rustconn/src/window_connection_dialogs.rs` | Thread spawning | Done |
 | Medium | `rustconn/src/window_rdp_vnc.rs` | Thread spawning | Done |
+| Medium | `rustconn/src/window_protocols.rs` | State borrow safety | Done |
+| Medium | `rustconn/src/window_clusters.rs` | State borrow safety | Done |
+| Medium | `rustconn/src/window_operations.rs` | State borrow safety | Done |
 | Low | Multiple dialog files | Large functions | Pending |
 | Low | Multiple embedded_*.rs | Cast annotations | Documented |
 

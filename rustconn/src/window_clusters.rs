@@ -29,8 +29,7 @@ pub fn show_new_cluster_dialog(
     let dialog = ClusterDialog::new(Some(&window.clone().upcast()));
 
     // Populate available connections
-    {
-        let state_ref = state.borrow();
+    if let Ok(state_ref) = state.try_borrow() {
         let connections: Vec<_> = state_ref
             .list_connections()
             .iter()
@@ -176,8 +175,7 @@ fn show_new_cluster_dialog_from_manager(
     let dialog = ClusterDialog::new(Some(parent));
 
     // Populate available connections
-    {
-        let state_ref = state.borrow();
+    if let Ok(state_ref) = state.try_borrow() {
         let connections: Vec<_> = state_ref
             .list_connections()
             .iter()
@@ -221,13 +219,15 @@ fn connect_cluster(
     sidebar: &SharedSidebar,
     cluster_id: Uuid,
 ) {
-    let state_ref = state.borrow();
-    let Some(cluster) = state_ref.get_cluster(cluster_id) else {
+    let connection_ids: Vec<Uuid> = if let Ok(state_ref) = state.try_borrow() {
+        if let Some(cluster) = state_ref.get_cluster(cluster_id) {
+            cluster.connection_ids.clone()
+        } else {
+            return;
+        }
+    } else {
         return;
     };
-
-    let connection_ids: Vec<Uuid> = cluster.connection_ids.clone();
-    drop(state_ref);
 
     // Connect to each connection in the cluster
     for conn_id in connection_ids {
@@ -243,17 +243,20 @@ fn edit_cluster(
     cluster_id: Uuid,
     on_updated: Box<dyn Fn() + 'static>,
 ) {
-    let state_ref = state.borrow();
-    let Some(cluster) = state_ref.get_cluster(cluster_id).cloned() else {
+    let (cluster, connections) = if let Ok(state_ref) = state.try_borrow() {
+        let Some(cluster) = state_ref.get_cluster(cluster_id).cloned() else {
+            return;
+        };
+        let connections: Vec<_> = state_ref
+            .list_connections()
+            .iter()
+            .cloned()
+            .cloned()
+            .collect();
+        (cluster, connections)
+    } else {
         return;
     };
-    let connections: Vec<_> = state_ref
-        .list_connections()
-        .iter()
-        .cloned()
-        .cloned()
-        .collect();
-    drop(state_ref);
 
     let dialog = ClusterDialog::new(Some(parent));
     dialog.set_connections(&connections);
@@ -290,12 +293,15 @@ fn delete_cluster(
     cluster_id: Uuid,
     on_deleted: Box<dyn Fn() + 'static>,
 ) {
-    let state_ref = state.borrow();
-    let Some(cluster) = state_ref.get_cluster(cluster_id) else {
+    let cluster_name = if let Ok(state_ref) = state.try_borrow() {
+        if let Some(cluster) = state_ref.get_cluster(cluster_id) {
+            cluster.name.clone()
+        } else {
+            return;
+        }
+    } else {
         return;
     };
-    let cluster_name = cluster.name.clone();
-    drop(state_ref);
 
     let state_clone = state.clone();
     let parent_clone = parent.clone();

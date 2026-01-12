@@ -175,14 +175,13 @@ pub fn start_vnc_connection(
     };
 
     // Get password from cached credentials (set by credential resolution flow)
-    let password: Option<String> = {
-        let state_ref = state.borrow();
+    let password: Option<String> = state.try_borrow().ok().and_then(|state_ref| {
         state_ref.get_cached_credentials(connection_id).map(|c| {
             use secrecy::ExposeSecret;
             tracing::debug!("[VNC] Found cached credentials for connection");
             c.password.expose_secret().to_string()
         })
-    };
+    });
 
     tracing::debug!(
         "[VNC] Password available: {}",

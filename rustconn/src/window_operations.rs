@@ -40,9 +40,10 @@ pub fn delete_selected_connection(
     // Show confirmation dialog with connection count for groups
     let item_type = if is_group { "group" } else { "connection" };
     let detail = if is_group {
-        let state_ref = state.borrow();
-        let connection_count = state_ref.count_connections_in_group(id);
-        drop(state_ref);
+        let connection_count = state
+            .try_borrow()
+            .map(|s| s.count_connections_in_group(id))
+            .unwrap_or(0);
 
         if connection_count > 0 {
             format!(
@@ -116,15 +117,17 @@ pub fn duplicate_selected_connection(
         return;
     };
 
-    let state_ref = state.borrow();
-    let Some(conn) = state_ref.get_connection(id).cloned() else {
+    let (conn, new_name) = if let Ok(state_ref) = state.try_borrow() {
+        let Some(conn) = state_ref.get_connection(id).cloned() else {
+            return;
+        };
+        // Generate unique name for duplicate
+        let new_name = state_ref
+            .generate_unique_connection_name(&format!("{} (copy)", conn.name), conn.protocol);
+        (conn, new_name)
+    } else {
         return;
     };
-
-    // Generate unique name for duplicate
-    let new_name =
-        state_ref.generate_unique_connection_name(&format!("{} (copy)", conn.name), conn.protocol);
-    drop(state_ref);
 
     // Create duplicate with new ID and name
     let mut duplicate = conn;
@@ -210,16 +213,18 @@ pub fn copy_selected_connection(
 /// Pastes a connection from the internal clipboard
 pub fn paste_connection(window: &gtk4::Window, state: &SharedAppState, sidebar: &SharedSidebar) {
     // Check if clipboard has content
-    {
-        let state_ref = state.borrow();
-        if !state_ref.has_clipboard_content() {
-            crate::toast::show_toast_on_window(
-                window,
-                "Nothing to paste - copy a connection first",
-                crate::toast::ToastType::Warning,
-            );
-            return;
-        }
+    let has_content = state
+        .try_borrow()
+        .map(|s| s.has_clipboard_content())
+        .unwrap_or(false);
+
+    if !has_content {
+        crate::toast::show_toast_on_window(
+            window,
+            "Nothing to paste - copy a connection first",
+            crate::toast::ToastType::Warning,
+        );
+        return;
     }
 
     if let Ok(mut state_mut) = state.try_borrow_mut() {
@@ -256,7 +261,10 @@ pub fn reload_sidebar(state: &SharedAppState, sidebar: &SharedSidebar) {
     let store = sidebar.store();
     store.remove_all();
 
-    let state_ref = state.borrow();
+    let Ok(state_ref) = state.try_borrow() else {
+        tracing::warn!("Could not borrow state for sidebar reload");
+        return;
+    };
 
     // Add root groups with their children
     for group in state_ref.get_root_groups() {
@@ -335,21 +343,24 @@ pub fn delete_selected_connections(
     }
 
     // Build list of items to delete for confirmation
-    let state_ref = state.borrow();
-    let mut item_names: Vec<String> = Vec::new();
-    let mut connection_count = 0;
-    let mut group_count = 0;
+    let (item_names, connection_count, group_count) = if let Ok(state_ref) = state.try_borrow() {
+        let mut names: Vec<String> = Vec::new();
+        let mut conn_count = 0;
+        let mut grp_count = 0;
 
-    for id in &selected_ids {
-        if let Some(conn) = state_ref.get_connection(*id) {
-            item_names.push(format!("• {} (connection)", conn.name));
-            connection_count += 1;
-        } else if let Some(group) = state_ref.get_group(*id) {
-            item_names.push(format!("• {} (group)", group.name));
-            group_count += 1;
+        for id in &selected_ids {
+            if let Some(conn) = state_ref.get_connection(*id) {
+                names.push(format!("• {} (connection)", conn.name));
+                conn_count += 1;
+            } else if let Some(group) = state_ref.get_group(*id) {
+                names.push(format!("• {} (group)", group.name));
+                grp_count += 1;
+            }
         }
-    }
-    drop(state_ref);
+        (names, conn_count, grp_count)
+    } else {
+        return;
+    };
 
     let summary = match (connection_count, group_count) {
         (c, 0) => format!("{c} connection(s)"),
@@ -509,18 +520,21 @@ pub fn show_move_selected_to_group_dialog(
     }
 
     // Separate connections and groups
-    let state_ref = state.borrow();
-    let connection_ids: Vec<Uuid> = selected_ids
-        .iter()
-        .filter(|id| state_ref.get_connection(**id).is_some())
-        .copied()
-        .collect();
-    let group_ids_to_move: Vec<Uuid> = selected_ids
-        .iter()
-        .filter(|id| state_ref.get_group(**id).is_some())
-        .copied()
-        .collect();
-    drop(state_ref);
+    let (connection_ids, group_ids_to_move) = if let Ok(state_ref) = state.try_borrow() {
+        let conn_ids: Vec<Uuid> = selected_ids
+            .iter()
+            .filter(|id| state_ref.get_connection(**id).is_some())
+            .copied()
+            .collect();
+        let grp_ids: Vec<Uuid> = selected_ids
+            .iter()
+            .filter(|id| state_ref.get_group(**id).is_some())
+            .copied()
+            .collect();
+        (conn_ids, grp_ids)
+    } else {
+        return;
+    };
 
     let total_items = connection_ids.len() + group_ids_to_move.len();
     if total_items == 0 {
@@ -569,37 +583,39 @@ pub fn show_move_selected_to_group_dialog(
     content.append(&info_label);
 
     // Build group dropdown with hierarchical sorting
-    let state_ref = state.borrow();
-    let groups: Vec<_> = state_ref
-        .list_groups()
-        .iter()
-        .map(|g| (*g).clone())
-        .collect();
+    let mut group_paths: Vec<(Uuid, String)> = if let Ok(state_ref) = state.try_borrow() {
+        let groups: Vec<_> = state_ref
+            .list_groups()
+            .iter()
+            .map(|g| (*g).clone())
+            .collect();
 
-    // Build paths for all groups, excluding groups being moved and their descendants
-    let mut group_paths: Vec<(Uuid, String)> = groups
-        .iter()
-        .filter(|g| {
-            // Exclude groups being moved
-            if group_ids_to_move.contains(&g.id) {
-                return false;
-            }
-            // Exclude descendants of groups being moved
-            for &moving_id in &group_ids_to_move {
-                if is_descendant_of_group(&state_ref, g.id, moving_id) {
+        // Build paths for all groups, excluding groups being moved and their descendants
+        groups
+            .iter()
+            .filter(|g| {
+                // Exclude groups being moved
+                if group_ids_to_move.contains(&g.id) {
                     return false;
                 }
-            }
-            true
-        })
-        .map(|g| {
-            let path = state_ref
-                .get_group_path(g.id)
-                .unwrap_or_else(|| g.name.clone());
-            (g.id, path)
-        })
-        .collect();
-    drop(state_ref);
+                // Exclude descendants of groups being moved
+                for &moving_id in &group_ids_to_move {
+                    if is_descendant_of_group(&state_ref, g.id, moving_id) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|g| {
+                let path = state_ref
+                    .get_group_path(g.id)
+                    .unwrap_or_else(|| g.name.clone());
+                (g.id, path)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // Sort by path (hierarchical + alphabetical)
     group_paths.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
