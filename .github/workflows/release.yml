@@ -120,7 +120,12 @@ jobs:
             openssl-devel \
             alsa-lib-devel \
             rpm-build \
+            ruby-devel \
+            rubygems \
             zstd
+
+      - name: Install fpm
+        run: gem install fpm
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -137,98 +142,54 @@ jobs:
 
       - name: Create RPM package
         run: |
-          source $HOME/.cargo/env
           VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          BUILD_DATE=$(date '+%a %b %d %Y')
           
-          # Setup rpmbuild directories
-          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          # Create staging directory
+          mkdir -p staging/usr/bin
+          mkdir -p staging/usr/share/applications
+          mkdir -p staging/usr/share/metainfo
+          mkdir -p staging/usr/share/icons/hicolor/scalable/apps
+          mkdir -p staging/usr/share/icons/hicolor/48x48/apps
+          mkdir -p staging/usr/share/icons/hicolor/64x64/apps
+          mkdir -p staging/usr/share/icons/hicolor/128x128/apps
+          mkdir -p staging/usr/share/icons/hicolor/256x256/apps
           
-          # Create source tarball
-          tar --transform "s,^,rustconn-${VERSION}/," -czf ~/rpmbuild/SOURCES/rustconn-${VERSION}.tar.gz \
-            --exclude=target --exclude=.git --exclude='*.AppImage' --exclude='*.deb' --exclude='*.rpm' \
-            .
+          # Copy binaries
+          cp target/release/rustconn staging/usr/bin/
+          cp target/release/rustconn-cli staging/usr/bin/
           
-          # Create spec file for GitHub CI build (simplified, no vendor)
-          cat > ~/rpmbuild/SPECS/rustconn.spec << SPECEOF
-          Name:           rustconn
-          Version:        ${VERSION}
-          Release:        1%{?dist}
-          Summary:        Modern connection manager for Linux (SSH, RDP, VNC, SPICE)
-          License:        GPL-3.0-or-later
-          URL:            https://github.com/totoshko88/RustConn
-          
-          Requires:       gtk4 >= 4.14
-          Requires:       libadwaita
-          Requires:       vte291-gtk4
-          Requires:       openssh-clients
-          Requires:       alsa-lib
-          Recommends:     freerdp
-          Recommends:     tigervnc
-          Recommends:     virt-viewer
-          
-          %description
-          RustConn is a modern connection manager for Linux desktops built with GTK4.
-          It provides a unified interface for managing SSH, RDP, VNC, and SPICE
-          remote connections with support for both embedded and external clients.
-          
-          %install
-          install -Dm755 %{_builddir}/rustconn %{buildroot}%{_bindir}/rustconn
-          install -Dm755 %{_builddir}/rustconn-cli %{buildroot}%{_bindir}/rustconn-cli
-          install -Dm644 %{_builddir}/io.github.totoshko88.RustConn.desktop \\
-              %{buildroot}%{_datadir}/applications/io.github.totoshko88.RustConn.desktop
-          install -Dm644 %{_builddir}/io.github.totoshko88.RustConn.metainfo.xml \\
-              %{buildroot}%{_datadir}/metainfo/io.github.totoshko88.RustConn.metainfo.xml
-          
-          for size in 48 64 128 256; do
-              if [ -f "%{_builddir}/icons/\${size}.png" ]; then
-                  install -Dm644 "%{_builddir}/icons/\${size}.png" \\
-                      "%{buildroot}%{_datadir}/icons/hicolor/\${size}x\${size}/apps/io.github.totoshko88.RustConn.png"
-              fi
-          done
-          
-          if [ -f "%{_builddir}/icons/scalable.svg" ]; then
-              install -Dm644 "%{_builddir}/icons/scalable.svg" \\
-                  "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg"
-          fi
-          
-          %files
-          %{_bindir}/rustconn
-          %{_bindir}/rustconn-cli
-          %{_datadir}/applications/io.github.totoshko88.RustConn.desktop
-          %{_datadir}/metainfo/io.github.totoshko88.RustConn.metainfo.xml
-          %{_datadir}/icons/hicolor/*/apps/io.github.totoshko88.RustConn.*
-          
-          %changelog
-          * ${BUILD_DATE} Anton Isaiev <totoshko88@gmail.com> - ${VERSION}-1
-          - Release ${VERSION}
-          SPECEOF
-          
-          # Copy pre-built binaries and assets to BUILD dir
-          cp target/release/rustconn ~/rpmbuild/BUILD/
-          cp target/release/rustconn-cli ~/rpmbuild/BUILD/
-          cp rustconn/assets/io.github.totoshko88.RustConn.desktop ~/rpmbuild/BUILD/
-          cp rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml ~/rpmbuild/BUILD/
+          # Copy desktop file and metadata
+          cp rustconn/assets/io.github.totoshko88.RustConn.desktop staging/usr/share/applications/
+          cp rustconn/assets/io.github.totoshko88.RustConn.metainfo.xml staging/usr/share/metainfo/
           
           # Copy icons
-          mkdir -p ~/rpmbuild/BUILD/icons
+          cp rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg \
+             staging/usr/share/icons/hicolor/scalable/apps/ 2>/dev/null || true
           for size in 48 64 128 256; do
-            if [ -f "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" ]; then
-              cp "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
-                 ~/rpmbuild/BUILD/icons/${size}.png
-            fi
+            cp "rustconn/assets/icons/hicolor/${size}x${size}/apps/io.github.totoshko88.RustConn.png" \
+               "staging/usr/share/icons/hicolor/${size}x${size}/apps/" 2>/dev/null || true
           done
-          if [ -f "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" ]; then
-            cp "rustconn/assets/icons/hicolor/scalable/apps/io.github.totoshko88.RustConn.svg" \
-               ~/rpmbuild/BUILD/icons/scalable.svg
-          fi
           
-          # Build RPM (binary only, skip build phase)
-          rpmbuild -bb --define "_topdir $HOME/rpmbuild" ~/rpmbuild/SPECS/rustconn.spec
+          # Build RPM with fpm
+          fpm -s dir -t rpm \
+            -n rustconn \
+            -v "${VERSION}" \
+            --iteration 1 \
+            --license "GPL-3.0-or-later" \
+            --vendor "Anton Isaiev" \
+            --maintainer "Anton Isaiev <totoshko88@gmail.com>" \
+            --url "https://github.com/totoshko88/RustConn" \
+            --description "Modern connection manager for Linux (SSH, RDP, VNC, SPICE)" \
+            --depends "gtk4 >= 4.14" \
+            --depends "libadwaita" \
+            --depends "vte291-gtk4" \
+            --depends "openssh-clients" \
+            -C staging \
+            usr
           
-          # Copy to dist
+          # Move to dist
           mkdir -p dist
-          cp ~/rpmbuild/RPMS/*/*.rpm dist/
+          mv *.rpm dist/
           
           echo "=== Built RPM packages ==="
           ls -la dist/
