@@ -146,6 +146,7 @@ fn handle_save_to_keepass(
     password: &str,
     protocol: &str,
 ) {
+    use crate::utils::spawn_blocking_with_callback;
     use secrecy::ExposeSecret;
 
     let state_ref = state.borrow();
@@ -218,56 +219,32 @@ fn handle_save_to_keepass(
     // Drop state borrow before spawning
     drop(state_ref);
 
-    // Run KeePass operation in background thread to avoid blocking UI
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let result = rustconn_core::secret::KeePassStatus::save_password_to_kdbx(
-            &kdbx_path,
-            db_password.as_deref(),
-            key_file.as_deref(),
-            &lookup_key_clone,
-            &username,
-            &password,
-            Some(&url),
-        );
-        let _ = tx.send(result);
-    });
-
-    // Poll for result using idle callback
-    glib::idle_add_local_once(move || {
-        fn check_result(
-            rx: std::sync::mpsc::Receiver<Result<(), String>>,
-            window: gtk4::Window,
-            lookup_key: String,
-        ) {
-            match rx.try_recv() {
-                Ok(Ok(())) => {
-                    alert::show_success(
-                        &window,
-                        "Password Saved",
-                        &format!("Password for '{lookup_key}' saved to KeePass."),
-                    );
-                }
-                Ok(Err(e)) => {
-                    alert::show_error(&window, "Failed to Save Password", &format!("Error: {e}"));
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // Not ready yet, schedule another check
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
-                        check_result(rx, window, lookup_key);
-                    });
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    alert::show_error(
-                        &window,
-                        "Failed to Save Password",
-                        "Thread error: channel disconnected",
-                    );
-                }
+    // Run KeePass operation in background thread using utility function
+    spawn_blocking_with_callback(
+        move || {
+            rustconn_core::secret::KeePassStatus::save_password_to_kdbx(
+                &kdbx_path,
+                db_password.as_deref(),
+                key_file.as_deref(),
+                &lookup_key_clone,
+                &username,
+                &password,
+                Some(&url),
+            )
+        },
+        move |result: Result<(), String>| match result {
+            Ok(()) => {
+                alert::show_success(
+                    &window,
+                    "Password Saved",
+                    &format!("Password for '{lookup_key}' saved to KeePass."),
+                );
             }
-        }
-        check_result(rx, window, lookup_key);
-    });
+            Err(e) => {
+                alert::show_error(&window, "Failed to Save Password", &format!("Error: {e}"));
+            }
+        },
+    );
 }
 
 /// Handles loading password from KeePass (async version)
@@ -279,6 +256,7 @@ fn handle_load_from_keepass(
     password_entry: gtk4::Entry,
     window: gtk4::Window,
 ) {
+    use crate::utils::spawn_blocking_with_callback;
     use secrecy::ExposeSecret;
 
     let state_ref = state.borrow();
@@ -324,63 +302,38 @@ fn handle_load_from_keepass(
     // Drop state borrow before spawning
     drop(state_ref);
 
-    // Run KeePass operation in background thread to avoid blocking UI
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let result = rustconn_core::secret::KeePassStatus::get_password_from_kdbx_with_key(
-            &kdbx_path,
-            db_password.as_deref(),
-            key_file.as_deref(),
-            &lookup_key,
-            None, // Protocol already included in lookup_key
-        );
-        let _ = tx.send(result);
-    });
-
-    // Poll for result using idle callback
-    glib::idle_add_local_once(move || {
-        fn check_result(
-            rx: std::sync::mpsc::Receiver<Result<Option<String>, String>>,
-            password_entry: gtk4::Entry,
-            window: gtk4::Window,
-        ) {
-            match rx.try_recv() {
-                Ok(Ok(Some(password))) => {
-                    password_entry.set_text(&password);
-                }
-                Ok(Ok(None)) => {
-                    crate::toast::show_toast_on_window(
-                        &window,
-                        "No password found in KeePass for this connection",
-                        crate::toast::ToastType::Info,
-                    );
-                }
-                Ok(Err(e)) => {
-                    tracing::warn!("Failed to load password from KeePass: {e}");
-                    crate::toast::show_toast_on_window(
-                        &window,
-                        "Failed to load password from KeePass",
-                        crate::toast::ToastType::Error,
-                    );
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // Not ready yet, schedule another check
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
-                        check_result(rx, password_entry, window);
-                    });
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    tracing::warn!("Thread error loading from KeePass: channel disconnected");
-                    crate::toast::show_toast_on_window(
-                        &window,
-                        "Failed to load password from KeePass",
-                        crate::toast::ToastType::Error,
-                    );
-                }
+    // Run KeePass operation in background thread using utility function
+    spawn_blocking_with_callback(
+        move || {
+            rustconn_core::secret::KeePassStatus::get_password_from_kdbx_with_key(
+                &kdbx_path,
+                db_password.as_deref(),
+                key_file.as_deref(),
+                &lookup_key,
+                None, // Protocol already included in lookup_key
+            )
+        },
+        move |result: Result<Option<String>, String>| match result {
+            Ok(Some(password)) => {
+                password_entry.set_text(&password);
             }
-        }
-        check_result(rx, password_entry, window);
-    });
+            Ok(None) => {
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "No password found in KeePass for this connection",
+                    crate::toast::ToastType::Info,
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load password from KeePass: {e}");
+                crate::toast::show_toast_on_window(
+                    &window,
+                    "Failed to load password from KeePass",
+                    crate::toast::ToastType::Error,
+                );
+            }
+        },
+    );
 }
 
 /// Renames the selected connection or group with a simple inline dialog

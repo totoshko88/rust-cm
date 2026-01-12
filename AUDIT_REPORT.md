@@ -346,8 +346,8 @@ fn to_vnc_coord(value: f64, max: u16) -> u16 {
 
 ### Short-Term (Next 2 Sprints)
 
+- [x] **P2:** Consolidate thread spawning patterns into utility functions
 - [ ] **P2:** Audit all `#[allow(dead_code)]` - remove unused code
-- [ ] **P2:** Consolidate thread spawning patterns into utility functions
 - [ ] **P2:** Decompose functions over 100 lines
 - [ ] **P2:** Add `try_borrow()` guards in high-traffic state access paths
 
@@ -360,21 +360,44 @@ fn to_vnc_coord(value: f64, max: u16) -> u16 {
 
 ---
 
+## 6. Thread Spawning Consolidation (Completed)
+
+Added `spawn_blocking_with_callback` and `spawn_blocking_with_timeout` utility functions to `rustconn/src/utils.rs` and refactored all manual thread spawning patterns to use them:
+
+**Files refactored:**
+- `rustconn/src/window_edit_dialogs.rs` - KeePass save/load operations
+- `rustconn/src/window_connection_dialogs.rs` - KeePass save/load operations  
+- `rustconn/src/window_rdp_vnc.rs` - KeePass password pre-fill
+- `rustconn/src/dialogs/connection.rs` - Connection test with 15s timeout
+
+**Benefits:**
+- Consistent error handling for background thread failures
+- Built-in timeout support for long-running operations
+- Cleaner code with less boilerplate
+- Centralized logging for thread disconnection errors
+
+---
+
+---
+
 ## Appendix: Files Requiring Attention
 
 | Priority | File | Issue Type | Status |
 |----------|------|------------|--------|
-| 🔴 Critical | `rustconn-core/src/check_structs.rs` | Unsafe code | ✅ Deleted |
-| 🔴 Critical | `rustconn/src/state.rs` | Blocking async | ⏳ Medium-term |
-| 🔴 Critical | `rustconn/src/embedded_vnc.rs` | Blocking sends | ✅ Fixed |
-| 🟡 Medium | `rustconn/src/embedded_rdp_thread.rs` | Module-level allow | ✅ Fixed |
-| 🟡 Medium | `rustconn/src/audio.rs` | Module-level allow | ✅ Fixed |
-| 🟡 Medium | `rustconn/src/sidebar.rs:1881` | Unwrap on iterator | ✅ Fixed |
-| 🟡 Medium | `rustconn/src/validation.rs:143` | Expect on regex | ✅ Fixed |
-| � Mewdium | `rustconn/src/app.rs:757` | Expect on init | ✅ Fixed |
-| � Medi|um | `rustconn/src/dialogs/connection.rs:827` | Block_on in thread | ⏳ Medium-term |
-| 🟢 Low | Multiple dialog files | Large functions | ⏳ Short-term |
-| 🟢 Low | Multiple embedded_*.rs | Cast annotations | ⏳ Documented |
+| Critical | `rustconn-core/src/check_structs.rs` | Unsafe code | Done |
+| Critical | `rustconn/src/state.rs` | Blocking async | Pending |
+| Critical | `rustconn/src/embedded_vnc.rs` | Blocking sends | Done |
+| Medium | `rustconn/src/embedded_rdp_thread.rs` | Module-level allow | Done |
+| Medium | `rustconn/src/audio.rs` | Module-level allow | Done |
+| Medium | `rustconn/src/sidebar.rs:1881` | Unwrap on iterator | Done |
+| Medium | `rustconn/src/validation.rs:143` | Expect on regex | Done |
+| Medium | `rustconn/src/app.rs:757` | Expect on init | Done |
+| Medium | `rustconn/src/dialogs/connection.rs` | Thread spawning | Done |
+| Medium | `rustconn/src/window_edit_dialogs.rs` | Thread spawning | Done |
+| Medium | `rustconn/src/window_connection_dialogs.rs` | Thread spawning | Done |
+| Medium | `rustconn/src/window_rdp_vnc.rs` | Thread spawning | Done |
+| Low | Multiple dialog files | Large functions | Pending |
+| Low | Multiple embedded_*.rs | Cast annotations | Documented |
 
 ---
 

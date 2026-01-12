@@ -209,6 +209,142 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Spawns a blocking operation in a background thread and calls a callback on completion
+/// in the GTK main thread.
+///
+/// This is the standard pattern for running blocking operations (like KeePass access,
+/// file I/O, or network requests) without freezing the GTK UI.
+///
+/// # Type Parameters
+///
+/// * `T` - The result type from the operation (must be `Send + 'static`)
+/// * `F` - The blocking operation to run in the background thread
+/// * `C` - The callback to invoke on the GTK main thread with the result
+///
+/// # Arguments
+///
+/// * `operation` - A closure that performs the blocking work
+/// * `callback` - A closure that handles the result in the GTK main thread
+///
+/// # Example
+///
+/// ```ignore
+/// spawn_blocking_with_callback(
+///     move || {
+///         // Blocking operation (runs in background thread)
+///         std::thread::sleep(std::time::Duration::from_secs(1));
+///         Ok("Done".to_string())
+///     },
+///     move |result: Result<String, String>| {
+///         // Handle result (runs in GTK main thread)
+///         match result {
+///             Ok(msg) => println!("Success: {}", msg),
+///             Err(e) => eprintln!("Error: {}", e),
+///         }
+///     },
+/// );
+/// ```
+pub fn spawn_blocking_with_callback<T, F, C>(operation: F, callback: C)
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+    C: FnOnce(T) + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let result = operation();
+        let _ = tx.send(result);
+    });
+
+    // Use a recursive polling function to check for results
+    poll_for_result(rx, callback);
+}
+
+/// Internal helper to poll for results from a background thread
+fn poll_for_result<T, C>(rx: std::sync::mpsc::Receiver<T>, callback: C)
+where
+    T: Send + 'static,
+    C: FnOnce(T) + 'static,
+{
+    gtk4::glib::idle_add_local_once(move || match rx.try_recv() {
+        Ok(result) => {
+            callback(result);
+        }
+        Err(std::sync::mpsc::TryRecvError::Empty) => {
+            // Not ready yet, schedule another check
+            poll_for_result(rx, callback);
+        }
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            // Thread panicked or was dropped - log and don't call callback
+            tracing::error!("Background thread disconnected before sending result");
+        }
+    });
+}
+
+/// Spawns a blocking operation with a timeout
+///
+/// Similar to `spawn_blocking_with_callback` but includes a timeout. If the operation
+/// doesn't complete within the timeout, the callback receives `None`.
+///
+/// # Arguments
+///
+/// * `operation` - A closure that performs the blocking work
+/// * `timeout` - Maximum time to wait for the operation
+/// * `callback` - A closure that handles the result (None if timed out)
+pub fn spawn_blocking_with_timeout<T, F, C>(
+    operation: F,
+    timeout: std::time::Duration,
+    callback: C,
+) where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+    C: FnOnce(Option<T>) + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    let start = std::time::Instant::now();
+
+    std::thread::spawn(move || {
+        let result = operation();
+        let _ = tx.send(result);
+    });
+
+    poll_for_result_with_timeout(rx, callback, start, timeout);
+}
+
+/// Internal helper to poll for results with timeout
+fn poll_for_result_with_timeout<T, C>(
+    rx: std::sync::mpsc::Receiver<T>,
+    callback: C,
+    start: std::time::Instant,
+    timeout: std::time::Duration,
+) where
+    T: Send + 'static,
+    C: FnOnce(Option<T>) + 'static,
+{
+    gtk4::glib::idle_add_local_once(move || {
+        if start.elapsed() > timeout {
+            tracing::warn!("Background operation timed out after {:?}", timeout);
+            callback(None);
+            return;
+        }
+
+        match rx.try_recv() {
+            Ok(result) => {
+                callback(Some(result));
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Not ready yet, schedule another check
+                poll_for_result_with_timeout(rx, callback, start, timeout);
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                tracing::error!("Background thread disconnected before sending result");
+                callback(None);
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
