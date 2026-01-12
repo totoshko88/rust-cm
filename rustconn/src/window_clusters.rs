@@ -65,7 +65,6 @@ pub fn show_new_cluster_dialog(
 }
 
 /// Shows the clusters manager dialog
-#[allow(clippy::too_many_lines)]
 pub fn show_clusters_manager(
     window: &gtk4::Window,
     state: SharedAppState,
@@ -98,14 +97,28 @@ pub fn show_clusters_manager(
         dialog_for_refresh.refresh_list();
     });
 
-    // Helper to refresh the cluster list
+    // Set up all dialog callbacks
+    setup_cluster_dialog_callbacks(&dialog_ref, window, &state, &notebook, &sidebar);
+
+    dialog_ref.show();
+}
+
+/// Sets up callbacks for the cluster list dialog
+fn setup_cluster_dialog_callbacks(
+    dialog_ref: &std::rc::Rc<ClusterListDialog>,
+    window: &gtk4::Window,
+    state: &SharedAppState,
+    notebook: &SharedNotebook,
+    sidebar: &SharedSidebar,
+) {
+    // Helper to create refresh callback
     let create_refresh_callback = |dialog_ref: std::rc::Rc<ClusterListDialog>| {
         move || {
             dialog_ref.refresh_list();
         }
     };
 
-    // Set up callbacks
+    // Connect callback
     let state_clone = state.clone();
     let notebook_clone = notebook.clone();
     let window_clone = window.clone();
@@ -120,6 +133,7 @@ pub fn show_clusters_manager(
         );
     });
 
+    // Edit callback
     let state_clone = state.clone();
     let notebook_clone = notebook.clone();
     let dialog_window = dialog_ref.window().clone();
@@ -135,6 +149,7 @@ pub fn show_clusters_manager(
         );
     });
 
+    // Delete callback
     let state_clone = state.clone();
     let dialog_window = dialog_ref.window().clone();
     let dialog_ref_delete = dialog_ref.clone();
@@ -148,6 +163,7 @@ pub fn show_clusters_manager(
         );
     });
 
+    // New cluster callback
     let state_clone = state.clone();
     let notebook_clone = notebook.clone();
     let dialog_window = dialog_ref.window().clone();
@@ -161,8 +177,6 @@ pub fn show_clusters_manager(
             Box::new(refresh_after_new.clone()),
         );
     });
-
-    dialog_ref.show();
 }
 
 /// Shows new cluster dialog from the manager

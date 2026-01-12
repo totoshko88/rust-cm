@@ -353,42 +353,88 @@ fn to_vnc_coord(value: f64, max: u16) -> u16 {
 
 ### Medium-Term (Next Quarter)
 
-- [ ] **P3:** Migrate `block_on()` credential operations to fully async with `glib::spawn_future_local` (complex - see Section 12)
+- [x] **P3:** Migrate `block_on()` credential operations to fully async with `glib::spawn_future_local` (see Section 12)
 - [x] **P3:** Add integration tests for async/GTK interaction patterns (see Section 11)
 - [x] **P3:** Create numeric conversion utility module for coordinate handling (see Section 10)
 - [x] **P3:** Document all remaining `#[allow]` annotations with safety justifications (see Section 10)
 
 ---
 
-## 12. Remaining Work: `block_on()` Migration (Deferred)
+## 12. Async Credential Resolution Migration (Completed)
 
-The final P3 item involves migrating blocking credential operations in `state.rs` to fully async patterns using `glib::spawn_future_local`. This is deferred due to complexity and risk.
+Migrated the blocking `block_on()` credential operations in `state.rs` to use GTK-friendly async patterns that don't block the main thread.
 
-### Current State
+### Changes Made
 
-The following methods in `rustconn/src/state.rs` use `with_runtime()` + `block_on()`:
+**New Methods in `rustconn/src/state.rs`:**
 
-| Method | Line | Purpose |
-|--------|------|---------|
-| `store_credentials` | ~824 | Store credentials to secret backend |
-| `retrieve_credentials` | ~845 | Retrieve credentials from secret backend |
-| `delete_credentials` | ~866 | Delete credentials from secret backend |
-| `has_secret_backend` | ~879 | Check if any backend is available |
-| `resolve_credentials` | ~978 | Resolve credentials using resolution chain |
+| Method | Purpose |
+|--------|---------|
+| `resolve_credentials_gtk()` | GTK-friendly async credential resolution with callback |
+| `resolve_credentials_blocking()` | Internal helper that runs in background thread |
 
-### Why Deferred
+**Refactored `rustconn/src/window.rs`:**
 
-1. **Async alternatives already exist**: `resolve_credentials_with_callback`, `resolve_credentials_async`, etc. are implemented but marked `#[allow(dead_code)]`
-2. **Caller migration required**: All callers in `window.rs`, `window_protocols.rs`, etc. would need to be converted to async patterns
-3. **GTK integration complexity**: Requires careful use of `glib::spawn_future_local` and `glib::idle_add_local_once` for UI updates
-4. **Risk of regressions**: Credential resolution is critical path - changes could break authentication flows
+| Method | Purpose |
+|--------|---------|
+| `start_connection_with_credential_resolution()` | Now uses async pattern instead of blocking |
+| `handle_resolved_credentials()` | New helper to process credentials after async resolution |
+| `handle_rdp_credentials()` | Protocol-specific credential handling for RDP |
+| `handle_vnc_credentials()` | Protocol-specific credential handling for VNC |
 
-### Recommended Approach (Future)
+### Architecture
 
-1. Start with `resolve_credentials` as it has the most callers
-2. Create a wrapper that uses `glib::spawn_future_local` internally
-3. Update callers one at a time, testing each change
-4. Remove blocking methods once all callers are migrated
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     GTK Main Thread                              │
+├─────────────────────────────────────────────────────────────────┤
+│  start_connection_with_credential_resolution()                   │
+│       │                                                          │
+│       ├─► Check cached credentials (fast, non-blocking)          │
+│       │   └─► If found: handle_resolved_credentials() immediately│
+│       │                                                          │
+│       └─► resolve_credentials_gtk(callback)                      │
+│               │                                                  │
+│               └─► spawn_blocking_with_callback()                 │
+│                       │                                          │
+└───────────────────────┼──────────────────────────────────────────┘
+                        │
+┌───────────────────────▼──────────────────────────────────────────┐
+│                   Background Thread                               │
+├──────────────────────────────────────────────────────────────────┤
+│  resolve_credentials_blocking()                                   │
+│       │                                                          │
+│       ├─► KeePass lookup (if enabled)                            │
+│       └─► Standard resolver with tokio runtime                   │
+│               │                                                  │
+└───────────────┼──────────────────────────────────────────────────┘
+                │
+┌───────────────▼──────────────────────────────────────────────────┐
+│                     GTK Main Thread (callback)                    │
+├──────────────────────────────────────────────────────────────────┤
+│  handle_resolved_credentials()                                    │
+│       │                                                          │
+│       ├─► RDP: handle_rdp_credentials()                          │
+│       ├─► VNC: handle_vnc_credentials()                          │
+│       └─► SSH/SPICE: cache and start connection                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Benefits
+
+1. **No UI freezing**: Credential resolution (especially KeePass file I/O) runs in background thread
+2. **Responsive UI**: GTK main loop continues processing events during resolution
+3. **Clean separation**: Blocking code isolated in `resolve_credentials_blocking()`
+4. **Reusable pattern**: Uses existing `spawn_blocking_with_callback` utility
+
+### Legacy Methods Preserved
+
+The original blocking methods are preserved with `#[allow(dead_code)]` for potential CLI or non-GUI usage:
+- `resolve_credentials()` - Blocking credential resolution
+- `resolve_credentials_for_connection()` - Blocking by-ID resolution
+- `has_secret_backend()` - Blocking backend check
+- `should_prompt_for_credentials()` - Sync prompt check
+- `can_skip_password_dialog()` - Sync skip check
 
 ---
 
@@ -488,6 +534,21 @@ Extracted helper struct and 3 protocol-specific functions:
 - `start_quick_rdp()` - Handles RDP quick connect with embedded widget
 - `start_quick_vnc()` - Handles VNC quick connect with embedded widget
 
+### `window_clusters.rs` - `show_clusters_manager`
+
+Extracted callback setup into helper function:
+- `setup_cluster_dialog_callbacks()` - Sets up connect, edit, delete, and new cluster callbacks
+- Removed `#[allow(clippy::too_many_lines)]` annotation
+
+### `dialogs/log_viewer.rs` - `LogViewerDialog::new`
+
+Extracted 4 helper functions for UI component creation:
+- `create_header_and_layout()` - Creates header bar, toolbar view, and paned layout
+- `create_log_list()` - Creates the log file list with scrolled window
+- `create_content_view()` - Creates the log content text view
+- `assemble_paned_layout()` - Assembles left/right panels into paned view
+- Removed `#[allow(clippy::too_many_lines)]` annotation
+
 **Benefits:**
 - Reduced cognitive load when reading main functions
 - Improved testability of individual components
@@ -571,7 +632,7 @@ cargo test -p rustconn-core --test integration_tests async_patterns
 | Priority | File | Issue Type | Status |
 |----------|------|------------|--------|
 | Critical | `rustconn-core/src/check_structs.rs` | Unsafe code | Done |
-| Critical | `rustconn/src/state.rs` | Blocking async | Pending |
+| Critical | `rustconn/src/state.rs` | Blocking async | Done (P3) |
 | Critical | `rustconn/src/embedded_vnc.rs` | Blocking sends | Done |
 | Medium | `rustconn/src/embedded_rdp_thread.rs` | Module-level allow | Done |
 | Medium | `rustconn/src/audio.rs` | Module-level allow | Done |
@@ -589,7 +650,7 @@ cargo test -p rustconn-core --test integration_tests async_patterns
 | Low | `rustconn/src/embedded_rdp.rs` | Cast annotations | Done (P3) |
 | Low | `rustconn/src/embedded_spice.rs` | Cast annotations | Done (P3) |
 | Low | `rustconn/src/embedded_rdp_thread.rs` | Progress casts | Done (P3) |
-| Low | Multiple dialog files | Large functions | Pending |
+| Low | Multiple dialog files | Large functions | Done |
 
 ---
 

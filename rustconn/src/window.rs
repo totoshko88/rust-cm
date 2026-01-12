@@ -1675,6 +1675,8 @@ impl MainWindow {
     /// 2. Try to resolve credentials from configured backends (`KeePass`, Keyring)
     /// 3. Fall back to cached credentials if available
     /// 4. Prompt user if no credentials found and required
+    ///
+    /// Uses async credential resolution to avoid blocking the GTK main thread.
     fn start_connection_with_credential_resolution(
         state: SharedAppState,
         notebook: SharedNotebook,
@@ -1682,165 +1684,222 @@ impl MainWindow {
         sidebar: SharedSidebar,
         connection_id: Uuid,
     ) {
-        // Get connection info and determine credential handling
-        let (is_rdp, _password_source, _needs_prompt) = {
-            let state_ref = state.borrow();
+        // Get connection info and cached credentials (fast, non-blocking)
+        let (protocol_type, cached_credentials) = {
+            let Ok(state_ref) = state.try_borrow() else {
+                tracing::warn!("Could not borrow state for credential resolution");
+                return;
+            };
+
             let conn = match state_ref.get_connection(connection_id) {
                 Some(c) => c,
                 None => return,
             };
 
-            let is_rdp = matches!(conn.protocol_config, rustconn_core::ProtocolConfig::Rdp(_));
-            let password_source = conn.password_source;
-            let needs_prompt = state_ref.should_prompt_for_credentials(conn);
+            let protocol_type = conn.protocol_config.protocol_type();
 
-            (is_rdp, password_source, needs_prompt)
-        };
-
-        // Try to resolve credentials from backends
-        let resolved_credentials = {
-            let state_ref = state.borrow();
-            match state_ref.resolve_credentials_for_connection(connection_id) {
-                Ok(creds) => creds,
-                Err(e) => {
-                    eprintln!("Warning: Failed to resolve credentials: {e}");
-                    None
-                }
-            }
-        };
-
-        // Check for cached credentials
-        let cached_credentials = {
-            let state_ref = state.borrow();
-            state_ref.get_cached_credentials(connection_id).map(|c| {
+            let cached = state_ref.get_cached_credentials(connection_id).map(|c| {
                 use secrecy::ExposeSecret;
                 (
                     c.username.clone(),
                     c.password.expose_secret().to_string(),
                     c.domain.clone(),
                 )
-            })
+            });
+
+            (protocol_type, cached)
         };
 
-        // Determine if we have usable credentials (for future use in enhanced prompting)
-        let _has_credentials = resolved_credentials.is_some() || cached_credentials.is_some();
+        // If we have cached credentials, use them immediately (no async needed)
+        if let Some((username, password, domain)) = cached_credentials {
+            Self::handle_resolved_credentials(
+                state,
+                notebook,
+                split_view,
+                sidebar,
+                connection_id,
+                protocol_type,
+                Some(rustconn_core::Credentials::with_password(&username, &password)),
+                Some((username, password, domain)),
+            );
+            return;
+        }
 
-        // For RDP connections that need credentials
-        if is_rdp {
-            // Use resolved credentials if available
-            if let Some(ref creds) = resolved_credentials {
-                if let (Some(username), Some(password)) = (&creds.username, creds.expose_password())
-                {
-                    Self::start_rdp_session_with_credentials(
-                        &state,
-                        &notebook,
-                        &split_view,
-                        &sidebar,
-                        connection_id,
-                        username,
-                        password,
-                        "",
-                    );
-                    return;
-                }
+        // Resolve credentials asynchronously to avoid blocking GTK main thread
+        let state_clone = state.clone();
+        let notebook_clone = notebook.clone();
+        let split_view_clone = split_view.clone();
+        let sidebar_clone = sidebar.clone();
+
+        {
+            let Ok(state_ref) = state.try_borrow() else {
+                tracing::warn!("Could not borrow state for async credential resolution");
+                return;
+            };
+
+            state_ref.resolve_credentials_gtk(connection_id, move |result| {
+                let resolved_credentials = match result {
+                    Ok(creds) => creds,
+                    Err(e) => {
+                        tracing::warn!("Failed to resolve credentials: {e}");
+                        None
+                    }
+                };
+
+                Self::handle_resolved_credentials(
+                    state_clone,
+                    notebook_clone,
+                    split_view_clone,
+                    sidebar_clone,
+                    connection_id,
+                    protocol_type,
+                    resolved_credentials,
+                    None, // No cached credentials
+                );
+            });
+        }
+    }
+
+    /// Handles resolved credentials and starts the appropriate connection
+    ///
+    /// This is called either immediately (if cached credentials exist) or
+    /// from the async callback (after credential resolution completes).
+    #[allow(clippy::too_many_arguments)]
+    fn handle_resolved_credentials(
+        state: SharedAppState,
+        notebook: SharedNotebook,
+        split_view: SharedSplitView,
+        sidebar: SharedSidebar,
+        connection_id: Uuid,
+        protocol_type: rustconn_core::ProtocolType,
+        resolved_credentials: Option<rustconn_core::Credentials>,
+        cached_credentials: Option<(String, String, String)>,
+    ) {
+        use rustconn_core::ProtocolType;
+
+        match protocol_type {
+            ProtocolType::Rdp => {
+                Self::handle_rdp_credentials(
+                    state,
+                    notebook,
+                    split_view,
+                    sidebar,
+                    connection_id,
+                    resolved_credentials,
+                    cached_credentials,
+                );
             }
+            ProtocolType::Vnc => {
+                Self::handle_vnc_credentials(
+                    state,
+                    notebook,
+                    split_view,
+                    sidebar,
+                    connection_id,
+                    resolved_credentials,
+                    cached_credentials,
+                );
+            }
+            ProtocolType::Ssh | ProtocolType::Spice | ProtocolType::ZeroTrust => {
+                // For SSH/SPICE, cache credentials if available and start connection
+                if let Some(ref creds) = resolved_credentials {
+                    if let (Some(username), Some(password)) =
+                        (&creds.username, creds.expose_password())
+                    {
+                        if let Ok(mut state_mut) = state.try_borrow_mut() {
+                            state_mut.cache_credentials(connection_id, username, password, "");
+                        }
+                    }
+                }
+                Self::start_connection_with_split(
+                    &state,
+                    &notebook,
+                    &split_view,
+                    &sidebar,
+                    connection_id,
+                );
+            }
+        }
+    }
 
-            // Use cached credentials if available
-            if let Some((username, password, domain)) = cached_credentials {
+    /// Handles RDP credential resolution and connection start
+    #[allow(clippy::too_many_arguments)]
+    fn handle_rdp_credentials(
+        state: SharedAppState,
+        notebook: SharedNotebook,
+        split_view: SharedSplitView,
+        sidebar: SharedSidebar,
+        connection_id: Uuid,
+        resolved_credentials: Option<rustconn_core::Credentials>,
+        cached_credentials: Option<(String, String, String)>,
+    ) {
+        // Use resolved credentials if available
+        if let Some(ref creds) = resolved_credentials {
+            if let (Some(username), Some(password)) = (&creds.username, creds.expose_password()) {
                 Self::start_rdp_session_with_credentials(
                     &state,
                     &notebook,
                     &split_view,
                     &sidebar,
                     connection_id,
-                    &username,
-                    &password,
-                    &domain,
+                    username,
+                    password,
+                    "",
                 );
                 return;
             }
-
-            // Check if we can skip password dialog (verified credentials from KeePass)
-            let can_skip = {
-                let state_ref = state.borrow();
-                state_ref.can_skip_password_dialog(connection_id)
-            };
-
-            if can_skip {
-                // Try to resolve credentials one more time (they should be available)
-                let state_ref = state.borrow();
-                if let Ok(Some(creds)) = state_ref.resolve_credentials_for_connection(connection_id)
-                {
-                    if let (Some(username), Some(password)) =
-                        (&creds.username, creds.expose_password())
-                    {
-                        drop(state_ref);
-                        Self::start_rdp_session_with_credentials(
-                            &state,
-                            &notebook,
-                            &split_view,
-                            &sidebar,
-                            connection_id,
-                            username,
-                            password,
-                            "",
-                        );
-                        return;
-                    }
-                }
-            }
-
-            // Need to prompt for credentials
-            if let Some(window) = notebook
-                .widget()
-                .ancestor(adw::ApplicationWindow::static_type())
-            {
-                if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
-                    Self::start_rdp_with_password_dialog(
-                        state,
-                        notebook,
-                        split_view,
-                        sidebar,
-                        connection_id,
-                        app_window,
-                    );
-                    return;
-                }
-            }
         }
 
-        // Check if this is a VNC connection
-        let is_vnc = {
-            let state_ref = state.borrow();
-            state_ref
-                .get_connection(connection_id)
-                .is_some_and(|c| matches!(c.protocol_config, rustconn_core::ProtocolConfig::Vnc(_)))
-        };
+        // Use cached credentials if available
+        if let Some((username, password, domain)) = cached_credentials {
+            Self::start_rdp_session_with_credentials(
+                &state,
+                &notebook,
+                &split_view,
+                &sidebar,
+                connection_id,
+                &username,
+                &password,
+                &domain,
+            );
+            return;
+        }
 
-        // For VNC connections - check if we have password
-        if is_vnc {
-            // Use resolved credentials if available (VNC only needs password)
-            if let Some(ref creds) = resolved_credentials {
-                if creds.expose_password().is_some() {
-                    // Cache the password for use in start_connection
-                    if let Some(password) = creds.expose_password() {
-                        if let Ok(mut state_mut) = state.try_borrow_mut() {
-                            state_mut.cache_credentials(connection_id, "", password, "");
-                        }
-                    }
-                    Self::start_connection_with_split(
-                        &state,
-                        &notebook,
-                        &split_view,
-                        &sidebar,
-                        connection_id,
-                    );
-                    return;
-                }
+        // Need to prompt for credentials
+        if let Some(window) = notebook
+            .widget()
+            .ancestor(adw::ApplicationWindow::static_type())
+        {
+            if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
+                Self::start_rdp_with_password_dialog(
+                    state,
+                    notebook,
+                    split_view,
+                    sidebar,
+                    connection_id,
+                    app_window,
+                );
             }
+        }
+    }
 
-            // Use cached credentials if available
-            if cached_credentials.is_some() {
+    /// Handles VNC credential resolution and connection start
+    #[allow(clippy::too_many_arguments)]
+    fn handle_vnc_credentials(
+        state: SharedAppState,
+        notebook: SharedNotebook,
+        split_view: SharedSplitView,
+        sidebar: SharedSidebar,
+        connection_id: Uuid,
+        resolved_credentials: Option<rustconn_core::Credentials>,
+        cached_credentials: Option<(String, String, String)>,
+    ) {
+        // Use resolved credentials if available (VNC only needs password)
+        if let Some(ref creds) = resolved_credentials {
+            if let Some(password) = creds.expose_password() {
+                if let Ok(mut state_mut) = state.try_borrow_mut() {
+                    state_mut.cache_credentials(connection_id, "", password, "");
+                }
                 Self::start_connection_with_split(
                     &state,
                     &notebook,
@@ -1850,68 +1909,36 @@ impl MainWindow {
                 );
                 return;
             }
-
-            // Check if we can skip password dialog (verified credentials from KeePass)
-            let can_skip = {
-                let state_ref = state.borrow();
-                state_ref.can_skip_password_dialog(connection_id)
-            };
-
-            if can_skip {
-                // Try to resolve credentials one more time (they should be available)
-                let state_ref = state.borrow();
-                if let Ok(Some(creds)) = state_ref.resolve_credentials_for_connection(connection_id)
-                {
-                    if let Some(password) = creds.expose_password() {
-                        // Cache the password for use in start_connection
-                        drop(state_ref);
-                        if let Ok(mut state_mut) = state.try_borrow_mut() {
-                            state_mut.cache_credentials(connection_id, "", password, "");
-                        }
-                        Self::start_connection_with_split(
-                            &state,
-                            &notebook,
-                            &split_view,
-                            &sidebar,
-                            connection_id,
-                        );
-                        return;
-                    }
-                }
-            }
-
-            // Need to prompt for VNC password
-            if let Some(window) = notebook
-                .widget()
-                .ancestor(adw::ApplicationWindow::static_type())
-            {
-                if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
-                    Self::start_vnc_with_password_dialog(
-                        state,
-                        notebook,
-                        split_view,
-                        sidebar,
-                        connection_id,
-                        app_window,
-                    );
-                    return;
-                }
-            }
         }
 
-        // For SSH connections
-        // SSH typically uses key-based auth, but we can pass credentials if available
-        if let Some(ref creds) = resolved_credentials {
-            // Store resolved credentials in cache for potential use
-            if let (Some(username), Some(password)) = (&creds.username, creds.expose_password()) {
-                if let Ok(mut state_mut) = state.try_borrow_mut() {
-                    state_mut.cache_credentials(connection_id, username, password, "");
-                }
-            }
+        // Use cached credentials if available
+        if cached_credentials.is_some() {
+            Self::start_connection_with_split(
+                &state,
+                &notebook,
+                &split_view,
+                &sidebar,
+                connection_id,
+            );
+            return;
         }
 
-        // Start SSH connection
-        Self::start_connection_with_split(&state, &notebook, &split_view, &sidebar, connection_id);
+        // Need to prompt for VNC password
+        if let Some(window) = notebook
+            .widget()
+            .ancestor(adw::ApplicationWindow::static_type())
+        {
+            if let Some(app_window) = window.downcast_ref::<adw::ApplicationWindow>() {
+                Self::start_vnc_with_password_dialog(
+                    state,
+                    notebook,
+                    split_view,
+                    sidebar,
+                    connection_id,
+                    app_window,
+                );
+            }
+        }
     }
 
     /// Starts an RDP connection with password dialog
