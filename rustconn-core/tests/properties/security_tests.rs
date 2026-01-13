@@ -36,7 +36,8 @@ fn arb_ssh_config_with_key() -> impl Strategy<Value = SshConfig> {
         use_control_master,
         agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
-        startup_command: None, jump_host_id: None,
+        startup_command: None,
+        jump_host_id: None,
     })
 }
 

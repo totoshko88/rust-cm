@@ -781,7 +781,8 @@ fn arb_ssh_config_with_identities_only() -> impl Strategy<Value = SshConfig> {
                     use_control_master,
                     agent_forwarding: false,
                     custom_options,
-                    startup_command: None, jump_host_id: None,
+                    startup_command: None,
+                    jump_host_id: None,
                 }
             },
         )
@@ -812,7 +813,8 @@ fn arb_ssh_config_with_agent_fingerprint() -> impl Strategy<Value = SshConfig> {
                 use_control_master: false,
                 agent_forwarding: false,
                 custom_options: HashMap::new(),
-                startup_command: None, jump_host_id: None,
+                startup_command: None,
+                jump_host_id: None,
             }
         })
 }
@@ -964,7 +966,8 @@ fn arb_ssh_config_with_file_key_source() -> impl Strategy<Value = SshConfig> {
                     use_control_master,
                     agent_forwarding: false,
                     custom_options,
-                    startup_command: None, jump_host_id: None,
+                    startup_command: None,
+                    jump_host_id: None,
                 }
             },
         )
@@ -994,7 +997,8 @@ fn arb_ssh_config_with_agent_key_source() -> impl Strategy<Value = SshConfig> {
                     use_control_master,
                     agent_forwarding: false,
                     custom_options,
-                    startup_command: None, jump_host_id: None,
+                    startup_command: None,
+                    jump_host_id: None,
                 }
             },
         )
