@@ -27,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 - Updated `libadwaita` to `0.7`
-- Updated `gtk4` to `0.9`
-- Updated `vte4` to `0.8`
+- Updated `gtk4` to `0.10`
+- Updated `vte4` to `0.9`
 ## [0.6.0] - 2026-01-12
 
 ### Added
