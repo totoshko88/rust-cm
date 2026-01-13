@@ -283,7 +283,7 @@ fn arb_ssh_config() -> impl Strategy<Value = SshConfig> {
         use_control_master: false,
         agent_forwarding: false,
         custom_options: HashMap::new(),
-        startup_command: None,
+        startup_command: None, jump_host_id: None,
     })
 }
 

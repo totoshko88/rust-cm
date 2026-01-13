@@ -28,7 +28,7 @@ pub fn sample_ssh_connection_with_key() -> Connection {
         use_control_master: false,
         agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
-        startup_command: None,
+        startup_command: None, jump_host_id: None,
     };
 
     let mut conn = Connection::new(
@@ -58,7 +58,7 @@ pub fn sample_ssh_connection_custom_port() -> Connection {
         use_control_master: false,
         agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
-        startup_command: None,
+        startup_command: None, jump_host_id: None,
     };
 
     let mut conn = Connection::new(
@@ -86,7 +86,7 @@ pub fn sample_ssh_connection_with_proxy() -> Connection {
         use_control_master: false,
         agent_forwarding: false,
         custom_options: std::collections::HashMap::new(),
-        startup_command: None,
+        startup_command: None, jump_host_id: None,
     };
 
     let mut conn = Connection::new(
