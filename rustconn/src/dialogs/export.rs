@@ -15,7 +15,7 @@ use gtk4::{
 use libadwaita as adw;
 use rustconn_core::export::{
     AnsibleExporter, AsbruExporter, ExportFormat, ExportOptions, ExportResult, ExportTarget,
-    NativeExport, RemminaExporter, RoyalTsExporter, SshConfigExporter,
+    MobaXtermExporter, NativeExport, RemminaExporter, RoyalTsExporter, SshConfigExporter,
 };
 use rustconn_core::models::{Connection, ConnectionGroup};
 use std::cell::RefCell;
@@ -197,6 +197,7 @@ impl ExportDialog {
             "Asbru-CM",
             "RustConn Native (.rcn)",
             "Royal TS (.rtsz)",
+            "MobaXterm (.mxtsessions)",
         ]);
         let format_dropdown = DropDown::new(Some(format_list), gtk4::Expression::NONE);
         format_dropdown.set_selected(0);
@@ -395,6 +396,7 @@ impl ExportDialog {
             3 => ExportFormat::Asbru,
             4 => ExportFormat::Native,
             5 => ExportFormat::RoyalTs,
+            6 => ExportFormat::MobaXterm,
             _ => ExportFormat::Ansible,
         }
     }
@@ -481,6 +483,12 @@ impl ExportDialog {
             }
             ExportFormat::RoyalTs => {
                 let exporter = RoyalTsExporter;
+                exporter
+                    .export(connections, groups, options)
+                    .map_err(|e| e.to_string())
+            }
+            ExportFormat::MobaXterm => {
+                let exporter = MobaXtermExporter;
                 exporter
                     .export(connections, groups, options)
                     .map_err(|e| e.to_string())
@@ -573,6 +581,7 @@ impl ExportDialog {
                 3 => ExportFormat::Asbru,
                 4 => ExportFormat::Native,
                 5 => ExportFormat::RoyalTs,
+                6 => ExportFormat::MobaXterm,
                 _ => ExportFormat::Ansible,
             };
 
@@ -634,6 +643,10 @@ impl ExportDialog {
                         filter.add_pattern("*.rtsz");
                         filter.set_name(Some("Royal TS (*.rtsz)"));
                     }
+                    ExportFormat::MobaXterm => {
+                        filter.add_pattern("*.mxtsessions");
+                        filter.set_name(Some("MobaXterm Sessions (*.mxtsessions)"));
+                    }
                 }
 
                 let filters = gtk4::gio::ListStore::new::<gtk4::FileFilter>();
@@ -664,6 +677,7 @@ impl ExportDialog {
                     3 => ExportFormat::Asbru,
                     4 => ExportFormat::Native,
                     5 => ExportFormat::RoyalTs,
+                    6 => ExportFormat::MobaXterm,
                     _ => ExportFormat::Ansible,
                 };
 
@@ -730,6 +744,7 @@ impl ExportDialog {
                 3 => ExportFormat::Asbru,
                 4 => ExportFormat::Native,
                 5 => ExportFormat::RoyalTs,
+                6 => ExportFormat::MobaXterm,
                 _ => ExportFormat::Ansible,
             };
 

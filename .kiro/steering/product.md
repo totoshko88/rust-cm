@@ -18,7 +18,7 @@ Linux connection manager for SSH, RDP, VNC, SPICE protocols. GTK4/libadwaita GUI
 ## Core Capabilities
 
 - Connection organization via groups and tags
-- Import/export: Remmina, Asbru-CM, SSH config, Ansible inventory, Royal TS
+- Import/export: Remmina, Asbru-CM, SSH config, Ansible inventory, Royal TS, MobaXterm
 - Credential backends: libsecret (default), KeePassXC (optional)
 - Session logging, command snippets, cluster commands, Wake-on-LAN
 

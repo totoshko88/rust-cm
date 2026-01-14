@@ -23,7 +23,7 @@ dirs = { workspace = true }
 shellexpand = { workspace = true }
 regex = { workspace = true }
 ring = { workspace = true }
-quick-xml = { version = "0.38", features = ["serialize"] }
+quick-xml = { version = "0.39", features = ["serialize"] }
 argon2 = { workspace = true }
 hostname = "0.4"
 # File system notifications for RDPDR directory change monitoring

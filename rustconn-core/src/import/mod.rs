@@ -6,6 +6,7 @@
 //! - Remmina connection files
 //! - Ansible inventory files
 //! - Royal TS rJSON files
+//! - MobaXterm session files
 //!
 //! For large imports (more than 10 connections), use `BatchImporter` for
 //! efficient batch processing with progress reporting and cancellation support.
@@ -13,6 +14,7 @@
 mod ansible;
 mod asbru;
 pub mod batch;
+mod mobaxterm;
 mod rdm;
 mod remmina;
 mod royalts;
@@ -25,6 +27,7 @@ pub use batch::{
     BatchCancelHandle, BatchImportResult, BatchImporter, BATCH_IMPORT_THRESHOLD,
     DEFAULT_IMPORT_BATCH_SIZE,
 };
+pub use mobaxterm::MobaXtermImporter;
 pub use rdm::RdmImporter;
 pub use remmina::RemminaImporter;
 pub use royalts::RoyalTsImporter;

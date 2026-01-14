@@ -9,7 +9,7 @@
 //! - [`config`] - Application settings and persistence
 //! - [`connection`] - Connection CRUD operations and managers
 //! - [`protocol`] - Protocol trait and implementations (SSH, RDP, VNC, SPICE)
-//! - [`import`] / [`export`] - Format converters (Remmina, Asbru-CM, SSH config, Ansible)
+//! - [`import`] / [`export`] - Format converters (Remmina, Asbru-CM, SSH config, Ansible, MobaXterm)
 //! - [`secret`] - Credential backends (`KeePassXC`, libsecret)
 //! - [`search`] - Fuzzy search with caching and debouncing
 //! - [`automation`] - Expect scripts, key sequences, tasks

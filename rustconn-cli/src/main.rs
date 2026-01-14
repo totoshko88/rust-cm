@@ -237,6 +237,8 @@ pub enum ExportFormatArg {
     Native,
     /// Royal TS XML format (.rtsz)
     RoyalTs,
+    /// MobaXterm session format (.mxtsessions)
+    MobaXterm,
 }
 
 /// Import format options
@@ -254,6 +256,8 @@ pub enum ImportFormatArg {
     Native,
     /// Royal TS XML format (.rtsz)
     RoyalTs,
+    /// MobaXterm session format (.mxtsessions)
+    MobaXterm,
 }
 
 /// Snippet subcommands
@@ -1354,6 +1358,7 @@ fn cmd_export(format: ExportFormatArg, output: &std::path::Path) -> Result<(), C
         ExportFormatArg::Asbru => rustconn_core::export::ExportFormat::Asbru,
         ExportFormatArg::Native => rustconn_core::export::ExportFormat::Native,
         ExportFormatArg::RoyalTs => rustconn_core::export::ExportFormat::RoyalTs,
+        ExportFormatArg::MobaXterm => rustconn_core::export::ExportFormat::MobaXterm,
     };
 
     // Create export options
@@ -1392,8 +1397,8 @@ fn export_connections(
     options: &rustconn_core::export::ExportOptions,
 ) -> Result<rustconn_core::export::ExportResult, CliError> {
     use rustconn_core::export::{
-        AnsibleExporter, AsbruExporter, ExportFormat, ExportTarget, NativeExport, RemminaExporter,
-        RoyalTsExporter, SshConfigExporter,
+        AnsibleExporter, AsbruExporter, ExportFormat, ExportTarget, MobaXtermExporter,
+        NativeExport, RemminaExporter, RoyalTsExporter, SshConfigExporter,
     };
 
     let result = match options.format {
@@ -1444,6 +1449,12 @@ fn export_connections(
         }
         ExportFormat::RoyalTs => {
             let exporter = RoyalTsExporter::new();
+            exporter
+                .export(connections, groups, options)
+                .map_err(|e| CliError::Export(e.to_string()))?
+        }
+        ExportFormat::MobaXterm => {
+            let exporter = MobaXtermExporter::new();
             exporter
                 .export(connections, groups, options)
                 .map_err(|e| CliError::Export(e.to_string()))?
@@ -1560,8 +1571,8 @@ fn import_connections(
     file: &std::path::Path,
 ) -> Result<rustconn_core::import::ImportResult, CliError> {
     use rustconn_core::import::{
-        AnsibleInventoryImporter, AsbruImporter, ImportResult, ImportSource, RemminaImporter,
-        RoyalTsImporter, SshConfigImporter,
+        AnsibleInventoryImporter, AsbruImporter, ImportResult, ImportSource, MobaXtermImporter,
+        RemminaImporter, RoyalTsImporter, SshConfigImporter,
     };
 
     let result = match format {
@@ -1603,6 +1614,12 @@ fn import_connections(
         }
         ImportFormatArg::RoyalTs => {
             let importer = RoyalTsImporter::new();
+            importer
+                .import_from_path(file)
+                .map_err(|e| CliError::Import(e.to_string()))?
+        }
+        ImportFormatArg::MobaXterm => {
+            let importer = MobaXtermImporter::with_path(file.to_path_buf());
             importer
                 .import_from_path(file)
                 .map_err(|e| CliError::Import(e.to_string()))?

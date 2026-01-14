@@ -679,7 +679,6 @@ impl SplitTerminalView {
         let features = [
             ("utilities-terminal-symbolic", "Embedded SSH terminals"),
             ("channel-secure-symbolic", "Secure credential storage"),
-            ("document-open-symbolic", "Import/Export connections"),
             ("dialog-password-symbolic", "Password Generator"),
             ("view-refresh-symbolic", "Session Restore"),
             ("system-run-symbolic", "Expect automation"),
@@ -764,8 +763,7 @@ impl SplitTerminalView {
 
         let formats = [
             "Remmina",
-            "Asbru-CM",
-            "Royal TS",
+            "Asbru-CM / Royal TS / MobaXterm",
             "SSH Config",
             "Ansible Inventory",
         ];

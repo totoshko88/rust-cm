@@ -1,6 +1,6 @@
 # RustConn User Guide
 
-**Version 0.6.1** | GTK4/libadwaita Connection Manager for Linux
+**Version 0.6.2** | GTK4/libadwaita Connection Manager for Linux
 
 RustConn is a modern connection manager designed for Linux with Wayland-first approach. It supports SSH, RDP, VNC, SPICE protocols and Zero Trust integrations through a native GTK4/libadwaita interface.
 
@@ -311,6 +311,7 @@ Enable broadcast switch to send input to all cluster members.
 - Asbru-CM configuration
 - Ansible inventory (INI/YAML)
 - Royal TS (.rtsz XML)
+- MobaXterm sessions (.mxtsessions)
 - RustConn Native (.rcn)
 
 Double-click source to start import immediately.
@@ -323,6 +324,7 @@ Double-click source to start import immediately.
 - Asbru-CM configuration
 - Ansible inventory
 - Royal TS (.rtsz XML)
+- MobaXterm sessions (.mxtsessions)
 - RustConn Native (.rcn)
 
 Options:

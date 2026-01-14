@@ -5,6 +5,34 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 0.6.2
+
+### Added
+- **MobaXterm Import/Export** - Full support for MobaXterm `.mxtsessions` files:
+  - Import SSH, RDP, VNC sessions with all settings (auth, resolution, color depth, etc.)
+  - Export connections to MobaXterm format with folder hierarchy
+  - Preserves group structure as MobaXterm bookmarks folders
+  - Handles MobaXterm escape sequences and Windows-1252 encoding
+  - CLI support: `rustconn-cli import/export --format moba-xterm`
+
+### Changed
+- Welcome screen: Removed "Import/Export connections" from Features column (redundant with Import Formats)
+- Welcome screen: Combined "Asbru-CM / Royal TS / MobaXterm" into single row in Import Formats
+- Documentation: Removed hardcoded version numbers from INSTALL.md package commands (use wildcards)
+
+### Fixed
+
+### Dependencies
+- Updated `quick-xml` 0.38 → 0.39
+- Updated `resvg` 0.45 → 0.46
+- Updated `usvg` 0.45 → 0.46
+- Updated `svgtypes` 0.15 → 0.16
+- Updated `roxmltree` 0.20 → 0.21
+- Updated `kurbo` 0.11 → 0.13
+- Updated `gif` 0.13 → 0.14
+- Updated `imagesize` 0.13 → 0.14
+- Updated `zune-jpeg` 0.4 → 0.5
+
 ## [0.6.1] - 2026-01-12
 
 ### Added

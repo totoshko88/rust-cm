@@ -1,7 +1,8 @@
 //! Export module for converting `RustConn` connections to external formats.
 //!
 //! This module provides functionality to export connections to various formats
-//! including Ansible inventory, SSH config, Remmina, Asbru-CM, and `RustConn` native format.
+//! including Ansible inventory, SSH config, Remmina, Asbru-CM, MobaXterm,
+//! and `RustConn` native format.
 //!
 //! For large exports (more than 10 connections), use `BatchExporter` for
 //! efficient batch processing with progress reporting and cancellation support.
@@ -9,6 +10,7 @@
 pub mod ansible;
 pub mod asbru;
 pub mod batch;
+pub mod mobaxterm;
 pub mod native;
 pub mod remmina;
 pub mod royalts;
@@ -22,6 +24,7 @@ pub use batch::{
     BatchExportCancelHandle, BatchExportResult, BatchExporter, BATCH_EXPORT_THRESHOLD,
     DEFAULT_EXPORT_BATCH_SIZE,
 };
+pub use mobaxterm::MobaXtermExporter;
 pub use native::{NativeExport, NativeImportError, NATIVE_FILE_EXTENSION, NATIVE_FORMAT_VERSION};
 pub use remmina::RemminaExporter;
 pub use royalts::RoyalTsExporter;
@@ -49,6 +52,8 @@ pub enum ExportFormat {
     Native,
     /// Royal TS XML format (.rtsz)
     RoyalTs,
+    /// MobaXterm session format (.mxtsessions)
+    MobaXterm,
 }
 
 impl ExportFormat {
@@ -62,6 +67,7 @@ impl ExportFormat {
             Self::Asbru,
             Self::Native,
             Self::RoyalTs,
+            Self::MobaXterm,
         ]
     }
 
@@ -75,6 +81,7 @@ impl ExportFormat {
             Self::Asbru => "Asbru-CM",
             Self::Native => "RustConn Native",
             Self::RoyalTs => "Royal TS",
+            Self::MobaXterm => "MobaXterm",
         }
     }
 
@@ -88,6 +95,7 @@ impl ExportFormat {
             Self::Asbru => "yml",
             Self::Native => NATIVE_FILE_EXTENSION,
             Self::RoyalTs => "rtsz",
+            Self::MobaXterm => "mxtsessions",
         }
     }
 
@@ -336,13 +344,14 @@ mod tests {
     #[test]
     fn test_export_format_all() {
         let formats = ExportFormat::all();
-        assert_eq!(formats.len(), 6);
+        assert_eq!(formats.len(), 7);
         assert!(formats.contains(&ExportFormat::Ansible));
         assert!(formats.contains(&ExportFormat::SshConfig));
         assert!(formats.contains(&ExportFormat::Remmina));
         assert!(formats.contains(&ExportFormat::Asbru));
         assert!(formats.contains(&ExportFormat::Native));
         assert!(formats.contains(&ExportFormat::RoyalTs));
+        assert!(formats.contains(&ExportFormat::MobaXterm));
     }
 
     #[test]
@@ -353,6 +362,7 @@ mod tests {
         assert_eq!(ExportFormat::Asbru.display_name(), "Asbru-CM");
         assert_eq!(ExportFormat::Native.display_name(), "RustConn Native");
         assert_eq!(ExportFormat::RoyalTs.display_name(), "Royal TS");
+        assert_eq!(ExportFormat::MobaXterm.display_name(), "MobaXterm");
     }
 
     #[test]
@@ -363,6 +373,7 @@ mod tests {
         assert_eq!(ExportFormat::Asbru.file_extension(), "yml");
         assert_eq!(ExportFormat::Native.file_extension(), "rcn");
         assert_eq!(ExportFormat::RoyalTs.file_extension(), "rtsz");
+        assert_eq!(ExportFormat::MobaXterm.file_extension(), "mxtsessions");
     }
 
     #[test]
@@ -373,6 +384,7 @@ mod tests {
         assert!(!ExportFormat::Asbru.exports_to_directory());
         assert!(!ExportFormat::Native.exports_to_directory());
         assert!(!ExportFormat::RoyalTs.exports_to_directory());
+        assert!(!ExportFormat::MobaXterm.exports_to_directory());
     }
 
     #[test]
