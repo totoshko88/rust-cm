@@ -275,6 +275,9 @@ pub enum ColorScheme {
     Dark,
 }
 
+/// Maximum number of search history entries to persist
+const MAX_SEARCH_HISTORY_ENTRIES: usize = 20;
+
 /// UI settings
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
@@ -305,6 +308,35 @@ pub struct UiSettings {
     /// Session restore settings
     #[serde(default)]
     pub session_restore: SessionRestoreSettings,
+    /// Search history for sidebar (persisted across sessions)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub search_history: Vec<String>,
+}
+
+impl UiSettings {
+    /// Adds a search query to the persisted history
+    ///
+    /// Moves existing entries to front and limits to max entries.
+    pub fn add_search_history(&mut self, query: &str) {
+        let query = query.trim();
+        if query.is_empty() {
+            return;
+        }
+
+        // Remove if already exists (to move to front)
+        self.search_history.retain(|q| q != query);
+
+        // Add to front
+        self.search_history.insert(0, query.to_string());
+
+        // Trim to max size
+        self.search_history.truncate(MAX_SEARCH_HISTORY_ENTRIES);
+    }
+
+    /// Clears the search history
+    pub fn clear_search_history(&mut self) {
+        self.search_history.clear();
+    }
 }
 
 /// Session restore settings
@@ -368,6 +400,7 @@ impl Default for UiSettings {
             minimize_to_tray: false,
             expanded_groups: std::collections::HashSet::new(),
             session_restore: SessionRestoreSettings::default(),
+            search_history: Vec::new(),
         }
     }
 }

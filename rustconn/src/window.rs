@@ -104,6 +104,13 @@ impl MainWindow {
         let sidebar = Rc::new(ConnectionSidebar::new());
         paned.set_start_child(Some(sidebar.widget()));
 
+        // Load persisted search history
+        {
+            let state_ref = state.borrow();
+            let search_history = &state_ref.settings().ui.search_history;
+            sidebar.load_search_history(search_history);
+        }
+
         // Create split terminal view as the main terminal container
         let split_view = Rc::new(SplitTerminalView::new());
 
@@ -949,6 +956,73 @@ impl MainWindow {
         });
         window.add_action(&execute_snippet_action);
 
+        // Run snippet for selected connection (from context menu)
+        // First connects to the selected connection, then shows snippet picker
+        let run_snippet_for_conn_action =
+            gio::SimpleAction::new("run-snippet-for-connection", None);
+        let window_weak = window.downgrade();
+        let state_clone = state.clone();
+        let notebook_clone = terminal_notebook.clone();
+        let sidebar_clone = sidebar.clone();
+        let split_view_clone = self.split_view.clone();
+        run_snippet_for_conn_action.connect_activate(move |_, _| {
+            if let Some(win) = window_weak.upgrade() {
+                // Get selected connection from sidebar
+                if let Some(item) = sidebar_clone.get_selected_item() {
+                    if item.is_group() {
+                        return; // Can't run snippet on a group
+                    }
+
+                    // Parse UUID from item id string
+                    let id_str = item.id();
+                    let Ok(id) = Uuid::parse_str(&id_str) else {
+                        return;
+                    };
+
+                    // Check if connection is already connected (has active session)
+                    let has_active_session = notebook_clone
+                        .get_all_sessions()
+                        .iter()
+                        .any(|s| s.connection_id == id);
+
+                    if has_active_session {
+                        // Already connected, just show snippet picker
+                        snippets::show_snippet_picker(
+                            win.upcast_ref(),
+                            state_clone.clone(),
+                            notebook_clone.clone(),
+                        );
+                    } else {
+                        // Need to connect first, then show snippet picker
+                        // Start connection
+                        Self::start_connection_with_split(
+                            &state_clone,
+                            &notebook_clone,
+                            &split_view_clone,
+                            &sidebar_clone,
+                            id,
+                        );
+
+                        // Show snippet picker after a short delay to allow connection to establish
+                        let win_for_timeout = win.clone();
+                        let state_for_timeout = state_clone.clone();
+                        let notebook_for_timeout = notebook_clone.clone();
+                        glib::timeout_add_local_once(
+                            std::time::Duration::from_millis(500),
+                            move || {
+                                snippets::show_snippet_picker(
+                                    win_for_timeout.upcast_ref(),
+                                    state_for_timeout,
+                                    notebook_for_timeout,
+                                );
+                            },
+                        );
+                    }
+                }
+            }
+        });
+        window.add_action(&run_snippet_for_conn_action);
+
         // Show sessions action
         let show_sessions_action = gio::SimpleAction::new("show-sessions", None);
         let window_weak = window.downgrade();
@@ -1311,15 +1385,22 @@ impl MainWindow {
 
         // Add to search history when user presses Enter or stops searching
         let sidebar_for_history = sidebar.clone();
+        let state_for_history = state.clone();
         sidebar.search_entry().connect_activate(move |entry| {
             let query = entry.text().to_string();
             if !query.is_empty() {
                 sidebar_for_history.add_to_search_history(&query);
+                // Persist to settings
+                if let Ok(mut state_mut) = state_for_history.try_borrow_mut() {
+                    state_mut.settings_mut().ui.add_search_history(&query);
+                    let _ = state_mut.save_settings();
+                }
             }
         });
 
         // Also add to history when search entry loses focus with non-empty query
         let sidebar_for_focus = sidebar.clone();
+        let state_for_focus = state.clone();
         sidebar
             .search_entry()
             .connect_has_focus_notify(move |entry| {
@@ -1327,6 +1408,11 @@ impl MainWindow {
                     let query = entry.text().to_string();
                     if !query.is_empty() {
                         sidebar_for_focus.add_to_search_history(&query);
+                        // Persist to settings
+                        if let Ok(mut state_mut) = state_for_focus.try_borrow_mut() {
+                            state_mut.settings_mut().ui.add_search_history(&query);
+                            let _ = state_mut.save_settings();
+                        }
                     }
                 }
             });

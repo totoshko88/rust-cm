@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserves group structure as MobaXterm bookmarks folders
   - Handles MobaXterm escape sequences and Windows-1252 encoding
   - CLI support: `rustconn-cli import/export --format moba-xterm`
+- **Connection History Button** - Quick access to connection history from sidebar toolbar
+- **Run Snippet from Context Menu** - Right-click on connection → "Run Snippet..." to execute snippets
+  - Automatically connects if not already connected, then shows snippet picker
+- **Persistent Search History** - Search queries are now saved across sessions
+  - Up to 20 recent searches preserved in settings
+  - History restored on application startup
 
 ### Changed
 - Welcome screen: Removed "Import/Export connections" from Features column (redundant with Import Formats)

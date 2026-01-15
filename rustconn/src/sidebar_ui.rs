@@ -309,6 +309,20 @@ pub fn show_context_menu_for_item(widget: &impl IsA<gtk4::Widget>, x: f64, y: f6
             }
         });
         menu_box.append(&move_btn);
+
+        // Run Snippet option - opens snippet picker for the selected connection
+        let snippet_btn = create_menu_button("Run Snippet...");
+        let win = window_clone.clone();
+        let popover_c = popover_ref.clone();
+        snippet_btn.connect_clicked(move |_| {
+            if let Some(p) = popover_c.upgrade() {
+                p.popdown();
+            }
+            if let Some(action) = win.lookup_action("run-snippet-for-connection") {
+                action.activate(None);
+            }
+        });
+        menu_box.append(&snippet_btn);
     }
 
     let delete_btn = create_menu_button("Delete");
@@ -459,7 +473,7 @@ pub fn create_bulk_actions_bar() -> GtkBox {
 
 /// Creates the sidebar bottom toolbar with secondary actions
 ///
-/// Layout: [Group Ops] [A-Z Sort] [Recent] [Import] [Export] [KeePass]
+/// Layout: [Group Ops] [History] [A-Z Sort] [Recent] [Import] [Export] [KeePass]
 #[must_use]
 pub fn create_sidebar_bottom_toolbar() -> (GtkBox, Button) {
     let toolbar = GtkBox::new(Orientation::Horizontal, 4);
@@ -478,6 +492,15 @@ pub fn create_sidebar_bottom_toolbar() -> (GtkBox, Button) {
     )]);
     toolbar.append(&group_ops_button);
 
+    // Connection History button
+    let history_button = Button::from_icon_name("document-open-recent-symbolic");
+    history_button.set_tooltip_text(Some("Connection History"));
+    history_button.set_action_name(Some("win.show-history"));
+    history_button.update_property(&[gtk4::accessible::Property::Label(
+        "View connection history",
+    )]);
+    toolbar.append(&history_button);
+
     // Sort alphabetically button
     let sort_button = Button::from_icon_name("view-sort-ascending-symbolic");
     sort_button.set_tooltip_text(Some("Sort Alphabetically"));
@@ -488,7 +511,7 @@ pub fn create_sidebar_bottom_toolbar() -> (GtkBox, Button) {
     toolbar.append(&sort_button);
 
     // Sort by recent usage button
-    let sort_recent_button = Button::from_icon_name("document-open-recent-symbolic");
+    let sort_recent_button = Button::from_icon_name("appointment-soon-symbolic");
     sort_recent_button.set_tooltip_text(Some("Sort by Recent Usage"));
     sort_recent_button.set_action_name(Some("win.sort-recent"));
     sort_recent_button.update_property(&[gtk4::accessible::Property::Label(

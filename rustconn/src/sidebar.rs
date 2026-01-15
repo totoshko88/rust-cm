@@ -1842,6 +1842,16 @@ impl ConnectionSidebar {
         self.search_history.borrow_mut().clear();
     }
 
+    /// Loads search history from persisted settings
+    ///
+    /// Call this after creating the sidebar to restore previous search history.
+    pub fn load_search_history(&self, history: &[String]) {
+        let mut current = self.search_history.borrow_mut();
+        current.clear();
+        current.extend(history.iter().cloned());
+        current.truncate(MAX_SEARCH_HISTORY);
+    }
+
     /// Gets the active protocol filters
     ///
     /// Returns a set of currently active protocol filter names.

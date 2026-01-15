@@ -1377,6 +1377,24 @@ impl AppState {
         &self.settings
     }
 
+    /// Gets mutable reference to settings for in-place modifications
+    ///
+    /// Note: After modifying, call `save_settings()` to persist changes.
+    pub fn settings_mut(&mut self) -> &mut AppSettings {
+        &mut self.settings
+    }
+
+    /// Saves current settings to disk
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if settings cannot be saved.
+    pub fn save_settings(&self) -> Result<(), String> {
+        self.config_manager
+            .save_settings(&self.settings)
+            .map_err(|e| format!("Failed to save settings: {e}"))
+    }
+
     /// Updates and saves settings
     pub fn update_settings(&mut self, mut settings: AppSettings) -> Result<(), String> {
         // Encrypt KDBX password before saving if integration is enabled
