@@ -14,7 +14,7 @@ description: |
   - Session logging, command snippets, cluster commands, Wake-on-LAN
 
 grade: stable
-confinement: strict
+confinement: classic
 icon: rustconn/assets/icons/hicolor/256x256/apps/io.github.totoshko88.RustConn.png
 
 platforms:
@@ -22,43 +22,11 @@ platforms:
     build-on: [amd64]
     build-for: [amd64]
 
-plugs:
-  gtk-4-themes:
-    interface: content
-    target: $SNAP/share/themes
-    default-provider: gtk-common-themes
-  icon-themes:
-    interface: content
-    target: $SNAP/share/icons
-    default-provider: gtk-common-themes
-
 apps:
   rustconn:
-    command: bin/rustconn-wrapper
+    command: usr/bin/rustconn
     desktop: usr/share/applications/io.github.totoshko88.RustConn.desktop
     common-id: io.github.totoshko88.RustConn
-    plugs:
-      - home
-      - network
-      - network-bind
-      - ssh-keys
-      - gpg-keys
-      - password-manager-service
-      - desktop
-      - desktop-legacy
-      - wayland
-      - x11
-      - opengl
-      - audio-playback
-      - gtk-4-themes
-      - icon-themes
-    environment:
-      GTK_USE_PORTAL: "1"
-      LD_LIBRARY_PATH: $SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib:$LD_LIBRARY_PATH
-      GI_TYPELIB_PATH: $SNAP/usr/lib/x86_64-linux-gnu/girepository-1.0
-      GTK_PATH: $SNAP/usr/lib/x86_64-linux-gnu/gtk-4.0
-      XDG_DATA_DIRS: $SNAP/usr/share:$XDG_DATA_DIRS
-      XCURSOR_PATH: $SNAP/usr/share/icons
 
 parts:
   rustconn:
@@ -82,12 +50,6 @@ parts:
       - libvte-2.91-gtk4-0
       - libasound2t64
       - libssl3t64
-      - libegl1
-      - libgl1
-      - libgles2
-      - libglx-mesa0
-      - libvulkan1
-      - mesa-vulkan-drivers
       - openssh-client
     organize:
       bin/rustconn: usr/bin/rustconn
@@ -95,22 +57,5 @@ parts:
       craftctl default
       mkdir -p $CRAFT_PART_INSTALL/usr/share/applications
       mkdir -p $CRAFT_PART_INSTALL/usr/share/icons
-      mkdir -p $CRAFT_PART_INSTALL/bin
       cp rustconn/assets/io.github.totoshko88.RustConn.desktop $CRAFT_PART_INSTALL/usr/share/applications/
       cp -r rustconn/assets/icons/hicolor $CRAFT_PART_INSTALL/usr/share/icons/
-      cat > $CRAFT_PART_INSTALL/bin/rustconn-wrapper << 'ENDSCRIPT'
-      #!/bin/bash
-      # Ensure XDG_RUNTIME_DIR exists
-      mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
-      # Symlink Wayland socket for HiDPI scaling support
-      REAL_RUNTIME="/run/user/$(id -u)"
-      if [ -n "$WAYLAND_DISPLAY" ] && [ -e "$REAL_RUNTIME/$WAYLAND_DISPLAY" ]; then
-        ln -sf "$REAL_RUNTIME/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" 2>/dev/null || true
-      fi
-      # Symlink PulseAudio socket
-      if [ -e "$REAL_RUNTIME/pulse" ]; then
-        ln -sf "$REAL_RUNTIME/pulse" "$XDG_RUNTIME_DIR/pulse" 2>/dev/null || true
-      fi
-      exec "$SNAP/usr/bin/rustconn" "$@"
-      ENDSCRIPT
-      chmod +x $CRAFT_PART_INSTALL/bin/rustconn-wrapper
