@@ -27,6 +27,7 @@ apps:
     command: usr/bin/rustconn
     desktop: usr/share/applications/io.github.totoshko88.RustConn.desktop
     common-id: io.github.totoshko88.RustConn
+    extensions: [gnome]
     plugs:
       - home
       - network
@@ -39,9 +40,9 @@ apps:
       - wayland
       - x11
       - opengl
+      - gsettings
     environment:
       GTK_USE_PORTAL: "1"
-      GDK_BACKEND: wayland,x11
 
 parts:
   rustconn:
