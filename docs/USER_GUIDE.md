@@ -1,6 +1,6 @@
 # RustConn User Guide
 
-**Version 0.6.2** | GTK4/libadwaita Connection Manager for Linux
+**Version 0.6.3** | GTK4/libadwaita Connection Manager for Linux
 
 RustConn is a modern connection manager designed for Linux with Wayland-first approach. It supports SSH, RDP, VNC, SPICE protocols and Zero Trust integrations through a native GTK4/libadwaita interface.
 
@@ -81,12 +81,15 @@ Filter connections by protocol using the filter bar below search:
 - Multiple protocols can be selected (OR logic)
 - Clear search field to reset filters
 
-### KeePass Status Button
+### Password Vault Button
 
 Shows integration status in sidebar toolbar:
-- **Highlighted** — KeePass enabled and database exists
-- **Dimmed** — Disabled or database not found
-- Click to open KeePassXC with configured database
+- **Highlighted** — Password manager enabled and configured
+- **Dimmed** — Disabled or not configured
+- Click to open appropriate password manager:
+  - KeePassXC/GNOME Secrets for KeePassXC backend
+  - Seahorse/GNOME Settings for libsecret backend
+  - Bitwarden web vault for Bitwarden backend
 
 ---
 
@@ -403,10 +406,12 @@ Access via **Ctrl+,** or Menu → **Settings**
 
 ### Secrets
 
-- **Preferred Backend** — libsecret, KeePassXC, KDBX file
+- **Preferred Backend** — libsecret, KeePassXC, KDBX file, Bitwarden
 - **Enable Fallback** — Use libsecret if primary unavailable
-- **KDBX Path** — KeePass database file
+- **KDBX Path** — KeePass database file (for KDBX backend)
 - **KDBX Authentication** — Password and/or key file
+- **Bitwarden Settings** — Vault status, unlock, master password persistence
+- **Installed Password Managers** — Auto-detected managers with versions (GNOME Secrets, KeePassXC, KeePass2, Bitwarden CLI, 1Password CLI)
 
 ### SSH Agent
 
@@ -556,6 +561,14 @@ rustconn-cli wol "Server Name"
 2. Check credentials
 3. SSH key permissions: `chmod 600 ~/.ssh/id_rsa`
 4. Firewall settings
+
+### Bitwarden Not Working
+
+1. Install Bitwarden CLI: `npm install -g @bitwarden/cli` or download from bitwarden.com
+2. Login: `bw login`
+3. Unlock vault: `bw unlock`
+4. Select Bitwarden backend in Settings → Secrets
+5. Check vault status indicator
 
 ### KeePass Not Working
 
