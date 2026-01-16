@@ -92,24 +92,17 @@ parts:
       mkdir -p $CRAFT_PART_INSTALL/bin
       cp rustconn/assets/io.github.totoshko88.RustConn.desktop $CRAFT_PART_INSTALL/usr/share/applications/
       cp -r rustconn/assets/icons/hicolor $CRAFT_PART_INSTALL/usr/share/icons/
-      
-      # Create wrapper script for proper environment setup
-      cat > $CRAFT_PART_INSTALL/bin/rustconn-wrapper << 'EOF'
-#!/bin/bash
-export GTK_USE_PORTAL=1
-export GDK_BACKEND=wayland,x11
-export GDK_GL=gles
-export GSK_RENDERER=gl
-
-# Set library paths
-export LD_LIBRARY_PATH=$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib:$LD_LIBRARY_PATH
-export GI_TYPELIB_PATH=$SNAP/usr/lib/x86_64-linux-gnu/girepository-1.0
-export XDG_DATA_DIRS=$SNAP/usr/share:$XDG_DATA_DIRS
-
-# GTK/GDK paths
-export GTK_PATH=$SNAP/usr/lib/x86_64-linux-gnu/gtk-4.0
-export GDK_PIXBUF_MODULE_FILE=$SNAP/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache
-
-exec "$SNAP/usr/bin/rustconn" "$@"
-EOF
+      cat > $CRAFT_PART_INSTALL/bin/rustconn-wrapper << 'WRAPPER'
+      #!/bin/bash
+      export GTK_USE_PORTAL=1
+      export GDK_BACKEND=wayland,x11
+      export GDK_GL=gles
+      export GSK_RENDERER=gl
+      export LD_LIBRARY_PATH=$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib:$LD_LIBRARY_PATH
+      export GI_TYPELIB_PATH=$SNAP/usr/lib/x86_64-linux-gnu/girepository-1.0
+      export XDG_DATA_DIRS=$SNAP/usr/share:$XDG_DATA_DIRS
+      export GTK_PATH=$SNAP/usr/lib/x86_64-linux-gnu/gtk-4.0
+      export GDK_PIXBUF_MODULE_FILE=$SNAP/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache
+      exec "$SNAP/usr/bin/rustconn" "$@"
+      WRAPPER
       chmod +x $CRAFT_PART_INSTALL/bin/rustconn-wrapper
