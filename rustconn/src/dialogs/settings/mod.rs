@@ -419,8 +419,7 @@ impl SettingsDialog {
         let kdbx_key_file_entry_clone = self.secrets_widgets.kdbx_key_file_entry.clone();
         let kdbx_use_key_file_check_clone = self.secrets_widgets.kdbx_use_key_file_check.clone();
         let kdbx_use_password_check_clone = self.secrets_widgets.kdbx_use_password_check.clone();
-        let bitwarden_password_entry_clone =
-            self.secrets_widgets.bitwarden_password_entry.clone();
+        let bitwarden_password_entry_clone = self.secrets_widgets.bitwarden_password_entry.clone();
         let bitwarden_save_password_check_clone =
             self.secrets_widgets.bitwarden_save_password_check.clone();
 

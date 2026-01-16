@@ -79,9 +79,7 @@ pub fn create_secrets_page() -> SecretsPageWidgets {
         .halign(gtk4::Align::End)
         .valign(gtk4::Align::Center)
         .build();
-    let version_row = adw::ActionRow::builder()
-        .title("Version")
-        .build();
+    let version_row = adw::ActionRow::builder().title("Version").build();
     version_row.add_suffix(&version_label);
     backend_group.add(&version_row);
 
@@ -162,9 +160,7 @@ pub fn create_secrets_page() -> SecretsPageWidgets {
     bitwarden_group.add(&bw_password_row);
 
     // Save password checkbox for Bitwarden
-    let bitwarden_save_password_check = CheckButton::builder()
-        .valign(gtk4::Align::Center)
-        .build();
+    let bitwarden_save_password_check = CheckButton::builder().valign(gtk4::Align::Center).build();
     let bw_save_password_row = adw::ActionRow::builder()
         .title("Save password")
         .subtitle("Encrypted storage (machine-specific)")
@@ -913,7 +909,14 @@ pub fn collect_secret_settings(
             let password_text = widgets.bitwarden_password_entry.text();
             if password_text.is_empty() {
                 // Keep existing encrypted password if field is empty but save is checked
-                (None, settings.borrow().secrets.bitwarden_password_encrypted.clone())
+                (
+                    None,
+                    settings
+                        .borrow()
+                        .secrets
+                        .bitwarden_password_encrypted
+                        .clone(),
+                )
             } else {
                 let password = secrecy::SecretString::new(password_text.to_string().into());
                 // Mark for encryption (will be encrypted when settings are saved)

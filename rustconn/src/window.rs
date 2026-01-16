@@ -237,12 +237,12 @@ impl MainWindow {
         header_bar.pack_end(&settings_button);
 
         // Add split view buttons
-        let split_vertical_button = Button::from_icon_name("view-dual-symbolic");
+        let split_vertical_button = Button::from_icon_name("object-flip-horizontal-symbolic");
         split_vertical_button.set_tooltip_text(Some("Split Vertical (Ctrl+Shift+S)"));
         split_vertical_button.set_action_name(Some("win.split-vertical"));
         header_bar.pack_end(&split_vertical_button);
 
-        let split_horizontal_button = Button::from_icon_name("object-flip-horizontal-symbolic");
+        let split_horizontal_button = Button::from_icon_name("object-flip-vertical-symbolic");
         split_horizontal_button.set_tooltip_text(Some("Split Horizontal (Ctrl+Shift+H)"));
         split_horizontal_button.set_action_name(Some("win.split-horizontal"));
         header_bar.pack_end(&split_horizontal_button);
@@ -415,7 +415,11 @@ impl MainWindow {
             rustconn_core::config::SecretBackendType::KeePassXc
             | rustconn_core::config::SecretBackendType::KdbxFile => {
                 settings.secrets.kdbx_enabled
-                    && settings.secrets.kdbx_path.as_ref().is_some_and(|p| p.exists())
+                    && settings
+                        .secrets
+                        .kdbx_path
+                        .as_ref()
+                        .is_some_and(|p| p.exists())
             }
         };
         open_keepass_action.set_enabled(action_enabled);

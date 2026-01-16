@@ -387,7 +387,8 @@ pub fn get_password_manager_launch_command(
     backend: &crate::config::SecretBackendType,
 ) -> Option<(String, Vec<String>)> {
     match backend {
-        crate::config::SecretBackendType::KeePassXc | crate::config::SecretBackendType::KdbxFile => {
+        crate::config::SecretBackendType::KeePassXc
+        | crate::config::SecretBackendType::KdbxFile => {
             // Try KeePassXC first
             if std::process::Command::new("which")
                 .arg("keepassxc")
@@ -475,9 +476,7 @@ pub fn get_password_manager_launch_command(
 ///
 /// # Errors
 /// Returns error message if no password manager is found or launch fails
-pub fn open_password_manager(
-    backend: &crate::config::SecretBackendType,
-) -> Result<(), String> {
+pub fn open_password_manager(backend: &crate::config::SecretBackendType) -> Result<(), String> {
     let Some((cmd, args)) = get_password_manager_launch_command(backend) else {
         return Err("No password manager application found".to_string());
     };
