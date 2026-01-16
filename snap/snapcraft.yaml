@@ -52,6 +52,7 @@ parts:
       - libadwaita-1-dev
       - libvte-2.91-gtk4-dev
       - libssl-dev
+      - libasound2-dev
       - pkg-config
       - clang
       - cmake
