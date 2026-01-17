@@ -1152,7 +1152,7 @@ impl EmbeddedRdpWidget {
                     source_id.remove();
                 }
 
-                // Schedule reconnect after 2 seconds of no resize
+                // Schedule reconnect after 500ms of no resize
                 let rdp_w = rdp_width.clone();
                 let rdp_h = rdp_height.clone();
                 let timer = reconnect_timer.clone();
@@ -1162,7 +1162,7 @@ impl EmbeddedRdpWidget {
                 let reconnect_cb = on_reconnect.clone();
 
                 let source_id =
-                    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
                         // Clear the timer reference
                         timer.borrow_mut().take();
 

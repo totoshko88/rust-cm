@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated documentation with Snap installation instructions
 
+### Fixed
+- **RDP Initial Resolution** - Embedded RDP sessions now start with correct resolution matching actual widget size
+  - Previously used saved window settings which could differ from actual content area
+  - Now waits for GTK layout (100ms) to get accurate widget dimensions
+- **RDP Dynamic Resolution** - Window resize now triggers automatic reconnect with new resolution
+  - Debounced reconnect after 500ms of no resize activity
+  - Preserves shared folders and credentials during reconnect
+  - Works around Windows RDP servers not supporting Display Control channel
+- **Sidebar Fixed Width** - Sidebar no longer resizes when window is resized
+  - Content area (RDP/VNC/terminal) now properly expands to fill available space
+- **RDP Cursor Colors** - Fixed inverted cursor colors in embedded RDP sessions (BGRA→ARGB conversion)
+
 ### Updated Dependencies
 - `ironrdp` 0.13 → 0.14 (embedded RDP client)
 - `ironrdp-tokio` 0.7 → 0.8
