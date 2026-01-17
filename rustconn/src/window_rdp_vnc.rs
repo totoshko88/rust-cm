@@ -242,30 +242,24 @@ fn start_embedded_rdp_session(
     // Create embedded RDP widget
     let embedded_widget = EmbeddedRdpWidget::new();
 
-    // Get initial resolution from notebook widget size (actual available space)
-    // This ensures RDP session matches the window size from the start
-    let notebook_widget = notebook.widget();
-    let notebook_w = notebook_widget.width();
-    let notebook_h = notebook_widget.height();
-    let initial_resolution = if notebook_w > 100 && notebook_h > 100 {
-        // Use notebook size minus some padding for tab bar (~40px)
-        let w = notebook_w.unsigned_abs().saturating_sub(20);
-        let h = notebook_h.unsigned_abs().saturating_sub(60);
-        (w.max(640), h.max(480))
-    } else {
-        // Fallback to config or default
-        rdp_config
-            .resolution
-            .as_ref()
-            .map_or((1280, 720), |r| (r.width, r.height))
+    // Calculate initial resolution from window size minus sidebar
+    // We use saved window size from settings since notebook may not be realized yet
+    let initial_resolution = {
+        let state_ref = state.borrow();
+        let settings = state_ref.settings();
+        let window_w = settings.ui.window_width.unwrap_or(1200) as u32;
+        let window_h = settings.ui.window_height.unwrap_or(800) as u32;
+        let sidebar_w = settings.ui.sidebar_width.unwrap_or(280) as u32;
+        // Subtract sidebar width, header bar (~50px), tab bar (~40px), and some padding
+        let content_w = window_w.saturating_sub(sidebar_w).saturating_sub(20);
+        let content_h = window_h.saturating_sub(100);
+        (content_w.max(640), content_h.max(480))
     };
 
     tracing::debug!(
-        "[RDP] Using initial resolution {}x{} (notebook: {}x{})",
+        "[RDP] Using initial resolution {}x{} (calculated from window settings)",
         initial_resolution.0,
-        initial_resolution.1,
-        notebook_w,
-        notebook_h
+        initial_resolution.1
     );
 
     let mut embedded_config = EmbeddedRdpConfig::new(host)
