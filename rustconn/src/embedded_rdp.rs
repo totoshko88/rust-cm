@@ -1797,10 +1797,28 @@ impl EmbeddedRdpWidget {
             generation
         );
 
+        // Get actual widget size for initial resolution
+        // This ensures the RDP session matches the current window size
+        let (actual_width, actual_height) = {
+            let w = self.drawing_area.width();
+            let h = self.drawing_area.height();
+            if w > 100 && h > 100 {
+                (w.unsigned_abs(), h.unsigned_abs())
+            } else {
+                // Widget not yet realized, use config values
+                (config.width, config.height)
+            }
+        };
+
         tracing::debug!(
             "[EmbeddedRDP] Attempting IronRDP connection to {}:{}",
             config.host,
             config.port
+        );
+        tracing::debug!(
+            "[EmbeddedRDP] Using resolution {}x{} (widget size)",
+            actual_width,
+            actual_height
         );
         tracing::debug!(
             "[EmbeddedRDP] Username: {:?}, Domain: {:?}, Password: {}",
@@ -1835,12 +1853,12 @@ impl EmbeddedRdpWidget {
             .map(|f| rustconn_core::rdp_client::SharedFolder::new(&f.share_name, &f.local_path))
             .collect();
 
-        // Convert GUI config to RdpClientConfig
+        // Convert GUI config to RdpClientConfig using actual widget size
         let mut client_config = RdpClientConfig::new(&config.host)
             .with_port(config.port)
             .with_resolution(
-                crate::utils::dimension_to_u16(config.width),
-                crate::utils::dimension_to_u16(config.height),
+                crate::utils::dimension_to_u16(actual_width),
+                crate::utils::dimension_to_u16(actual_height),
             )
             .with_clipboard(config.clipboard_enabled)
             .with_shared_folders(shared_folders);
@@ -1875,14 +1893,14 @@ impl EmbeddedRdpWidget {
         // Show toolbar with Ctrl+Alt+Del button
         self.toolbar.set_visible(true);
 
-        // Initialize RDP dimensions from config
-        *self.rdp_width.borrow_mut() = config.width;
-        *self.rdp_height.borrow_mut() = config.height;
+        // Initialize RDP dimensions from actual widget size (not config)
+        *self.rdp_width.borrow_mut() = actual_width;
+        *self.rdp_height.borrow_mut() = actual_height;
 
-        // Resize and clear pixel buffer to match config
+        // Resize and clear pixel buffer to match actual size
         {
             let mut buffer = self.pixel_buffer.borrow_mut();
-            buffer.resize(config.width, config.height);
+            buffer.resize(actual_width, actual_height);
             buffer.clear();
         }
 

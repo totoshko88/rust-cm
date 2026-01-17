@@ -242,26 +242,12 @@ fn start_embedded_rdp_session(
     // Create embedded RDP widget
     let embedded_widget = EmbeddedRdpWidget::new();
 
-    // Calculate initial resolution from saved window geometry
-    let state_ref = state.borrow();
-    let settings = state_ref.settings();
-    let content_width = settings
-        .ui
-        .window_width
-        .unwrap_or(1200)
-        .saturating_sub(settings.ui.sidebar_width.unwrap_or(250));
-    let content_height = settings.ui.window_height.unwrap_or(800).saturating_sub(100);
-    drop(state_ref);
-
-    #[allow(clippy::cast_sign_loss)]
-    let initial_resolution = if content_width > 100 && content_height > 100 {
-        (content_width as u32, content_height as u32)
-    } else {
-        rdp_config
-            .resolution
-            .as_ref()
-            .map_or((1920, 1080), |r| (r.width, r.height))
-    };
+    // Initial resolution will be determined from actual widget size after it's realized
+    // Use a reasonable default that will be updated on first resize
+    let initial_resolution = rdp_config
+        .resolution
+        .as_ref()
+        .map_or((1920, 1080), |r| (r.width, r.height));
 
     let mut embedded_config = EmbeddedRdpConfig::new(host)
         .with_port(port)
