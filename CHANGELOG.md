@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated documentation with Snap installation instructions
 
+### Updated Dependencies
+- `cc` 1.2.52 → 1.2.53
+- `find-msvc-tools` 0.1.7 → 0.1.8
+- `js-sys` 0.3.83 → 0.3.85
+- `rand_core` 0.9.3 → 0.9.5
+- `rustls-pki-types` 1.13.2 → 1.14.0
+- `rustls-webpki` 0.103.8 → 0.103.9
+- `wasm-bindgen` 0.2.106 → 0.2.108
+- `web-sys` 0.3.83 → 0.3.85
+- `wit-bindgen` 0.46.0 → 0.51.0
+- Note: `sspi` and `picky-krb` kept at 0.16.0/0.11.0 due to `rand_core` version conflict
+
 ## [0.6.3] - 2026-01-16
 
 ### Added
