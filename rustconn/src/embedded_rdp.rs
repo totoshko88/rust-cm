@@ -1100,29 +1100,120 @@ impl EmbeddedRdpWidget {
         self.drawing_area.add_controller(key_controller);
     }
 
-    /// Sets up the resize handler with scaling
+    /// Sets up the resize handler with debounced reconnect for resolution change
     ///
-    /// The RDP image is scaled to fit the widget size. Dynamic resolution change
-    /// is not supported as Windows RDP servers may not support Display Control channel.
+    /// When the widget is resized, we:
+    /// 1. Immediately scale the current image to fit
+    /// 2. After 2 seconds of no resize, reconnect with new resolution
     ///
     /// # Requirements Coverage
     ///
-    /// - Requirement 1.7: Dynamic resolution change on resize (via scaling)
+    /// - Requirement 1.7: Dynamic resolution change on resize
     #[cfg(feature = "rdp-embedded")]
     fn setup_resize_handler(&self) {
         let width = self.width.clone();
         let height = self.height.clone();
+        let rdp_width = self.rdp_width.clone();
+        let rdp_height = self.rdp_height.clone();
+        let state = self.state.clone();
+        let reconnect_timer = self.reconnect_timer.clone();
+        let config = self.config.clone();
+        let ironrdp_tx = self.ironrdp_command_tx.clone();
+        let status_label = self.status_label.clone();
+        let on_reconnect = self.on_reconnect.clone();
 
         self.drawing_area
             .connect_resize(move |area, new_width, new_height| {
                 let new_width = new_width.unsigned_abs();
                 let new_height = new_height.unsigned_abs();
 
+                tracing::debug!(
+                    "[RDP Resize] Widget resized to {}x{} (RDP: {}x{})",
+                    new_width,
+                    new_height,
+                    *rdp_width.borrow(),
+                    *rdp_height.borrow()
+                );
+
                 *width.borrow_mut() = new_width;
                 *height.borrow_mut() = new_height;
 
                 // Queue redraw for scaling - the draw function handles aspect ratio
                 area.queue_draw();
+
+                // Only request resolution change if connected
+                let current_state = *state.borrow();
+                if current_state != RdpConnectionState::Connected {
+                    return;
+                }
+
+                // Cancel any pending resize timer
+                if let Some(source_id) = reconnect_timer.borrow_mut().take() {
+                    source_id.remove();
+                }
+
+                // Schedule reconnect after 2 seconds of no resize
+                let rdp_w = rdp_width.clone();
+                let rdp_h = rdp_height.clone();
+                let timer = reconnect_timer.clone();
+                let cfg = config.clone();
+                let tx = ironrdp_tx.clone();
+                let sl = status_label.clone();
+                let reconnect_cb = on_reconnect.clone();
+
+                let source_id =
+                    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+                        // Clear the timer reference
+                        timer.borrow_mut().take();
+
+                        let current_rdp_w = *rdp_w.borrow();
+                        let current_rdp_h = *rdp_h.borrow();
+
+                        // Only reconnect if size actually changed significantly (>50px)
+                        let w_diff = (new_width as i32 - current_rdp_w as i32).unsigned_abs();
+                        let h_diff = (new_height as i32 - current_rdp_h as i32).unsigned_abs();
+
+                        if w_diff > 50 || h_diff > 50 {
+                            tracing::info!(
+                                "[RDP Resize] Reconnecting with new resolution: {}x{} -> {}x{}",
+                                current_rdp_w,
+                                current_rdp_h,
+                                new_width,
+                                new_height
+                            );
+
+                            // Update config with new resolution
+                            {
+                                let current_config = cfg.borrow().clone();
+                                if let Some(mut config) = current_config {
+                                    config = config.with_resolution(new_width, new_height);
+                                    *cfg.borrow_mut() = Some(config);
+                                }
+                            }
+
+                            // Disconnect current session
+                            if let Some(ref sender) = *tx.borrow() {
+                                let _ = sender.send(RdpClientCommand::Disconnect);
+                            }
+
+                            // Show reconnecting status
+                            sl.set_text("Reconnecting...");
+                            sl.set_visible(true);
+
+                            // Trigger reconnect via callback after short delay
+                            let reconnect_cb_clone = reconnect_cb.clone();
+                            glib::timeout_add_local_once(
+                                std::time::Duration::from_millis(500),
+                                move || {
+                                    if let Some(ref callback) = *reconnect_cb_clone.borrow() {
+                                        callback();
+                                    }
+                                },
+                            );
+                        }
+                    });
+
+                *reconnect_timer.borrow_mut() = Some(source_id);
             });
     }
 
@@ -2264,6 +2355,36 @@ impl EmbeddedRdpWidget {
     pub fn reconnect(&self) -> Result<(), EmbeddedRdpError> {
         let config = self.config.borrow().clone();
         if let Some(config) = config {
+            self.connect(&config)
+        } else {
+            Err(EmbeddedRdpError::Connection(
+                "No previous configuration to reconnect".to_string(),
+            ))
+        }
+    }
+
+    /// Reconnects with a new resolution
+    ///
+    /// This method disconnects and reconnects with the specified resolution.
+    /// Used when Display Control is not available for dynamic resize.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no previous configuration exists or if
+    /// the connection fails.
+    pub fn reconnect_with_resolution(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<(), EmbeddedRdpError> {
+        let config = self.config.borrow().clone();
+        if let Some(mut config) = config {
+            tracing::info!(
+                "[RDP Reconnect] Reconnecting with new resolution: {}x{}",
+                width,
+                height
+            );
+            config = config.with_resolution(width, height);
             self.connect(&config)
         } else {
             Err(EmbeddedRdpError::Connection(

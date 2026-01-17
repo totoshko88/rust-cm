@@ -238,33 +238,16 @@ fn start_embedded_rdp_session(
     history_entry_id: Option<Uuid>,
 ) {
     use crate::embedded_rdp::{EmbeddedRdpWidget, RdpConfig as EmbeddedRdpConfig};
+    use gtk4::glib;
 
     // Create embedded RDP widget
     let embedded_widget = EmbeddedRdpWidget::new();
 
-    // Calculate initial resolution from window size minus sidebar
-    // We use saved window size from settings since notebook may not be realized yet
-    let initial_resolution = {
-        let state_ref = state.borrow();
-        let settings = state_ref.settings();
-        let window_w = settings.ui.window_width.unwrap_or(1200) as u32;
-        let window_h = settings.ui.window_height.unwrap_or(800) as u32;
-        let sidebar_w = settings.ui.sidebar_width.unwrap_or(280) as u32;
-        // Subtract sidebar width, header bar (~50px), tab bar (~40px), and some padding
-        let content_w = window_w.saturating_sub(sidebar_w).saturating_sub(20);
-        let content_h = window_h.saturating_sub(100);
-        (content_w.max(640), content_h.max(480))
-    };
-
-    tracing::debug!(
-        "[RDP] Using initial resolution {}x{} (calculated from window settings)",
-        initial_resolution.0,
-        initial_resolution.1
-    );
-
+    // We'll connect after the widget is realized to get actual size
+    // For now, create config with placeholder resolution
     let mut embedded_config = EmbeddedRdpConfig::new(host)
         .with_port(port)
-        .with_resolution(initial_resolution.0, initial_resolution.1)
+        .with_resolution(1280, 720) // Placeholder, will be updated
         .with_clipboard(true);
 
     if !username.is_empty() {
@@ -298,14 +281,6 @@ fn start_embedded_rdp_session(
 
     // Wrap in Rc to keep widget alive in notebook
     let embedded_widget = Rc::new(embedded_widget);
-
-    // Connect using embedded widget
-    if let Err(e) = embedded_widget.connect(&embedded_config) {
-        eprintln!("RDP connection failed for '{}': {}", conn_name, e);
-        sidebar.update_connection_status(&connection_id.to_string(), "failed");
-    } else {
-        sidebar.update_connection_status(&connection_id.to_string(), "connecting");
-    }
 
     let session_id = Uuid::new_v4();
 
@@ -354,7 +329,13 @@ fn start_embedded_rdp_session(
         }
     });
 
-    notebook.add_embedded_rdp_tab(session_id, connection_id, conn_name, embedded_widget);
+    // Add tab first, then connect after widget is realized
+    notebook.add_embedded_rdp_tab(
+        session_id,
+        connection_id,
+        conn_name,
+        embedded_widget.clone(),
+    );
 
     // Store history entry ID in session for later use
     if let Some(entry_id) = history_entry_id {
@@ -383,6 +364,35 @@ fn start_embedded_rdp_session(
     if let Ok(mut state_mut) = state.try_borrow_mut() {
         let _ = state_mut.update_last_connected(connection_id);
     }
+
+    // Connect after a short delay to let GTK layout the widget
+    // This ensures we get the actual widget size for RDP resolution
+    let widget_for_connect = embedded_widget.clone();
+    let sidebar_for_connect = sidebar.clone();
+    let conn_name_owned = conn_name.to_string();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+        // Get actual widget size from drawing area
+        let drawing_area = widget_for_connect.drawing_area();
+        let actual_width = drawing_area.width().unsigned_abs().max(640);
+        let actual_height = drawing_area.height().unsigned_abs().max(480);
+
+        tracing::info!(
+            "[RDP Init] Actual widget size after layout: {}x{}",
+            actual_width,
+            actual_height
+        );
+
+        // Update config with actual resolution
+        let final_config = embedded_config.with_resolution(actual_width, actual_height);
+
+        // Now connect with correct resolution
+        if let Err(e) = widget_for_connect.connect(&final_config) {
+            eprintln!("RDP connection failed for '{}': {}", conn_name_owned, e);
+            sidebar_for_connect.update_connection_status(&connection_id.to_string(), "failed");
+        } else {
+            sidebar_for_connect.update_connection_status(&connection_id.to_string(), "connecting");
+        }
+    });
 }
 
 /// Starts external RDP session using xfreerdp
