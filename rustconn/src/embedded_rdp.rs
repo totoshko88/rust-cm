@@ -1102,24 +1102,16 @@ impl EmbeddedRdpWidget {
 
     /// Sets up the resize handler with scaling
     ///
-    /// The RDP image is scaled to fit the widget size. No reconnection is performed
-    /// as Windows RDP servers may not support dynamic resolution changes well.
+    /// The RDP image is scaled to fit the widget size. Dynamic resolution change
+    /// is not supported as Windows RDP servers may not support Display Control channel.
     ///
     /// # Requirements Coverage
     ///
-    /// - Requirement 1.7: Dynamic resolution change on resize
+    /// - Requirement 1.7: Dynamic resolution change on resize (via scaling)
     #[cfg(feature = "rdp-embedded")]
     fn setup_resize_handler(&self) {
         let width = self.width.clone();
         let height = self.height.clone();
-        let state = self.state.clone();
-        let is_embedded = self.is_embedded.clone();
-        let is_ironrdp = self.is_ironrdp.clone();
-        let config = self.config.clone();
-        let reconnect_timer = self.reconnect_timer.clone();
-        let rdp_width = self.rdp_width.clone();
-        let rdp_height = self.rdp_height.clone();
-        let ironrdp_tx = self.ironrdp_command_tx.clone();
 
         self.drawing_area
             .connect_resize(move |area, new_width, new_height| {
@@ -1129,69 +1121,8 @@ impl EmbeddedRdpWidget {
                 *width.borrow_mut() = new_width;
                 *height.borrow_mut() = new_height;
 
-                // Always queue redraw for immediate visual feedback (scaling)
+                // Queue redraw for scaling - the draw function handles aspect ratio
                 area.queue_draw();
-
-                // Check if we should trigger resize
-                let current_state = *state.borrow();
-                let embedded = *is_embedded.borrow();
-                let using_ironrdp = *is_ironrdp.borrow();
-
-                if current_state != RdpConnectionState::Connected || !embedded || !using_ironrdp {
-                    return;
-                }
-
-                // Only reconnect if size changed significantly (more than 50 pixels in any dimension)
-                let rdp_w = *rdp_width.borrow();
-                let rdp_h = *rdp_height.borrow();
-                let width_diff = crate::utils::dimension_diff(new_width, rdp_w);
-                let height_diff = crate::utils::dimension_diff(new_height, rdp_h);
-
-                if width_diff < 50 && height_diff < 50 {
-                    return; // Size change too small, just scale
-                }
-
-                // Cancel any pending resize timer
-                let _ = reconnect_timer.borrow_mut().take();
-
-                // Set up debounced resize request (500ms delay)
-                // We use SetDesktopSize instead of reconnecting to preserve RDPDR channel
-                let ironrdp_tx_clone = ironrdp_tx.clone();
-                let rdp_width_clone = rdp_width.clone();
-                let rdp_height_clone = rdp_height.clone();
-                let config_clone = config.clone();
-                let new_w = new_width;
-                let new_h = new_height;
-
-                let source_id = glib::timeout_add_local_once(
-                    std::time::Duration::from_millis(500),
-                    move || {
-                        // Send SetDesktopSize command to request resolution change
-                        // This preserves RDPDR channel (shared folders) unlike reconnecting
-                        if let Some(ref tx) = *ironrdp_tx_clone.borrow() {
-                            tracing::debug!(
-                                "[IronRDP] Requesting resize to {}x{} via SetDesktopSize",
-                                new_w,
-                                new_h
-                            );
-                            let _ = tx.send(RdpClientCommand::SetDesktopSize {
-                                width: crate::utils::dimension_to_u16(new_w),
-                                height: crate::utils::dimension_to_u16(new_h),
-                            });
-                            // Update stored dimensions optimistically
-                            // They will be corrected by ResolutionChanged event if server responds
-                            *rdp_width_clone.borrow_mut() = new_w;
-                            *rdp_height_clone.borrow_mut() = new_h;
-                            // Update config
-                            if let Some(ref mut cfg) = *config_clone.borrow_mut() {
-                                cfg.width = new_w;
-                                cfg.height = new_h;
-                            }
-                        }
-                    },
-                );
-
-                *reconnect_timer.borrow_mut() = Some(source_id);
             });
     }
 
@@ -1658,7 +1589,8 @@ impl EmbeddedRdpWidget {
                                 tracing::debug!("[IronRDP] Connected: {}x{}", width, height);
                                 *state.borrow_mut() = RdpConnectionState::Connected;
 
-                                // Use server's resolution for the buffer initially
+                                // Use server's resolution for the buffer
+                                // The draw function will scale to fit the widget
                                 let server_w = u32::from(width);
                                 let server_h = u32::from(height);
                                 *rdp_width_ref.borrow_mut() = server_w;
@@ -1672,42 +1604,6 @@ impl EmbeddedRdpWidget {
                                     callback(RdpConnectionState::Connected);
                                 }
                                 needs_redraw = true;
-
-                                // Schedule SetDesktopSize after a delay to allow RDPDR to initialize
-                                // This ensures shared folders are established before resize
-                                let ironrdp_tx_resize = ironrdp_tx.clone();
-                                let drawing_area_resize = drawing_area.clone();
-                                let rdp_width_resize = rdp_width_ref.clone();
-                                let rdp_height_resize = rdp_height_ref.clone();
-                                glib::timeout_add_local_once(
-                                    std::time::Duration::from_secs(2),
-                                    move || {
-                                        let widget_w = drawing_area_resize.width();
-                                        let widget_h = drawing_area_resize.height();
-                                        if widget_w > 100 && widget_h > 100 {
-                                            let target_w = widget_w.unsigned_abs();
-                                            let target_h = widget_h.unsigned_abs();
-                                            let current_w = *rdp_width_resize.borrow();
-                                            let current_h = *rdp_height_resize.borrow();
-                                            // Only resize if significantly different
-                                            let w_diff = crate::utils::dimension_diff(target_w, current_w);
-                                            let h_diff = crate::utils::dimension_diff(target_h, current_h);
-                                            if w_diff > 50 || h_diff > 50 {
-                                                tracing::debug!(
-                                                    "[IronRDP] Initial resize to widget size {}x{}",
-                                                    target_w,
-                                                    target_h
-                                                );
-                                                if let Some(ref tx) = *ironrdp_tx_resize.borrow() {
-                                                    let _ = tx.send(RdpClientCommand::SetDesktopSize {
-                                                        width: crate::utils::dimension_to_u16(target_w),
-                                                        height: crate::utils::dimension_to_u16(target_h),
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    },
-                                );
                             }
                             RdpClientEvent::Disconnected => {
                                 tracing::debug!(

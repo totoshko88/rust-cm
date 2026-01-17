@@ -242,12 +242,31 @@ fn start_embedded_rdp_session(
     // Create embedded RDP widget
     let embedded_widget = EmbeddedRdpWidget::new();
 
-    // Initial resolution will be determined from actual widget size after it's realized
-    // Use a reasonable default that will be updated on first resize
-    let initial_resolution = rdp_config
-        .resolution
-        .as_ref()
-        .map_or((1920, 1080), |r| (r.width, r.height));
+    // Get initial resolution from notebook widget size (actual available space)
+    // This ensures RDP session matches the window size from the start
+    let notebook_widget = notebook.widget();
+    let notebook_w = notebook_widget.width();
+    let notebook_h = notebook_widget.height();
+    let initial_resolution = if notebook_w > 100 && notebook_h > 100 {
+        // Use notebook size minus some padding for tab bar (~40px)
+        let w = notebook_w.unsigned_abs().saturating_sub(20);
+        let h = notebook_h.unsigned_abs().saturating_sub(60);
+        (w.max(640), h.max(480))
+    } else {
+        // Fallback to config or default
+        rdp_config
+            .resolution
+            .as_ref()
+            .map_or((1280, 720), |r| (r.width, r.height))
+    };
+
+    tracing::debug!(
+        "[RDP] Using initial resolution {}x{} (notebook: {}x{})",
+        initial_resolution.0,
+        initial_resolution.1,
+        notebook_w,
+        notebook_h
+    );
 
     let mut embedded_config = EmbeddedRdpConfig::new(host)
         .with_port(port)
