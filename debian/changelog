@@ -1,3 +1,13 @@
+rustconn (0.6.4-1) unstable; urgency=medium
+
+  * Update to version 0.6.4 - Snap Package Support
+    - Snap Package - New distribution format for easy installation via Snapcraft
+    - Classic confinement for full system access (SSH keys, network, etc.)
+    - Automatic updates via Snap Store
+    - GitHub Actions Snap Workflow - Automated builds and publishing
+
+ -- Anton Isaiev <totoshko88@gmail.com>  Fri, 17 Jan 2026 18:00:00 +0200
+
 rustconn (0.6.3-1) unstable; urgency=medium
 
   * Update to version 0.6.3 - Bitwarden Integration and Secret Backend Improvements

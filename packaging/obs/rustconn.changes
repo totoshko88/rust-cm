@@ -1,4 +1,13 @@
 -------------------------------------------------------------------
+Fri Jan 17 2026 Anton Isaiev <totoshko88@gmail.com> - 0.6.4
+
+- Update to version 0.6.4 - Snap Package Support
+  * Snap Package - New distribution format for easy installation via Snapcraft
+  * Classic confinement for full system access (SSH keys, network, etc.)
+  * Automatic updates via Snap Store
+  * GitHub Actions Snap Workflow - Automated builds and publishing
+
+-------------------------------------------------------------------
 Wed Jan 15 2026 Anton Isaiev <totoshko88@gmail.com> - 0.6.3
 
 - Update to version 0.6.3 - Bitwarden Integration and Secret Backend Improvements
