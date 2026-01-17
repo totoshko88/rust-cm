@@ -5,6 +5,21 @@ All notable changes to RustConn will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-01-17
+
+### Added
+- **Snap Package** - New distribution format for easy installation via Snapcraft:
+  - Classic confinement for full system access (SSH keys, network, etc.)
+  - Automatic updates via Snap Store
+  - Available via `sudo snap install rustconn --classic`
+- **GitHub Actions Snap Workflow** - Automated Snap package builds:
+  - Builds on tag push (`v*`) and manual trigger
+  - Uploads artifacts for testing
+  - Publishes to Snap Store stable channel on release tags
+
+### Changed
+- Updated documentation with Snap installation instructions
+
 ## [0.6.3] - 2026-01-16
 
 ### Added
