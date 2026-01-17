@@ -4,7 +4,7 @@ use super::super::rdpdr::RustConnRdpdrBackend;
 use super::super::{RdpClientConfig, RdpClientError, RdpClientEvent};
 use ironrdp::cliprdr::CliprdrClient;
 use ironrdp::connector::{
-    BitmapConfig, ClientConnector, Config, ConnectionResult, Credentials, DesktopSize,
+    BitmapConfig, ClientConnector, Config, ConnectionResult, Credentials, DesktopSize, ServerName,
 };
 use ironrdp::pdu::gcc::KeyboardType;
 use ironrdp::pdu::rdp::capability_sets::{
@@ -14,6 +14,7 @@ use ironrdp::pdu::rdp::capability_sets::{
 use ironrdp::pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
 use ironrdp::rdpdr::Rdpdr;
 use ironrdp::rdpsnd::client::Rdpsnd;
+use ironrdp_tokio::reqwest::ReqwestNetworkClient;
 use ironrdp_tokio::TokioFramed;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
@@ -126,27 +127,35 @@ pub async fn establish_connection(
         .await
         .map_err(|e| RdpClientError::ConnectionFailed(format!("Connection begin failed: {e}")))?;
 
-    // TLS upgrade - returns stream and server public key directly
+    // TLS upgrade - returns stream and server certificate
     let initial_stream = framed.into_inner_no_leftover();
 
-    let (upgraded_stream, server_public_key) = ironrdp_tls::upgrade(initial_stream, &config.host)
+    let (upgraded_stream, server_cert) = ironrdp_tls::upgrade(initial_stream, &config.host)
         .await
         .map_err(|e| RdpClientError::ConnectionFailed(format!("TLS upgrade failed: {e}")))?;
+
+    // Extract server public key from certificate
+    let server_public_key = ironrdp_tls::extract_tls_server_public_key(&server_cert)
+        .map(|k| k.to_vec())
+        .unwrap_or_default();
 
     let upgraded = ironrdp_tokio::mark_as_upgraded(should_upgrade, &mut connector);
 
     let mut upgraded_framed = TokioFramed::new(upgraded_stream);
 
+    // Create network client for Kerberos/AAD authentication
+    let mut network_client = ReqwestNetworkClient::new();
+
     // Complete connection (NLA, licensing, capabilities)
-    // Note: We pass None for network_client since we don't need AAD/gateway
+    // New API in ironrdp 0.14: connect_finalize(upgraded, connector, framed, network_client, server_name, server_public_key, kerberos_config)
     let connection_result = ironrdp_tokio::connect_finalize(
         upgraded,
-        &mut upgraded_framed,
         connector,
-        (&config.host).into(),
+        &mut upgraded_framed,
+        &mut network_client,
+        ServerName::new(&config.host),
         server_public_key,
-        None,
-        None,
+        None, // No Kerberos config
     )
     .await
     .map_err(|e| RdpClientError::ConnectionFailed(format!("Connection finalize failed: {e}")))?;

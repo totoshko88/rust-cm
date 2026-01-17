@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated documentation with Snap installation instructions
 
 ### Updated Dependencies
+- `ironrdp` 0.13 → 0.14 (embedded RDP client)
+- `ironrdp-tokio` 0.7 → 0.8
+- `ironrdp-tls` 0.1 → 0.2
+- `sspi` 0.16 → 0.18.7 (Windows authentication)
+- `picky` 7.0.0-rc.17 → 7.0.0-rc.20
+- `picky-krb` 0.11 → 0.12 (Kerberos support)
+- `hickory-proto` 0.24 → 0.25
+- `hickory-resolver` 0.24 → 0.25
 - `cc` 1.2.52 → 1.2.53
 - `find-msvc-tools` 0.1.7 → 0.1.8
 - `js-sys` 0.3.83 → 0.3.85
@@ -30,7 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wasm-bindgen` 0.2.106 → 0.2.108
 - `web-sys` 0.3.83 → 0.3.85
 - `wit-bindgen` 0.46.0 → 0.51.0
-- Note: `sspi` and `picky-krb` kept at 0.16.0/0.11.0 due to `rand_core` version conflict
 
 ## [0.6.3] - 2026-01-16
 
