@@ -175,11 +175,15 @@ fn build_connector_config(config: &RdpClientConfig) -> Config {
     };
 
     // Configure RemoteFX codec for better image quality
+    // Use color depth from config (derived from performance mode)
     let bitmap_config = Some(BitmapConfig {
         lossy_compression: true,
-        color_depth: 32,
+        color_depth: u32::from(config.color_depth),
         codecs: build_bitmap_codecs(),
     });
+
+    // Build performance flags based on performance mode
+    let performance_flags = build_performance_flags(config.performance_mode);
 
     Config {
         credentials,
@@ -206,13 +210,38 @@ fn build_connector_config(config: &RdpClientConfig) -> Config {
         request_data: None,
         autologon: false,
         enable_audio_playback: config.audio_enabled,
-        performance_flags: PerformanceFlags::default(),
+        performance_flags,
         license_cache: None,
         timezone_info: get_timezone_info(),
         enable_server_pointer: true,
         // Use hardware pointer - server sends cursor bitmap separately
         // This avoids cursor artifacts in the framebuffer
         pointer_software_rendering: false,
+    }
+}
+
+/// Builds performance flags based on the performance mode
+fn build_performance_flags(mode: crate::models::RdpPerformanceMode) -> PerformanceFlags {
+    use crate::models::RdpPerformanceMode;
+
+    match mode {
+        RdpPerformanceMode::Quality => {
+            // Best quality: enable font smoothing and desktop composition
+            PerformanceFlags::ENABLE_FONT_SMOOTHING | PerformanceFlags::ENABLE_DESKTOP_COMPOSITION
+        }
+        RdpPerformanceMode::Balanced => {
+            // Balanced: default flags (disable full window drag and menu animations, enable font smoothing)
+            PerformanceFlags::default()
+        }
+        RdpPerformanceMode::Speed => {
+            // Best speed: disable all visual effects for maximum performance
+            PerformanceFlags::DISABLE_WALLPAPER
+                | PerformanceFlags::DISABLE_FULLWINDOWDRAG
+                | PerformanceFlags::DISABLE_MENUANIMATIONS
+                | PerformanceFlags::DISABLE_THEMING
+                | PerformanceFlags::DISABLE_CURSOR_SHADOW
+                | PerformanceFlags::DISABLE_CURSORSETTINGS
+        }
     }
 }
 

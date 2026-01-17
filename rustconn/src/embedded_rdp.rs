@@ -1161,8 +1161,9 @@ impl EmbeddedRdpWidget {
                 let sl = status_label.clone();
                 let reconnect_cb = on_reconnect.clone();
 
-                let source_id =
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                let source_id = glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(500),
+                    move || {
                         // Clear the timer reference
                         timer.borrow_mut().take();
 
@@ -1211,7 +1212,8 @@ impl EmbeddedRdpWidget {
                                 },
                             );
                         }
-                    });
+                    },
+                );
 
                 *reconnect_timer.borrow_mut() = Some(source_id);
             });
@@ -1568,7 +1570,9 @@ impl EmbeddedRdpWidget {
                 crate::utils::dimension_to_u16(actual_height),
             )
             .with_clipboard(config.clipboard_enabled)
-            .with_shared_folders(shared_folders);
+            .with_shared_folders(shared_folders)
+            .with_performance_mode(config.performance_mode)
+            .with_color_depth(config.performance_mode.color_depth());
 
         if let Some(ref username) = config.username {
             client_config = client_config.with_username(username);

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Builds on tag push (`v*`) and manual trigger
   - Uploads artifacts for testing
   - Publishes to Snap Store stable channel on release tags
+- **RDP/VNC Performance Modes** - New dropdown in connection dialog to optimize for different network conditions:
+  - Quality: Best visual quality (32-bit color for RDP, Tight encoding with high quality for VNC)
+  - Balanced: Good balance of quality and performance (24-bit color, medium compression)
+  - Speed: Optimized for slow connections (16-bit color for RDP, ZRLE encoding with high compression for VNC)
 
 ### Changed
 - Updated documentation with Snap installation instructions
