@@ -1,6 +1,10 @@
 //! Tab management for terminal notebook
 //!
 //! This module handles tab creation, display modes, and overflow menu.
+//! NOTE: Most functions in this module are legacy code from gtk::Notebook era.
+//! They are kept for reference but not used with adw::TabView.
+
+#![allow(dead_code)]
 
 use gtk4::prelude::*;
 use gtk4::{gdk, Box as GtkBox, Button, Image, Label, MenuButton, Notebook, Orientation, Popover};

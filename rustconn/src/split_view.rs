@@ -27,11 +27,14 @@ fn create_terminal_scrolled_window(terminal: &Terminal) -> gtk4::ScrolledWindow 
         .vscrollbar_policy(gtk4::PolicyType::Automatic)
         .hexpand(true)
         .vexpand(true)
+        .propagate_natural_height(false)
+        .propagate_natural_width(false)
         .child(terminal)
         .build();
 
-    // Queue resize to ensure proper layout after adding
-    scrolled.queue_resize();
+    // Ensure the scrolled window takes all available space
+    scrolled.set_valign(gtk4::Align::Fill);
+    scrolled.set_halign(gtk4::Align::Fill);
 
     scrolled
 }
@@ -83,7 +86,118 @@ impl TerminalPane {
         }
     }
 
-    /// Sets up drag-and-drop for this pane
+    /// Sets up click handler for focus management using capture phase
+    /// This ensures we catch clicks even when they're on child widgets like terminals
+    pub fn setup_click_handler<F>(&self, on_click: F)
+    where
+        F: Fn(Uuid) + 'static,
+    {
+        let click = gtk4::GestureClick::new();
+        click.set_button(1); // Left click
+                             // Use capture phase to intercept clicks before child widgets
+        click.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        let pane_id = self.id;
+        click.connect_pressed(move |gesture, _, _, _| {
+            on_click(pane_id);
+            // Don't stop propagation - let the terminal still receive the click
+            gesture.set_state(gtk4::EventSequenceState::None);
+        });
+        self.container.add_controller(click);
+    }
+
+    /// Sets up context menu (right-click) for the pane
+    /// The menu_builder returns a Menu with action names like "win.copy", "win.paste", etc.
+    /// These actions are looked up from the window's action group.
+    pub fn setup_context_menu<F>(&self, menu_builder: F)
+    where
+        F: Fn(Uuid) -> gtk4::gio::Menu + 'static,
+    {
+        let click = gtk4::GestureClick::new();
+        click.set_button(3); // Right click
+                             // Use capture phase for context menu too
+        click.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        let pane_id = self.id;
+        let container = self.container.clone();
+
+        click.connect_pressed(move |gesture, _, x, y| {
+            let menu = menu_builder(pane_id);
+            let popover = gtk4::PopoverMenu::from_model(Some(&menu));
+            popover.set_parent(&container);
+            popover.set_pointing_to(Some(&gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            popover.set_has_arrow(false);
+
+            // GTK4 PopoverMenu doesn't automatically inherit action groups from ancestors.
+            // We need to create proxy actions that forward to the window's actions
+            // and insert them into the POPOVER (not container) so menu items can find them.
+            if let Some(root) = container.root() {
+                if let Some(window) = root.downcast_ref::<gtk4::ApplicationWindow>() {
+                    let action_group = gtk4::gio::SimpleActionGroup::new();
+                    let window_weak = window.downgrade();
+
+                    // Create proxy actions for simple (no parameter) actions
+                    let simple_actions = [
+                        "copy",
+                        "paste",
+                        "close-tab",
+                        "close-pane",
+                        "split-horizontal",
+                        "split-vertical",
+                    ];
+
+                    for name in simple_actions {
+                        let win = window_weak.clone();
+                        let action_name = name.to_string();
+                        let action = gtk4::gio::SimpleAction::new(name, None);
+                        action.connect_activate(move |_, _| {
+                            if let Some(w) = win.upgrade() {
+                                if let Some(a) = w.lookup_action(&action_name) {
+                                    a.activate(None);
+                                }
+                            }
+                        });
+                        action_group.add_action(&action);
+                    }
+
+                    // Create proxy actions for string parameter actions
+                    let string_actions = ["close-tab-by-id", "unsplit-session"];
+
+                    for name in string_actions {
+                        let win = window_weak.clone();
+                        let action_name = name.to_string();
+                        let action =
+                            gtk4::gio::SimpleAction::new(name, Some(gtk4::glib::VariantTy::STRING));
+                        action.connect_activate(move |_, param| {
+                            if let Some(w) = win.upgrade() {
+                                if let Some(a) = w.lookup_action(&action_name) {
+                                    a.activate(param);
+                                }
+                            }
+                        });
+                        action_group.add_action(&action);
+                    }
+
+                    // Insert action group into the POPOVER so menu items can find them
+                    popover.insert_action_group("win", Some(&action_group));
+                }
+            }
+
+            popover.popup();
+
+            // Claim the gesture to prevent terminal from getting the click
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+
+            // Clean up popover when closed
+            let container_weak = container.downgrade();
+            popover.connect_closed(move |pop| {
+                if container_weak.upgrade().is_some() {
+                    pop.unparent();
+                }
+            });
+        });
+        self.container.add_controller(click);
+    }
+
+    /// Sets up drag-and-drop for this pane with visual feedback
     pub fn setup_drop_target<F>(&self, on_drop: F)
     where
         F: Fn(Uuid, Uuid) + 'static, // (pane_id, session_id)
@@ -92,7 +206,26 @@ impl TerminalPane {
             gtk4::DropTarget::new(gtk4::glib::Type::STRING, gtk4::gdk::DragAction::MOVE);
 
         let pane_id = self.id;
+        let container = self.container.clone();
+        let container_for_enter = self.container.clone();
+        let container_for_leave = self.container.clone();
+
+        // Visual feedback when drag enters the pane
+        drop_target.connect_enter(move |_target, _x, _y| {
+            container_for_enter.add_css_class("drop-target-highlight");
+            gtk4::gdk::DragAction::MOVE
+        });
+
+        // Remove highlight when drag leaves
+        drop_target.connect_leave(move |_target| {
+            container_for_leave.remove_css_class("drop-target-highlight");
+        });
+
+        // Handle the drop
         drop_target.connect_drop(move |_target, value, _x, _y| {
+            // Remove highlight
+            container.remove_css_class("drop-target-highlight");
+
             if let Ok(session_str) = value.get::<String>() {
                 if let Ok(session_id) = Uuid::parse_str(&session_str) {
                     on_drop(pane_id, session_id);
@@ -138,6 +271,11 @@ impl TerminalPane {
     /// Sets the content widget for this pane
     pub fn set_content(&self, widget: &impl IsA<gtk4::Widget>) {
         self.clear();
+        // Ensure the widget fills the pane
+        widget.set_hexpand(true);
+        widget.set_vexpand(true);
+        widget.set_halign(gtk4::Align::Fill);
+        widget.set_valign(gtk4::Align::Fill);
         self.container.append(widget);
     }
 }
@@ -196,6 +334,9 @@ impl SplitTerminalView {
         let welcome = Self::create_welcome_content();
         initial_pane.set_content(&welcome);
 
+        // Apply focused-pane CSS class to initial pane
+        initial_pane.container().add_css_class("focused-pane");
+
         root.append(initial_pane.container());
 
         let panes = Rc::new(RefCell::new(vec![initial_pane]));
@@ -227,6 +368,24 @@ impl SplitTerminalView {
     #[must_use]
     pub fn shared_terminals(&self) -> SharedTerminals {
         self.terminals.clone()
+    }
+
+    /// Returns a reference to the panes for external setup
+    #[must_use]
+    pub fn panes_ref(&self) -> std::cell::Ref<'_, Vec<TerminalPane>> {
+        self.panes.borrow()
+    }
+
+    /// Returns a clone of the panes Rc for callbacks
+    #[must_use]
+    pub fn panes_ref_clone(&self) -> Rc<RefCell<Vec<TerminalPane>>> {
+        self.panes.clone()
+    }
+
+    /// Returns a clone of the focused_pane Rc for callbacks
+    #[must_use]
+    pub fn focused_pane_ref(&self) -> Rc<RefCell<Option<Uuid>>> {
+        self.focused_pane.clone()
     }
 
     /// Returns the root widget
@@ -1270,6 +1429,150 @@ impl SplitTerminalView {
     pub fn setup_drag_and_drop(&self) {
         // Setup drop target for initial pane
         self.setup_pane_drop_target_by_index(0);
+    }
+
+    /// Sets up click handlers for focus management on all panes
+    pub fn setup_click_handlers(&self) {
+        self.setup_pane_click_handler_by_index(0);
+    }
+
+    /// Sets up click handler for a specific pane by index
+    fn setup_pane_click_handler_by_index(&self, index: usize) {
+        let panes = self.panes.borrow();
+        if index >= panes.len() {
+            return;
+        }
+        let pane_id = panes[index].id();
+        drop(panes);
+        self.setup_pane_click_handler(pane_id);
+    }
+
+    /// Sets up click handler for a specific pane by ID
+    pub fn setup_pane_click_handler(&self, pane_id: Uuid) {
+        let panes = self.panes.borrow();
+        let Some(pane) = panes.iter().find(|p| p.id() == pane_id) else {
+            return;
+        };
+
+        let focused_pane = self.focused_pane.clone();
+        let panes_clone = self.panes.clone();
+
+        pane.setup_click_handler(move |clicked_pane_id| {
+            // Update focused pane
+            *focused_pane.borrow_mut() = Some(clicked_pane_id);
+
+            // Update visual focus indicator
+            let panes_ref = panes_clone.borrow();
+            for p in panes_ref.iter() {
+                let container = p.container();
+                if p.id() == clicked_pane_id {
+                    container.add_css_class("focused-pane");
+                    container.remove_css_class("unfocused-pane");
+                } else {
+                    container.remove_css_class("focused-pane");
+                    container.add_css_class("unfocused-pane");
+                }
+            }
+        });
+    }
+
+    /// Sets up context menu for all panes with callbacks for actions
+    #[allow(clippy::too_many_arguments)]
+    pub fn setup_context_menus<F1, F2, F3>(
+        &self,
+        on_close_pane: F1,
+        on_close_tab: F2,
+        on_detach: F3,
+    ) where
+        F1: Fn(Uuid) + Clone + 'static,
+        F2: Fn(Uuid) + Clone + 'static,
+        F3: Fn(Uuid) + Clone + 'static,
+    {
+        self.setup_pane_context_menu_by_index(0, on_close_pane, on_close_tab, on_detach);
+    }
+
+    /// Sets up context menu for a specific pane by index
+    fn setup_pane_context_menu_by_index<F1, F2, F3>(
+        &self,
+        index: usize,
+        on_close_pane: F1,
+        on_close_tab: F2,
+        on_detach: F3,
+    ) where
+        F1: Fn(Uuid) + Clone + 'static,
+        F2: Fn(Uuid) + Clone + 'static,
+        F3: Fn(Uuid) + Clone + 'static,
+    {
+        let panes = self.panes.borrow();
+        if index >= panes.len() {
+            return;
+        }
+        let pane_id = panes[index].id();
+        drop(panes);
+        self.setup_pane_context_menu(pane_id, on_close_pane, on_close_tab, on_detach);
+    }
+
+    /// Sets up context menu for a specific pane by ID
+    pub fn setup_pane_context_menu<F1, F2, F3>(
+        &self,
+        pane_id: Uuid,
+        on_close_pane: F1,
+        on_close_tab: F2,
+        on_detach: F3,
+    ) where
+        F1: Fn(Uuid) + Clone + 'static,
+        F2: Fn(Uuid) + Clone + 'static,
+        F3: Fn(Uuid) + Clone + 'static,
+    {
+        let panes = self.panes.borrow();
+        let Some(pane) = panes.iter().find(|p| p.id() == pane_id) else {
+            return;
+        };
+
+        let panes_clone = self.panes.clone();
+        let sessions_clone = self.sessions.clone();
+
+        pane.setup_context_menu(move |ctx_pane_id| {
+            let menu = gtk4::gio::Menu::new();
+
+            // Get session in this pane
+            let panes_ref = panes_clone.borrow();
+            let session_id = panes_ref
+                .iter()
+                .find(|p| p.id() == ctx_pane_id)
+                .and_then(|p| p.current_session());
+            drop(panes_ref);
+
+            if let Some(sid) = session_id {
+                // Get session name for display
+                let sessions_ref = sessions_clone.borrow();
+                let session_name = sessions_ref
+                    .get(&sid)
+                    .map(|s| s.name.clone())
+                    .unwrap_or_else(|| "Session".to_string());
+                drop(sessions_ref);
+
+                // Close tab action
+                let close_tab_section = gtk4::gio::Menu::new();
+                close_tab_section.append(
+                    Some(&format!("Close \"{}\"", session_name)),
+                    Some(&format!("win.close-tab-by-id('{}')", sid)),
+                );
+                menu.append_section(None, &close_tab_section);
+            }
+
+            // Close pane action (only if multiple panes)
+            if panes_clone.borrow().len() > 1 {
+                let pane_section = gtk4::gio::Menu::new();
+                pane_section.append(Some("Close Pane"), Some("win.close-pane"));
+                menu.append_section(None, &pane_section);
+            }
+
+            menu
+        });
+
+        // Store callbacks for later use (they're triggered via window actions)
+        let _ = (on_close_pane, on_close_tab, on_detach);
     }
 
     /// Sets up drop target for a specific pane by index

@@ -347,7 +347,7 @@ fn start_embedded_rdp_session(
     split_view.widget().set_visible(false);
     split_view.widget().set_vexpand(false);
     notebook.widget().set_vexpand(true);
-    notebook.notebook().set_vexpand(true);
+    notebook.show_tab_view_content();
 
     // If Fullscreen mode, maximize the window
     if matches!(window_mode, rustconn_core::models::WindowMode::Fullscreen) {
@@ -725,7 +725,7 @@ fn start_vnc_session_internal(
     split_view.widget().set_visible(false);
     split_view.widget().set_vexpand(false);
     notebook.widget().set_vexpand(true);
-    notebook.notebook().set_vexpand(true);
+    notebook.show_tab_view_content();
 
     // Update last_connected timestamp
     if let Ok(mut state_mut) = state.try_borrow_mut() {

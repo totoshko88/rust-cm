@@ -594,6 +594,25 @@ fn load_css_styles() {
             background-color: alpha(@error_color, 0.1);
             color: @error_color;
         }
+
+        /* Drop target highlight for drag-and-drop to split panes */
+        .drop-target-highlight {
+            background-color: alpha(@accent_color, 0.15);
+            border: 2px dashed @accent_color;
+            border-radius: 6px;
+            transition: background-color 150ms ease-in-out,
+                        border-color 150ms ease-in-out;
+        }
+
+        /* Tab styles for sessions in split view - distinct color */
+        .tab-in-split {
+            background-color: alpha(@accent_color, 0.2);
+            border-radius: 4px;
+        }
+
+        .tab-in-split:hover {
+            background-color: alpha(@accent_color, 0.3);
+        }
         ",
     );
 

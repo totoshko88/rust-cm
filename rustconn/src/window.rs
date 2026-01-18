@@ -7,8 +7,10 @@ use adw::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{gio, glib, Button, Label, MenuButton, Orientation, Paned};
 use libadwaita as adw;
+use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
+use vte4::prelude::*;
 
 use crate::alert;
 use crate::toast::ToastOverlay;
@@ -117,20 +119,21 @@ impl MainWindow {
         // Create split terminal view as the main terminal container
         let split_view = Rc::new(SplitTerminalView::new());
 
-        // Create terminal notebook for tab management
+        // Create terminal notebook for tab management (using adw::TabView)
         let terminal_notebook = Rc::new(TerminalNotebook::new());
 
-        // Configure notebook to show tabs
-        // Content is displayed in split view panes, not in notebook
-        terminal_notebook.notebook().set_show_tabs(true);
-        terminal_notebook.notebook().set_show_border(false);
+        // TabView/TabBar configuration is handled internally
         // Don't let notebook expand - it should only show tabs
         terminal_notebook.widget().set_vexpand(false);
-        // Ensure notebook is visible
+        // Ensure notebook is visible (TabBar)
         terminal_notebook.widget().set_visible(true);
+        // Hide TabView content initially - split_view shows welcome content
+        terminal_notebook.hide_tab_view_content();
 
         // Create a container for the terminal area
         let terminal_container = gtk4::Box::new(Orientation::Vertical, 0);
+        terminal_container.set_vexpand(true);
+        terminal_container.set_hexpand(true);
 
         // Add notebook tabs at top for session switching (tabs only, content hidden by size)
         terminal_container.append(terminal_notebook.widget());
@@ -568,18 +571,36 @@ impl MainWindow {
         });
         window.add_action(&search_action);
 
-        // Copy action
+        // Copy action - works with split view's focused session for SSH
         let copy_action = gio::SimpleAction::new("copy", None);
         let notebook_clone = terminal_notebook.clone();
+        let split_view_clone = self.split_view.clone();
         copy_action.connect_activate(move |_, _| {
+            // Try split view's focused session first (for SSH in split panes)
+            if let Some(session_id) = split_view_clone.get_focused_session() {
+                if let Some(terminal) = notebook_clone.get_terminal(session_id) {
+                    terminal.copy_clipboard_format(vte4::Format::Text);
+                    return;
+                }
+            }
+            // Fall back to TabView's active terminal (for RDP/VNC/SPICE)
             notebook_clone.copy_to_clipboard();
         });
         window.add_action(&copy_action);
 
-        // Paste action
+        // Paste action - works with split view's focused session for SSH
         let paste_action = gio::SimpleAction::new("paste", None);
         let notebook_clone = terminal_notebook.clone();
+        let split_view_clone = self.split_view.clone();
         paste_action.connect_activate(move |_, _| {
+            // Try split view's focused session first (for SSH in split panes)
+            if let Some(session_id) = split_view_clone.get_focused_session() {
+                if let Some(terminal) = notebook_clone.get_terminal(session_id) {
+                    terminal.paste_clipboard();
+                    return;
+                }
+            }
+            // Fall back to TabView's active terminal (for RDP/VNC/SPICE)
             notebook_clone.paste_from_clipboard();
         });
         window.add_action(&paste_action);
@@ -780,12 +801,15 @@ impl MainWindow {
         let next_tab_action = gio::SimpleAction::new("next-tab", None);
         let notebook_clone = terminal_notebook.clone();
         next_tab_action.connect_activate(move |_, _| {
-            let notebook = notebook_clone.notebook();
-            let current = notebook.current_page().unwrap_or(0);
-            let total = notebook_clone.tab_count();
-            if total > 0 {
-                let next = (current + 1) % total;
-                notebook.set_current_page(Some(next));
+            let tab_view = notebook_clone.tab_view();
+            let n_pages = tab_view.n_pages();
+            if n_pages > 0 {
+                if let Some(selected) = tab_view.selected_page() {
+                    let current_pos = tab_view.page_position(&selected);
+                    let next_pos = (current_pos + 1) % n_pages;
+                    let next_page = tab_view.nth_page(next_pos);
+                    tab_view.set_selected_page(&next_page);
+                }
             }
         });
         window.add_action(&next_tab_action);
@@ -794,12 +818,19 @@ impl MainWindow {
         let prev_tab_action = gio::SimpleAction::new("prev-tab", None);
         let notebook_clone = terminal_notebook.clone();
         prev_tab_action.connect_activate(move |_, _| {
-            let notebook = notebook_clone.notebook();
-            let current = notebook.current_page().unwrap_or(0);
-            let total = notebook_clone.tab_count();
-            if total > 0 {
-                let prev = if current == 0 { total - 1 } else { current - 1 };
-                notebook.set_current_page(Some(prev));
+            let tab_view = notebook_clone.tab_view();
+            let n_pages = tab_view.n_pages();
+            if n_pages > 0 {
+                if let Some(selected) = tab_view.selected_page() {
+                    let current_pos = tab_view.page_position(&selected);
+                    let prev_pos = if current_pos == 0 {
+                        n_pages - 1
+                    } else {
+                        current_pos - 1
+                    };
+                    let prev_page = tab_view.nth_page(prev_pos);
+                    tab_view.set_selected_page(&prev_page);
+                }
             }
         });
         window.add_action(&prev_tab_action);
@@ -1211,6 +1242,10 @@ impl MainWindow {
                 })
             {
                 let notebook = notebook_for_split_h.clone();
+                let sv_for_click = split_view_clone.clone();
+                let nb_for_click = notebook.clone();
+
+                // Setup drop target
                 split_view_clone.setup_pane_drop_target_with_callback(
                     new_pane_id,
                     move |session_id| {
@@ -1219,6 +1254,49 @@ impl MainWindow {
                         Some((info, terminal))
                     },
                 );
+
+                // Setup click handler for new pane
+                let split_panes = sv_for_click.panes_ref();
+                if let Some(pane) = split_panes.iter().find(|p| p.id() == new_pane_id) {
+                    let focused_pane = sv_for_click.focused_pane_ref();
+                    let panes_clone = sv_for_click.panes_ref_clone();
+
+                    pane.setup_click_handler(move |clicked_pane_id| {
+                        *focused_pane.borrow_mut() = Some(clicked_pane_id);
+                        // Get session_id and update CSS, then drop borrow before switch_to_tab
+                        let session_to_switch = {
+                            let panes_ref = panes_clone.borrow();
+                            let mut session_id = None;
+                            for p in panes_ref.iter() {
+                                let container = p.container();
+                                if p.id() == clicked_pane_id {
+                                    container.add_css_class("focused-pane");
+                                    container.remove_css_class("unfocused-pane");
+                                    session_id = p.current_session();
+                                } else {
+                                    container.remove_css_class("focused-pane");
+                                    container.add_css_class("unfocused-pane");
+                                }
+                            }
+                            session_id
+                        };
+                        // Borrow dropped, safe to call switch_to_tab
+                        if let Some(session_id) = session_to_switch {
+                            nb_for_click.switch_to_tab(session_id);
+                        }
+                    });
+
+                    // Setup context menu for new pane
+                    let panes_for_menu = sv_for_click.panes_ref_clone();
+                    let sessions_for_menu = sv_for_click.shared_sessions();
+                    pane.setup_context_menu(move |ctx_pane_id| {
+                        Self::build_pane_context_menu(
+                            ctx_pane_id,
+                            &panes_for_menu,
+                            &sessions_for_menu,
+                        )
+                    });
+                }
             }
         });
         window.add_action(&split_horizontal_action);
@@ -1236,6 +1314,10 @@ impl MainWindow {
                 })
             {
                 let notebook = notebook_for_split_v.clone();
+                let sv_for_click = split_view_clone.clone();
+                let nb_for_click = notebook.clone();
+
+                // Setup drop target
                 split_view_clone.setup_pane_drop_target_with_callback(
                     new_pane_id,
                     move |session_id| {
@@ -1244,6 +1326,49 @@ impl MainWindow {
                         Some((info, terminal))
                     },
                 );
+
+                // Setup click handler for new pane
+                let split_panes = sv_for_click.panes_ref();
+                if let Some(pane) = split_panes.iter().find(|p| p.id() == new_pane_id) {
+                    let focused_pane = sv_for_click.focused_pane_ref();
+                    let panes_clone = sv_for_click.panes_ref_clone();
+
+                    pane.setup_click_handler(move |clicked_pane_id| {
+                        *focused_pane.borrow_mut() = Some(clicked_pane_id);
+                        // Get session_id and update CSS, then drop borrow before switch_to_tab
+                        let session_to_switch = {
+                            let panes_ref = panes_clone.borrow();
+                            let mut session_id = None;
+                            for p in panes_ref.iter() {
+                                let container = p.container();
+                                if p.id() == clicked_pane_id {
+                                    container.add_css_class("focused-pane");
+                                    container.remove_css_class("unfocused-pane");
+                                    session_id = p.current_session();
+                                } else {
+                                    container.remove_css_class("focused-pane");
+                                    container.add_css_class("unfocused-pane");
+                                }
+                            }
+                            session_id
+                        };
+                        // Borrow dropped, safe to call switch_to_tab
+                        if let Some(session_id) = session_to_switch {
+                            nb_for_click.switch_to_tab(session_id);
+                        }
+                    });
+
+                    // Setup context menu for new pane
+                    let panes_for_menu = sv_for_click.panes_ref_clone();
+                    let sessions_for_menu = sv_for_click.shared_sessions();
+                    pane.setup_context_menu(move |ctx_pane_id| {
+                        Self::build_pane_context_menu(
+                            ctx_pane_id,
+                            &panes_for_menu,
+                            &sessions_for_menu,
+                        )
+                    });
+                }
             }
         });
         window.add_action(&split_vertical_action);
@@ -1263,6 +1388,23 @@ impl MainWindow {
             let _ = split_view_clone.focus_next_pane();
         });
         window.add_action(&focus_next_pane_action);
+
+        // Unsplit session action - moves session from split pane to its own tab
+        let unsplit_session_action =
+            gio::SimpleAction::new("unsplit-session", Some(glib::VariantTy::STRING));
+        let split_view_clone = self.split_view.clone();
+        unsplit_session_action.connect_activate(move |_, param| {
+            if let Some(param) = param {
+                if let Some(session_id_str) = param.get::<String>() {
+                    if let Ok(session_id) = Uuid::parse_str(&session_id_str) {
+                        // Clear session from split pane (will auto-collapse if needed)
+                        split_view_clone.clear_session_from_panes(session_id);
+                        // Session remains in TabView, just not displayed in split
+                    }
+                }
+            }
+        });
+        window.add_action(&unsplit_session_action);
     }
 
     /// Sets up document management actions
@@ -1324,6 +1466,58 @@ impl MainWindow {
                 let terminal = notebook_for_drop.get_terminal(session_id);
                 Some((info, terminal))
             });
+        }
+
+        // Set up click handlers for focus management
+        {
+            let split_view_for_click = split_view.clone();
+            let notebook_for_click = terminal_notebook.clone();
+            if let Some(initial_pane_id) = split_view.pane_ids().first().copied() {
+                let split_panes = split_view_for_click.panes_ref();
+                if let Some(pane) = split_panes.iter().find(|p| p.id() == initial_pane_id) {
+                    let focused_pane = split_view_for_click.focused_pane_ref();
+                    let panes_clone = split_view_for_click.panes_ref_clone();
+                    let notebook_clone = notebook_for_click.clone();
+
+                    pane.setup_click_handler(move |clicked_pane_id| {
+                        // Update focused pane
+                        *focused_pane.borrow_mut() = Some(clicked_pane_id);
+
+                        // Get session_id and update CSS, then drop borrow before switch_to_tab
+                        let session_to_switch = {
+                            let panes_ref = panes_clone.borrow();
+                            let mut session_id = None;
+                            for p in panes_ref.iter() {
+                                let container = p.container();
+                                if p.id() == clicked_pane_id {
+                                    container.add_css_class("focused-pane");
+                                    container.remove_css_class("unfocused-pane");
+                                    session_id = p.current_session();
+                                } else {
+                                    container.remove_css_class("focused-pane");
+                                    container.add_css_class("unfocused-pane");
+                                }
+                            }
+                            session_id
+                        };
+                        // Borrow dropped, safe to call switch_to_tab
+                        if let Some(session_id) = session_to_switch {
+                            notebook_clone.switch_to_tab(session_id);
+                        }
+                    });
+
+                    // Set up context menu for initial pane
+                    let panes_for_menu = split_view_for_click.panes_ref_clone();
+                    let sessions_for_menu = split_view_for_click.shared_sessions();
+                    pane.setup_context_menu(move |ctx_pane_id| {
+                        Self::build_pane_context_menu(
+                            ctx_pane_id,
+                            &panes_for_menu,
+                            &sessions_for_menu,
+                        )
+                    });
+                }
+            }
         }
 
         // Connect sidebar search with debouncing
@@ -1432,41 +1626,37 @@ impl MainWindow {
             );
         });
 
-        // Connect notebook tab switch to show session in split view
+        // Connect TabView page selection to show session in split view
         let split_view_clone = split_view.clone();
         let notebook_clone = terminal_notebook.clone();
-        let notebook_container = terminal_notebook.widget().clone();
-        let notebook_widget = terminal_notebook.notebook().clone();
-        terminal_notebook
-            .notebook()
-            .connect_switch_page(move |_notebook_widget, _, page_num| {
-                // Get session ID for this page number
+        terminal_notebook.tab_view().connect_notify_local(
+            Some("selected-page"),
+            move |tab_view, _| {
+                let Some(selected_page) = tab_view.selected_page() else {
+                    return;
+                };
+                let page_num = tab_view.page_position(&selected_page) as u32;
+
+                // Get session ID for this page
                 if let Some(session_id) = notebook_clone.get_session_id_for_page(page_num) {
-                    // Check if this is a VNC, RDP, or SPICE session - they display in notebook
+                    // Check if this is a VNC, RDP, or SPICE session - they display differently
                     if let Some(info) = notebook_clone.get_session_info(session_id) {
                         if info.protocol == "vnc"
                             || info.protocol == "rdp"
                             || info.protocol == "spice"
                         {
-                            // For VNC/RDP/SPICE: hide split view, expand notebook to show content
+                            // For VNC/RDP/SPICE: hide split view, show TabView content
                             split_view_clone.widget().set_visible(false);
                             split_view_clone.widget().set_vexpand(false);
-                            notebook_container.set_vexpand(true);
-                            notebook_widget.set_vexpand(true);
-                            // Show notebook page content
-                            notebook_clone.show_page_content(page_num);
+                            notebook_clone.show_tab_view_content();
                             return;
                         }
                     }
 
-                    // For SSH sessions: show split view, collapse notebook tabs area
+                    // For SSH sessions: show terminal in split view, hide TabView content
                     split_view_clone.widget().set_visible(true);
                     split_view_clone.widget().set_vexpand(true);
-                    // Collapse notebook - only show tabs, not content
-                    notebook_container.set_vexpand(false);
-                    notebook_widget.set_vexpand(false);
-                    // Hide all notebook page content for SSH sessions
-                    notebook_clone.hide_all_page_content_except(None);
+                    notebook_clone.hide_tab_view_content();
 
                     // Check if this session is already shown in any pane
                     let pane_ids = split_view_clone.pane_ids();
@@ -1521,14 +1711,13 @@ impl MainWindow {
                     }
                 } else {
                     // Welcome tab (page 0) - show welcome content in focused pane
-                    // Show split view for Welcome (same as SSH)
                     split_view_clone.widget().set_visible(true);
                     split_view_clone.widget().set_vexpand(true);
-                    notebook_container.set_vexpand(false);
-                    notebook_widget.set_vexpand(false);
+                    notebook_clone.hide_tab_view_content();
                     split_view_clone.show_welcome_in_focused_pane();
                 }
-            });
+            },
+        );
 
         // Save window state on close and handle minimize to tray
         let state_clone = state.clone();
@@ -1608,6 +1797,79 @@ impl MainWindow {
     #[allow(dead_code)] // Part of KeePass integration API, called from settings dialog
     pub fn refresh_keepass_status(&self) {
         self.update_keepass_button_status();
+    }
+
+    /// Builds context menu for a split view pane
+    fn build_pane_context_menu(
+        pane_id: Uuid,
+        panes: &Rc<RefCell<Vec<crate::split_view::TerminalPane>>>,
+        sessions: &crate::split_view::SharedSessions,
+    ) -> gio::Menu {
+        let menu = gio::Menu::new();
+
+        // Get session in this pane
+        let panes_ref = panes.borrow();
+        let session_id = panes_ref
+            .iter()
+            .find(|p| p.id() == pane_id)
+            .and_then(|p| p.current_session());
+        let pane_count = panes_ref.len();
+        drop(panes_ref);
+
+        // Clipboard actions section (always available)
+        // Note: No keyboard shortcuts shown - they don't work in VTE context menu
+        let clipboard_section = gio::Menu::new();
+        clipboard_section.append(Some("Copy"), Some("win.copy"));
+        clipboard_section.append(Some("Paste"), Some("win.paste"));
+        menu.append_section(None, &clipboard_section);
+
+        if let Some(sid) = session_id {
+            // Get session name for display
+            let sessions_ref = sessions.borrow();
+            let session_name = sessions_ref
+                .get(&sid)
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| "Session".to_string());
+            drop(sessions_ref);
+
+            // Session actions section
+            let session_section = gio::Menu::new();
+
+            // Close session - use MenuItem with target for proper parameter passing
+            let close_item = gio::MenuItem::new(Some(&format!("Close \"{}\"", session_name)), None);
+            close_item.set_action_and_target_value(
+                Some("win.close-tab-by-id"),
+                Some(&sid.to_string().to_variant()),
+            );
+            session_section.append_item(&close_item);
+
+            // Move to separate tab (unsplit) - only if in split view
+            if pane_count > 1 {
+                let unsplit_item = gio::MenuItem::new(Some("Move to Separate Tab"), None);
+                unsplit_item.set_action_and_target_value(
+                    Some("win.unsplit-session"),
+                    Some(&sid.to_string().to_variant()),
+                );
+                session_section.append_item(&unsplit_item);
+            }
+
+            menu.append_section(None, &session_section);
+        }
+
+        // Pane actions section (only if multiple panes)
+        if pane_count > 1 {
+            let pane_section = gio::Menu::new();
+            pane_section.append(Some("Close Pane"), Some("win.close-pane"));
+            menu.append_section(None, &pane_section);
+        }
+
+        // Split actions section
+        let split_section = gio::Menu::new();
+        split_section.append(Some("Split Horizontal"), Some("win.split-horizontal"));
+        split_section.append(Some("Split Vertical"), Some("win.split-vertical"));
+        menu.append_section(None, &split_section);
+
+        menu
     }
 
     /// Filters connections based on search query
@@ -2298,7 +2560,7 @@ impl MainWindow {
                 split_view.widget().set_visible(false);
                 split_view.widget().set_vexpand(false);
                 notebook.widget().set_vexpand(true);
-                notebook.notebook().set_vexpand(true);
+                notebook.show_tab_view_content();
                 return Some(session_id);
             }
 
@@ -2312,7 +2574,7 @@ impl MainWindow {
             split_view.widget().set_visible(true);
             split_view.widget().set_vexpand(true);
             notebook.widget().set_vexpand(false);
-            notebook.notebook().set_vexpand(false);
+            notebook.hide_tab_view_content();
 
             // For SSH and Zero Trust, we assume connected for now
             if info.protocol == "ssh" || info.protocol.starts_with("zerotrust") {
@@ -3202,7 +3464,7 @@ impl MainWindow {
         split_view.widget().set_visible(true);
         split_view.widget().set_vexpand(true);
         notebook.widget().set_vexpand(false);
-        notebook.notebook().set_vexpand(false);
+        notebook.hide_tab_view_content();
 
         // Note: The switch_page signal handler will automatically show the session
         // in the split view when the notebook switches to the new tab

@@ -914,7 +914,7 @@ fn start_quick_rdp(
     split_view.widget().set_visible(false);
     split_view.widget().set_vexpand(false);
     notebook.widget().set_vexpand(true);
-    notebook.notebook().set_vexpand(true);
+    notebook.show_tab_view_content();
 }
 
 /// Starts a quick VNC connection
@@ -970,7 +970,7 @@ fn start_quick_vnc(
     split_view.widget().set_visible(false);
     split_view.widget().set_vexpand(false);
     notebook.widget().set_vexpand(true);
-    notebook.notebook().set_vexpand(true);
+    notebook.show_tab_view_content();
 }
 
 /// Shows the quick connect dialog with optional state for template access
