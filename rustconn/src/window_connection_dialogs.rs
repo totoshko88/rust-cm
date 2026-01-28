@@ -70,7 +70,11 @@ pub fn show_new_connection_dialog_internal(
         dialog.connect_password_load_button(
             settings.secrets.kdbx_enabled,
             settings.secrets.kdbx_path.clone(),
-            settings.secrets.kdbx_password.as_ref().map(|p| p.expose_secret().to_string()),
+            settings
+                .secrets
+                .kdbx_password
+                .as_ref()
+                .map(|p| p.expose_secret().to_string()),
             settings.secrets.kdbx_key_file.clone(),
         );
     }
@@ -173,10 +177,9 @@ pub fn show_new_connection_dialog_internal(
                                 crate::utils::spawn_blocking_with_callback(
                                     move || {
                                         use rustconn_core::secret::SecretBackend;
-                                        let backend =
-                                            rustconn_core::secret::LibSecretBackend::new(
-                                                "rustconn",
-                                            );
+                                        let backend = rustconn_core::secret::LibSecretBackend::new(
+                                            "rustconn",
+                                        );
                                         let creds = Credentials {
                                             username: Some(username),
                                             password: Some(secrecy::SecretString::from(pwd)),
@@ -401,8 +404,14 @@ pub fn show_new_group_dialog_with_parent(
     credentials_group.add(&username_row);
 
     // Password Source dropdown
-    let password_source_list =
-        gtk4::StringList::new(&["Prompt", "KeePass", "Keyring", "Bitwarden", "Inherit", "None"]);
+    let password_source_list = gtk4::StringList::new(&[
+        "Prompt",
+        "KeePass",
+        "Keyring",
+        "Bitwarden",
+        "Inherit",
+        "None",
+    ]);
     let password_source_dropdown = gtk4::DropDown::builder()
         .model(&password_source_list)
         .selected(5) // Default to None

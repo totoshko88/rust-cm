@@ -95,7 +95,11 @@ pub fn edit_selected_connection(
             dialog.connect_password_load_button(
                 settings.secrets.kdbx_enabled,
                 settings.secrets.kdbx_path.clone(),
-                settings.secrets.kdbx_password.as_ref().map(|p| p.expose_secret().to_string()),
+                settings
+                    .secrets
+                    .kdbx_password
+                    .as_ref()
+                    .map(|p| p.expose_secret().to_string()),
                 settings.secrets.kdbx_key_file.clone(),
             );
         }
@@ -599,8 +603,14 @@ pub fn show_edit_group_dialog(
     credentials_group.add(&username_row);
 
     // Password Source dropdown
-    let password_source_list =
-        gtk4::StringList::new(&["Prompt", "KeePass", "Keyring", "Bitwarden", "Inherit", "None"]);
+    let password_source_list = gtk4::StringList::new(&[
+        "Prompt",
+        "KeePass",
+        "Keyring",
+        "Bitwarden",
+        "Inherit",
+        "None",
+    ]);
     let password_source_dropdown = gtk4::DropDown::builder()
         .model(&password_source_list)
         .valign(gtk4::Align::Center)

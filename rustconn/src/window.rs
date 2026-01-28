@@ -1347,9 +1347,13 @@ impl MainWindow {
                 split_view.setup_select_tab_callback_with_provider(
                     move || {
                         // Get all sessions from the notebook, excluding those already in THIS split
+                        // Only show VTE-based sessions (SSH, ZeroTrust) - RDP/VNC/SPICE not supported
                         notebook_for_provider
                             .get_all_sessions()
                             .into_iter()
+                            .filter(|s| {
+                                s.protocol == "ssh" || s.protocol.starts_with("zerotrust")
+                            })
                             .map(|s| (s.id, s.name))
                             .filter(|(id, _)| !split_view_for_provider.is_session_displayed(*id))
                             .collect()
@@ -1586,9 +1590,13 @@ impl MainWindow {
                 split_view.setup_select_tab_callback_with_provider(
                     move || {
                         // Get all sessions from the notebook, excluding those already in THIS split
+                        // Only show VTE-based sessions (SSH, ZeroTrust) - RDP/VNC/SPICE not supported
                         notebook_for_provider
                             .get_all_sessions()
                             .into_iter()
+                            .filter(|s| {
+                                s.protocol == "ssh" || s.protocol.starts_with("zerotrust")
+                            })
                             .map(|s| (s.id, s.name))
                             .filter(|(id, _)| !split_view_for_provider.is_session_displayed(*id))
                             .collect()
@@ -1903,9 +1911,11 @@ impl MainWindow {
             split_view.setup_select_tab_callback_with_provider(
                 move || {
                     // Get all sessions from the notebook
+                    // Only show VTE-based sessions (SSH, ZeroTrust) - RDP/VNC/SPICE not supported
                     notebook_for_provider
                         .get_all_sessions()
                         .into_iter()
+                        .filter(|s| s.protocol == "ssh" || s.protocol.starts_with("zerotrust"))
                         .map(|s| (s.id, s.name))
                         .collect()
                 },

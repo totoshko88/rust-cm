@@ -1607,8 +1607,14 @@ impl ConnectionDialog {
             .label("Password:")
             .halign(gtk4::Align::End)
             .build();
-        let password_source_list =
-            StringList::new(&["Prompt", "KeePass", "Keyring", "Bitwarden", "Inherit", "None"]);
+        let password_source_list = StringList::new(&[
+            "Prompt",
+            "KeePass",
+            "Keyring",
+            "Bitwarden",
+            "Inherit",
+            "None",
+        ]);
         let password_source_dropdown = DropDown::builder().model(&password_source_list).build();
         password_source_dropdown.set_selected(0);
         grid.attach(&password_source_label, 0, row, 1, 1);
@@ -6340,14 +6346,16 @@ impl ConnectionDialog {
 
                     spawn_blocking_with_callback(
                         move || {
-                            let backend =
-                                rustconn_core::secret::LibSecretBackend::new("rustconn");
+                            let backend = rustconn_core::secret::LibSecretBackend::new("rustconn");
                             let rt = tokio::runtime::Runtime::new()
                                 .map_err(|e| format!("Failed to create runtime: {e}"))?;
                             rt.block_on(backend.retrieve(&lookup_key))
                                 .map_err(|e| format!("{e}"))
                         },
-                        move |result: Result<Option<rustconn_core::models::Credentials>, String>| {
+                        move |result: Result<
+                            Option<rustconn_core::models::Credentials>,
+                            String,
+                        >| {
                             btn.set_sensitive(true);
                             btn.set_icon_name("document-open-symbolic");
 
@@ -6415,7 +6423,10 @@ impl ConnectionDialog {
                             rt.block_on(backend.retrieve(&lookup_key))
                                 .map_err(|e| format!("{e}"))
                         },
-                        move |result: Result<Option<rustconn_core::models::Credentials>, String>| {
+                        move |result: Result<
+                            Option<rustconn_core::models::Credentials>,
+                            String,
+                        >| {
                             btn.set_sensitive(true);
                             btn.set_icon_name("document-open-symbolic");
 
@@ -6587,10 +6598,7 @@ impl ConnectionDialog {
     ///
     /// The dropdown still shows all options (Prompt, KeePass, Keyring, Bitwarden, Inherit, None)
     /// but the default is set to the preferred backend.
-    pub fn set_preferred_backend(
-        &self,
-        backend: rustconn_core::config::SecretBackendType,
-    ) {
+    pub fn set_preferred_backend(&self, backend: rustconn_core::config::SecretBackendType) {
         use rustconn_core::config::SecretBackendType;
 
         // Map backend type to dropdown index

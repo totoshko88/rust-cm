@@ -376,7 +376,11 @@ pub fn show_new_connection_from_template(
         dialog.connect_password_load_button(
             settings.secrets.kdbx_enabled,
             settings.secrets.kdbx_path.clone(),
-            settings.secrets.kdbx_password.as_ref().map(|p| p.expose_secret().to_string()),
+            settings
+                .secrets
+                .kdbx_password
+                .as_ref()
+                .map(|p| p.expose_secret().to_string()),
             settings.secrets.kdbx_key_file.clone(),
         );
     }
@@ -473,10 +477,9 @@ pub fn show_new_connection_from_template(
                                 crate::utils::spawn_blocking_with_callback(
                                     move || {
                                         use rustconn_core::secret::SecretBackend;
-                                        let backend =
-                                            rustconn_core::secret::LibSecretBackend::new(
-                                                "rustconn",
-                                            );
+                                        let backend = rustconn_core::secret::LibSecretBackend::new(
+                                            "rustconn",
+                                        );
                                         let creds = Credentials {
                                             username: Some(username),
                                             password: Some(secrecy::SecretString::from(pwd)),
